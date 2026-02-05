@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         智学网AI自动打分助手
 // @namespace    http://tampermonkey.net/
-// @version      1.0.2
-// @description  智学网AI自动批改助手，支持OCR识别、AI评分、自动提交，让阅卷更轻松！
+// @version      1.1.0
+// @description  智学网AI自动批改助手，支持OCR识别、AI评分、自动提交、无人值守模式，让阅卷更轻松！
 // @author       5plus1
 // @match        https://www.zhixue.com/webmarking/*
 // @match        https://*.zhixue.com/webmarking/*
@@ -107,8 +107,20 @@
         currentImageUrl: '',
         abortController: null,
         countdownPaused: false,
-        autoRefreshOn403: true
+        autoRefreshOn403: true,
+        unattendedMode: false,  // 无人值守模式
+        errorRetryCount: 0,      // 错误重试计数
+        maxRetries: 3            // 最大重试次数
     };
+
+    // ========== 安全的alert（无人值守模式下不弹窗）==========
+    function safeAlert(message) {
+        if (window.aiGradingState.unattendedMode) {
+            console.log('📢 [静默提示]', message);
+        } else {
+            alert(message);
+        }
+    }
 
     // ========== 创建主按钮 ==========
     function createMainButton() {
@@ -158,6 +170,10 @@
                 background: linear-gradient(135deg, #67C23A 0%, #409EFF 100%);
                 animation: pulse-running 2s infinite;
             }
+            .ai-grade-btn.unattended {
+                background: linear-gradient(135deg, #E6A23C 0%, #F56C6C 100%);
+                animation: pulse-unattended 2s infinite;
+            }
             
             @keyframes pulse-pause {
                 0%, 100% {
@@ -175,6 +191,15 @@
                 }
                 50% {
                     box-shadow: 0 10px 40px rgba(103, 194, 58, 0.9);
+                }
+            }
+            
+            @keyframes pulse-unattended {
+                0%, 100% {
+                    box-shadow: 0 10px 30px rgba(230, 162, 60, 0.6);
+                }
+                50% {
+                    box-shadow: 0 10px 40px rgba(245, 108, 108, 0.9);
                 }
             }
         `;
@@ -200,7 +225,7 @@
             }
 
             btn.textContent = '▶️ 继续AI打分';
-            btn.classList.remove('running');
+            btn.classList.remove('running', 'unattended');
             btn.classList.add('paused');
             console.log('⏸️ AI打分已暂停');
 
@@ -214,9 +239,22 @@
             // 开始/继续
             window.aiGradingState.isRunning = true;
             window.aiGradingState.isPaused = false;
-            btn.textContent = '⏸️ 暂停AI打分';
-            btn.classList.remove('paused');
-            btn.classList.add('running');
+            window.aiGradingState.errorRetryCount = 0;
+
+            // 读取无人值守模式配置
+            const config = JSON.parse(GM_getValue('ai-grading-config') || '{}');
+            window.aiGradingState.unattendedMode = config.unattendedMode || false;
+
+            if (window.aiGradingState.unattendedMode) {
+                btn.textContent = '🤖 无人值守中...';
+                btn.classList.remove('paused');
+                btn.classList.add('running', 'unattended');
+                console.log('🤖 已开启无人值守模式');
+            } else {
+                btn.textContent = '⏸️ 暂停AI打分';
+                btn.classList.remove('paused', 'unattended');
+                btn.classList.add('running');
+            }
 
             // 最小化配置面板
             const panel = document.getElementById('ai-grading-settings');
@@ -372,6 +410,35 @@
                     color: #909399;
                     margin-top: 4px;
                 }
+                .checkbox-group {
+                    display: flex;
+                    align-items: center;
+                    gap: 10px;
+                    padding: 12px;
+                    background: #f5f7fa;
+                    border-radius: 6px;
+                    margin-bottom: 15px;
+                }
+                .checkbox-group input[type="checkbox"] {
+                    width: 20px;
+                    height: 20px;
+                    cursor: pointer;
+                }
+                .checkbox-group label {
+                    margin: 0;
+                    cursor: pointer;
+                    flex: 1;
+                }
+                .unattended-warning {
+                    background: #FEF0F0;
+                    border: 1px solid #F56C6C;
+                    border-radius: 6px;
+                    padding: 12px;
+                    margin-top: 10px;
+                    font-size: 13px;
+                    color: #F56C6C;
+                    line-height: 1.6;
+                }
                 .api-key-link {
                     display: inline-block;
                     margin-top: 8px;
@@ -418,8 +485,30 @@
                         <li>✅ 选择API服务商（推荐 5+1 AI）</li>
                         <li>🔑 点击"获取API KEY"注册并复制密钥</li>
                         <li>📝 填写题目信息（可选）</li>
+                        <li>🤖 开启无人值守模式（可选）</li>
                         <li>💾 保存配置后点击"开始AI打分"</li>
                     </ul>
+                </div>
+
+                <div class="form-section">
+                    <h4>🚀 运行模式</h4>
+                    <div class="checkbox-group">
+                        <input type="checkbox" id="unattended-mode">
+                        <label for="unattended-mode">
+                            <strong>🤖 无人值守模式</strong><br>
+                            <span style="font-size: 12px; color: #909399;">
+                                自动处理错误、不弹窗提示、1秒自动提交、完成后自动停止
+                            </span>
+                        </label>
+                    </div>
+                    <div class="unattended-warning" id="unattended-warning" style="display: none;">
+                        ⚠️ <strong>无人值守模式说明：</strong><br>
+                        • 遇到错误自动刷新重试（最多3次）<br>
+                        • 所有提示仅在控制台输出，不弹窗<br>
+                        • 确认对话框1秒后自动提交<br>
+                        • 完成所有批改后自动停止<br>
+                        • 适合夜间挂机批改大量试卷
+                    </div>
                 </div>
 
                 <div class="form-section">
@@ -485,6 +574,18 @@
 
         panel.querySelector('#save-config-btn').onclick = saveAISettings;
 
+        // 监听无人值守模式开关
+        const unattendedCheckbox = panel.querySelector('#unattended-mode');
+        const unattendedWarning = panel.querySelector('#unattended-warning');
+        
+        unattendedCheckbox.addEventListener('change', function() {
+            if (this.checked) {
+                unattendedWarning.style.display = 'block';
+            } else {
+                unattendedWarning.style.display = 'none';
+            }
+        });
+
         makeDraggable(panel);
         loadSettings();
 
@@ -535,6 +636,13 @@
             document.getElementById('api-endpoint').value = config.endpoint || 'https://api.ai.five-plus-one.com/v1/chat/completions';
             document.getElementById('api-key').value = config.apiKey || '';
             document.getElementById('model-name').value = config.model || 'doubao-seed-1-8-251228';
+            document.getElementById('unattended-mode').checked = config.unattendedMode || false;
+            
+            // 显示/隐藏无人值守警告
+            const unattendedWarning = document.getElementById('unattended-warning');
+            if (config.unattendedMode) {
+                unattendedWarning.style.display = 'block';
+            }
         } else {
             document.getElementById('ai-provider').value = '5plus1';
             document.getElementById('api-endpoint').value = 'https://api.ai.five-plus-one.com/v1/chat/completions';
@@ -587,11 +695,18 @@
             provider: document.getElementById('ai-provider').value,
             endpoint: document.getElementById('api-endpoint').value,
             apiKey: document.getElementById('api-key').value,
-            model: document.getElementById('model-name').value
+            model: document.getElementById('model-name').value,
+            unattendedMode: document.getElementById('unattended-mode').checked
         };
 
         GM_setValue('ai-grading-config', JSON.stringify(config));
-        alert('✅ 配置已保存！现在可以点击右下角"开始AI打分"按钮开始使用了！');
+        
+        const message = config.unattendedMode 
+            ? '✅ 配置已保存！已开启无人值守模式，点击"开始AI打分"后将全自动批改！'
+            : '✅ 配置已保存！现在可以点击右下角"开始AI打分"按钮开始使用了！';
+        
+        safeAlert(message);
+        console.log('💾 配置已保存:', config);
 
         // 最小化配置面板
         const panel = document.getElementById('ai-grading-settings');
@@ -621,7 +736,12 @@
             // 检测403错误
             if (response.status === 403 && window.aiGradingState.autoRefreshOn403) {
                 console.warn('⚠️ 图片下载返回403，自动刷新页面...');
-                alert('⚠️ 图片访问权限过期(403)，即将自动刷新页面并继续批改...');
+                
+                if (!window.aiGradingState.unattendedMode) {
+                    alert('⚠️ 图片访问权限过期(403)，即将自动刷新页面并继续批改...');
+                } else {
+                    console.log('🔄 [无人值守] 检测到403错误，自动刷新页面...');
+                }
 
                 // 保存当前状态
                 sessionStorage.setItem('ai-grading-auto-resume', 'true');
@@ -666,9 +786,9 @@
             const config = JSON.parse(GM_getValue('ai-grading-config') || '{}');
 
             if (!config.apiKey) {
-                alert('❌ 请先配置API密钥！\n\n点击右上角配置面板，填写API信息后保存即可使用。');
+                safeAlert('❌ 请先配置API密钥！\n\n点击右上角配置面板，填写API信息后保存即可使用。');
                 const panel = document.getElementById('ai-grading-settings');
-                if (panel) {
+                if (panel && !window.aiGradingState.unattendedMode) {
                     panel.style.display = 'block';
                     panel.classList.remove('minimized');
                 }
@@ -676,7 +796,7 @@
                 const btn = document.querySelector('.ai-grade-btn');
                 if (btn) {
                     btn.textContent = '✨ 开始AI打分';
-                    btn.classList.remove('running');
+                    btn.classList.remove('running', 'unattended');
                 }
                 return;
             }
@@ -685,7 +805,15 @@
             const imgElement = document.querySelector('div[name="topicImg"] img');
 
             if (!imgElement) {
-                alert('❌ 未找到答题卡图片！请确保已打开学生答题卡。');
+                // 无人值守模式：可能已完成所有批改
+                if (window.aiGradingState.unattendedMode) {
+                    console.log('✅ [无人值守] 未找到答题卡图片，可能已完成所有批改，自动停止');
+                    stopAutoGrading();
+                    safeAlert('✅ 所有试卷已批改完成！无人值守模式已自动停止。');
+                    return;
+                }
+
+                safeAlert('❌ 未找到答题卡图片！请确保已打开学生答题卡。');
                 window.aiGradingState.isRunning = false;
                 const btn = document.querySelector('.ai-grade-btn');
                 if (btn) {
@@ -700,7 +828,7 @@
             console.log('✅ 找到图片URL:', imageUrl);
 
             const gradeBtn = document.querySelector('.ai-grade-btn');
-            if (gradeBtn) {
+            if (gradeBtn && !window.aiGradingState.unattendedMode) {
                 gradeBtn.textContent = '📥 下载图片...';
             }
 
@@ -711,7 +839,7 @@
                 throw new Error('用户暂停');
             }
 
-            if (gradeBtn) {
+            if (gradeBtn && !window.aiGradingState.unattendedMode) {
                 gradeBtn.textContent = '⏳ AI分析中...';
             }
 
@@ -727,12 +855,13 @@
 
             if (result.score !== undefined && result.score !== null) {
                 window.aiGradingState.currentStudentAnswer = result.studentAnswer || '未能识别';
+                window.aiGradingState.errorRetryCount = 0; // 成功后重置错误计数
                 fillScore(result.score, result.comment);
             } else {
-                alert('⚠️ AI返回格式异常:\n' + JSON.stringify(result));
+                throw new Error('AI返回格式异常: ' + JSON.stringify(result));
             }
 
-            if (gradeBtn && window.aiGradingState.isRunning) {
+            if (gradeBtn && window.aiGradingState.isRunning && !window.aiGradingState.unattendedMode) {
                 gradeBtn.textContent = '⏸️ 暂停AI打分';
             }
 
@@ -743,7 +872,31 @@
                 console.log('🔄 页面即将刷新...');
             } else {
                 console.error('❌ 打分失败:', error);
-                alert('❌ 打分失败: ' + error.message);
+                
+                // 无人值守模式：自动重试
+                if (window.aiGradingState.unattendedMode) {
+                    window.aiGradingState.errorRetryCount++;
+                    
+                    if (window.aiGradingState.errorRetryCount <= window.aiGradingState.maxRetries) {
+                        console.log(`🔄 [无人值守] 遇到错误，自动重试 (${window.aiGradingState.errorRetryCount}/${window.aiGradingState.maxRetries})...`);
+                        
+                        // 保存状态并刷新
+                        sessionStorage.setItem('ai-grading-auto-resume', 'true');
+                        sessionStorage.setItem('ai-grading-retry-count', window.aiGradingState.errorRetryCount.toString());
+                        
+                        setTimeout(() => {
+                            location.reload();
+                        }, 2000);
+                        return;
+                    } else {
+                        console.error('❌ [无人值守] 重试次数已达上限，停止批改');
+                        stopAutoGrading();
+                        safeAlert('❌ 遇到错误且重试失败，已自动停止批改。请检查配置或网络。');
+                        return;
+                    }
+                }
+                
+                safeAlert('❌ 打分失败: ' + error.message);
             }
 
             window.aiGradingState.isRunning = false;
@@ -751,14 +904,41 @@
             if (gradeBtn) {
                 if (window.aiGradingState.isPaused) {
                     gradeBtn.textContent = '▶️ 继续AI打分';
-                    gradeBtn.classList.remove('running');
+                    gradeBtn.classList.remove('running', 'unattended');
                     gradeBtn.classList.add('paused');
                 } else {
                     gradeBtn.textContent = '✨ 开始AI打分';
-                    gradeBtn.classList.remove('running', 'paused');
+                    gradeBtn.classList.remove('running', 'paused', 'unattended');
                 }
             }
         }
+    }
+
+    // ========== 停止自动打分 ==========
+    function stopAutoGrading() {
+        window.aiGradingState.isRunning = false;
+        window.aiGradingState.isPaused = false;
+        window.aiGradingState.unattendedMode = false;
+        window.aiGradingState.errorRetryCount = 0;
+
+        // 中断正在进行的请求
+        if (window.aiGradingState.abortController) {
+            window.aiGradingState.abortController.abort();
+        }
+
+        const btn = document.querySelector('.ai-grade-btn');
+        if (btn) {
+            btn.textContent = '✨ 开始AI打分';
+            btn.classList.remove('running', 'paused', 'unattended');
+        }
+
+        // 关闭对话框
+        const dialog = document.getElementById('auto-submit-dialog');
+        if (dialog) {
+            dialog.remove();
+        }
+
+        console.log('🛑 AI打分已停止');
     }
 
     // ========== 调用AI API（使用GM_xmlhttpRequest）==========
@@ -898,11 +1078,11 @@
             showAutoSubmitDialog(score, comment);
         } else {
             console.warn('⚠️ 未找到分数输入框');
-            alert(`AI评分结果：\n分数：${score}\n评语：${comment}\n\n请手动输入分数！`);
+            safeAlert(`AI评分结果：\n分数：${score}\n评语：${comment}\n\n请手动输入分数！`);
         }
     }
 
-    // ========== 显示自动提交对话框（使用addEventListener）==========
+    // ========== 显示自动提交对话框（根据模式调整倒计时）==========
     function showAutoSubmitDialog(score, comment) {
         const oldDialog = document.getElementById('auto-submit-dialog');
         if (oldDialog) oldDialog.remove();
@@ -912,6 +1092,9 @@
 
         const studentAnswer = window.aiGradingState.currentStudentAnswer;
         const imageUrl = window.aiGradingState.currentImageUrl;
+
+        // 无人值守模式：1秒倒计时，普通模式：5秒
+        const countdownSeconds = window.aiGradingState.unattendedMode ? 1 : 5;
 
         const dialog = document.createElement('div');
         dialog.id = 'auto-submit-dialog';
@@ -996,6 +1179,10 @@
                 #auto-submit-dialog .countdown.paused {
                     color: #F56C6C;
                 }
+                #auto-submit-dialog .countdown.unattended {
+                    color: #F56C6C;
+                    font-size: 16px;
+                }
                 #auto-submit-dialog .buttons {
                     display: flex;
                     gap: 15px;
@@ -1042,7 +1229,7 @@
                 }
             </style>
             <div class="overlay"></div>
-            <h2>✅ AI评分完成</h2>
+            <h2>✅ AI评分完成 ${window.aiGradingState.unattendedMode ? '(无人值守模式)' : ''}</h2>
 
             <div class="content-grid">
                 <div class="student-image">
@@ -1067,7 +1254,9 @@
                 </div>
             </div>
 
-            <div class="countdown" id="countdown-display">将在 <span id="countdown-number">5</span> 秒后自动提交</div>
+            <div class="countdown ${window.aiGradingState.unattendedMode ? 'unattended' : ''}" id="countdown-display">
+                ${window.aiGradingState.unattendedMode ? '🤖 无人值守模式：' : ''}将在 <span id="countdown-number">${countdownSeconds}</span> 秒后自动提交
+            </div>
             <div class="buttons">
                 <button class="cancel-btn" id="pause-cancel-btn">⏸️ 暂停倒计时</button>
                 <button class="confirm-btn" id="confirm-submit-btn">✓ 立即提交</button>
@@ -1084,7 +1273,7 @@
         confirmBtn.addEventListener('click', confirmSubmit);
 
         // ========== 倒计时逻辑 ==========
-        let countdown = 5;
+        let countdown = countdownSeconds;
         const countdownElement = dialog.querySelector('#countdown-number');
         const countdownDisplay = dialog.querySelector('#countdown-display');
 
@@ -1144,16 +1333,7 @@
         }
 
         // 完全停止AI阅卷
-        window.aiGradingState.isRunning = false;
-        window.aiGradingState.isPaused = false;
-        window.aiGradingState.countdownPaused = false;
-
-        const btn = document.querySelector('.ai-grade-btn');
-        if (btn) {
-            btn.textContent = '✨ 开始AI打分';
-            btn.classList.remove('running', 'paused');
-        }
-
+        stopAutoGrading();
         console.log('❌ 已取消并退出AI阅卷');
     }
 
@@ -1194,7 +1374,15 @@
         } else {
             console.warn('⚠️ 未找到"提交分数"按钮');
             console.log('📋 页面所有按钮:', Array.from(document.querySelectorAll('button')).map(b => b.textContent));
-            alert('✅ 分数已填入，但未找到"提交分数"按钮，请手动提交！');
+            
+            // 无人值守模式：可能已完成所有批改
+            if (window.aiGradingState.unattendedMode) {
+                console.log('✅ [无人值守] 未找到提交按钮，可能已完成所有批改，自动停止');
+                stopAutoGrading();
+                safeAlert('✅ 所有试卷已批改完成！无人值守模式已自动停止。');
+            } else {
+                safeAlert('✅ 分数已填入，但未找到"提交分数"按钮，请手动提交！');
+            }
         }
     }
 
@@ -1224,6 +1412,11 @@
         const autoResume = sessionStorage.getItem('ai-grading-auto-resume');
         if (autoResume === 'true') {
             sessionStorage.removeItem('ai-grading-auto-resume');
+            
+            // 恢复重试计数
+            const retryCount = parseInt(sessionStorage.getItem('ai-grading-retry-count') || '0');
+            window.aiGradingState.errorRetryCount = retryCount;
+            sessionStorage.removeItem('ai-grading-retry-count');
 
             console.log('🔄 检测到自动恢复标记，等待页面稳定后继续批改...');
 
@@ -1233,7 +1426,14 @@
 
                 const config = GM_getValue('ai-grading-config');
                 if (config && JSON.parse(config).apiKey) {
-                    alert('✅ 页面已刷新，即将继续AI批改...');
+                    const parsedConfig = JSON.parse(config);
+                    
+                    if (parsedConfig.unattendedMode) {
+                        console.log('🤖 [无人值守] 页面已刷新，自动继续批改...');
+                    } else {
+                        safeAlert('✅ 页面已刷新，即将继续AI批改...');
+                    }
+                    
                     toggleAutoGrading(); // 自动开始
                 }
             }, 3000);
@@ -1242,7 +1442,7 @@
             const config = GM_getValue('ai-grading-config');
             if (!config || !JSON.parse(config).apiKey) {
                 setTimeout(() => {
-                    alert('👋 欢迎使用智学网AI打分助手！\n\n请先点击右上角配置面板，填写API密钥后即可使用。\n\n推荐使用 5+1 AI 服务，点击"获取API KEY"即可免费注册。');
+                    alert('👋 欢迎使用智学网AI打分助手！\n\n请先点击右上角配置面板，填写API密钥后即可使用。\n\n💡 新功能：支持无人值守模式，夜间挂机批改大量试卷！\n\n推荐使用 5+1 AI 服务，点击"获取API KEY"即可免费注册。');
                 }, 1000);
             }
         }

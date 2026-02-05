@@ -1078,11 +1078,11 @@
             showAutoSubmitDialog(score, comment);
         } else {
             console.warn('⚠️ 未找到分数输入框');
-            alert(`AI评分结果：\n分数：${score}\n评语：${comment}\n\n请手动输入分数！`);
+            safeAlert(`AI评分结果：\n分数：${score}\n评语：${comment}\n\n请手动输入分数！`);
         }
     }
 
-    // ========== 显示自动提交对话框（使用addEventListener）==========
+    // ========== 显示自动提交对话框（根据模式调整倒计时）==========
     function showAutoSubmitDialog(score, comment) {
         const oldDialog = document.getElementById('auto-submit-dialog');
         if (oldDialog) oldDialog.remove();
@@ -1092,6 +1092,9 @@
 
         const studentAnswer = window.aiGradingState.currentStudentAnswer;
         const imageUrl = window.aiGradingState.currentImageUrl;
+
+        // 无人值守模式：1秒倒计时，普通模式：5秒
+        const countdownSeconds = window.aiGradingState.unattendedMode ? 1 : 5;
 
         const dialog = document.createElement('div');
         dialog.id = 'auto-submit-dialog';
@@ -1270,7 +1273,7 @@
         confirmBtn.addEventListener('click', confirmSubmit);
 
         // ========== 倒计时逻辑 ==========
-        let countdown = 5;
+        let countdown = countdownSeconds;
         const countdownElement = dialog.querySelector('#countdown-number');
         const countdownDisplay = dialog.querySelector('#countdown-display');
 
@@ -1330,16 +1333,7 @@
         }
 
         // 完全停止AI阅卷
-        window.aiGradingState.isRunning = false;
-        window.aiGradingState.isPaused = false;
-        window.aiGradingState.countdownPaused = false;
-
-        const btn = document.querySelector('.ai-grade-btn');
-        if (btn) {
-            btn.textContent = '✨ 开始AI打分';
-            btn.classList.remove('running', 'paused');
-        }
-
+        stopAutoGrading();
         console.log('❌ 已取消并退出AI阅卷');
     }
 

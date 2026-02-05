@@ -107,8 +107,20 @@
         currentImageUrl: '',
         abortController: null,
         countdownPaused: false,
-        autoRefreshOn403: true
+        autoRefreshOn403: true,
+        unattendedMode: false,  // 无人值守模式
+        errorRetryCount: 0,      // 错误重试计数
+        maxRetries: 3            // 最大重试次数
     };
+
+    // ========== 安全的alert（无人值守模式下不弹窗）==========
+    function safeAlert(message) {
+        if (window.aiGradingState.unattendedMode) {
+            console.log('📢 [静默提示]', message);
+        } else {
+            alert(message);
+        }
+    }
 
     // ========== 创建主按钮 ==========
     function createMainButton() {
@@ -213,7 +225,7 @@
             }
 
             btn.textContent = '▶️ 继续AI打分';
-            btn.classList.remove('running');
+            btn.classList.remove('running', 'unattended');
             btn.classList.add('paused');
             console.log('⏸️ AI打分已暂停');
 
@@ -227,9 +239,22 @@
             // 开始/继续
             window.aiGradingState.isRunning = true;
             window.aiGradingState.isPaused = false;
-            btn.textContent = '⏸️ 暂停AI打分';
-            btn.classList.remove('paused');
-            btn.classList.add('running');
+            window.aiGradingState.errorRetryCount = 0;
+
+            // 读取无人值守模式配置
+            const config = JSON.parse(GM_getValue('ai-grading-config') || '{}');
+            window.aiGradingState.unattendedMode = config.unattendedMode || false;
+
+            if (window.aiGradingState.unattendedMode) {
+                btn.textContent = '🤖 无人值守中...';
+                btn.classList.remove('paused');
+                btn.classList.add('running', 'unattended');
+                console.log('🤖 已开启无人值守模式');
+            } else {
+                btn.textContent = '⏸️ 暂停AI打分';
+                btn.classList.remove('paused', 'unattended');
+                btn.classList.add('running');
+            }
 
             // 最小化配置面板
             const panel = document.getElementById('ai-grading-settings');
@@ -460,8 +485,30 @@
                         <li>✅ 选择API服务商（推荐 5+1 AI）</li>
                         <li>🔑 点击"获取API KEY"注册并复制密钥</li>
                         <li>📝 填写题目信息（可选）</li>
+                        <li>🤖 开启无人值守模式（可选）</li>
                         <li>💾 保存配置后点击"开始AI打分"</li>
                     </ul>
+                </div>
+
+                <div class="form-section">
+                    <h4>🚀 运行模式</h4>
+                    <div class="checkbox-group">
+                        <input type="checkbox" id="unattended-mode">
+                        <label for="unattended-mode">
+                            <strong>🤖 无人值守模式</strong><br>
+                            <span style="font-size: 12px; color: #909399;">
+                                自动处理错误、不弹窗提示、1秒自动提交、完成后自动停止
+                            </span>
+                        </label>
+                    </div>
+                    <div class="unattended-warning" id="unattended-warning" style="display: none;">
+                        ⚠️ <strong>无人值守模式说明：</strong><br>
+                        • 遇到错误自动刷新重试（最多3次）<br>
+                        • 所有提示仅在控制台输出，不弹窗<br>
+                        • 确认对话框1秒后自动提交<br>
+                        • 完成所有批改后自动停止<br>
+                        • 适合夜间挂机批改大量试卷
+                    </div>
                 </div>
 
                 <div class="form-section">
@@ -527,6 +574,18 @@
 
         panel.querySelector('#save-config-btn').onclick = saveAISettings;
 
+        // 监听无人值守模式开关
+        const unattendedCheckbox = panel.querySelector('#unattended-mode');
+        const unattendedWarning = panel.querySelector('#unattended-warning');
+        
+        unattendedCheckbox.addEventListener('change', function() {
+            if (this.checked) {
+                unattendedWarning.style.display = 'block';
+            } else {
+                unattendedWarning.style.display = 'none';
+            }
+        });
+
         makeDraggable(panel);
         loadSettings();
 
@@ -577,6 +636,13 @@
             document.getElementById('api-endpoint').value = config.endpoint || 'https://api.ai.five-plus-one.com/v1/chat/completions';
             document.getElementById('api-key').value = config.apiKey || '';
             document.getElementById('model-name').value = config.model || 'doubao-seed-1-8-251228';
+            document.getElementById('unattended-mode').checked = config.unattendedMode || false;
+            
+            // 显示/隐藏无人值守警告
+            const unattendedWarning = document.getElementById('unattended-warning');
+            if (config.unattendedMode) {
+                unattendedWarning.style.display = 'block';
+            }
         } else {
             document.getElementById('ai-provider').value = '5plus1';
             document.getElementById('api-endpoint').value = 'https://api.ai.five-plus-one.com/v1/chat/completions';
@@ -629,11 +695,18 @@
             provider: document.getElementById('ai-provider').value,
             endpoint: document.getElementById('api-endpoint').value,
             apiKey: document.getElementById('api-key').value,
-            model: document.getElementById('model-name').value
+            model: document.getElementById('model-name').value,
+            unattendedMode: document.getElementById('unattended-mode').checked
         };
 
         GM_setValue('ai-grading-config', JSON.stringify(config));
-        alert('✅ 配置已保存！现在可以点击右下角"开始AI打分"按钮开始使用了！');
+        
+        const message = config.unattendedMode 
+            ? '✅ 配置已保存！已开启无人值守模式，点击"开始AI打分"后将全自动批改！'
+            : '✅ 配置已保存！现在可以点击右下角"开始AI打分"按钮开始使用了！';
+        
+        safeAlert(message);
+        console.log('💾 配置已保存:', config);
 
         // 最小化配置面板
         const panel = document.getElementById('ai-grading-settings');
@@ -708,9 +781,9 @@
             const config = JSON.parse(GM_getValue('ai-grading-config') || '{}');
 
             if (!config.apiKey) {
-                alert('❌ 请先配置API密钥！\n\n点击右上角配置面板，填写API信息后保存即可使用。');
+                safeAlert('❌ 请先配置API密钥！\n\n点击右上角配置面板，填写API信息后保存即可使用。');
                 const panel = document.getElementById('ai-grading-settings');
-                if (panel) {
+                if (panel && !window.aiGradingState.unattendedMode) {
                     panel.style.display = 'block';
                     panel.classList.remove('minimized');
                 }
@@ -718,7 +791,7 @@
                 const btn = document.querySelector('.ai-grade-btn');
                 if (btn) {
                     btn.textContent = '✨ 开始AI打分';
-                    btn.classList.remove('running');
+                    btn.classList.remove('running', 'unattended');
                 }
                 return;
             }
@@ -727,7 +800,15 @@
             const imgElement = document.querySelector('div[name="topicImg"] img');
 
             if (!imgElement) {
-                alert('❌ 未找到答题卡图片！请确保已打开学生答题卡。');
+                // 无人值守模式：可能已完成所有批改
+                if (window.aiGradingState.unattendedMode) {
+                    console.log('✅ [无人值守] 未找到答题卡图片，可能已完成所有批改，自动停止');
+                    stopAutoGrading();
+                    safeAlert('✅ 所有试卷已批改完成！无人值守模式已自动停止。');
+                    return;
+                }
+
+                safeAlert('❌ 未找到答题卡图片！请确保已打开学生答题卡。');
                 window.aiGradingState.isRunning = false;
                 const btn = document.querySelector('.ai-grade-btn');
                 if (btn) {
@@ -742,7 +823,7 @@
             console.log('✅ 找到图片URL:', imageUrl);
 
             const gradeBtn = document.querySelector('.ai-grade-btn');
-            if (gradeBtn) {
+            if (gradeBtn && !window.aiGradingState.unattendedMode) {
                 gradeBtn.textContent = '📥 下载图片...';
             }
 
@@ -753,7 +834,7 @@
                 throw new Error('用户暂停');
             }
 
-            if (gradeBtn) {
+            if (gradeBtn && !window.aiGradingState.unattendedMode) {
                 gradeBtn.textContent = '⏳ AI分析中...';
             }
 
@@ -769,12 +850,13 @@
 
             if (result.score !== undefined && result.score !== null) {
                 window.aiGradingState.currentStudentAnswer = result.studentAnswer || '未能识别';
+                window.aiGradingState.errorRetryCount = 0; // 成功后重置错误计数
                 fillScore(result.score, result.comment);
             } else {
-                alert('⚠️ AI返回格式异常:\n' + JSON.stringify(result));
+                throw new Error('AI返回格式异常: ' + JSON.stringify(result));
             }
 
-            if (gradeBtn && window.aiGradingState.isRunning) {
+            if (gradeBtn && window.aiGradingState.isRunning && !window.aiGradingState.unattendedMode) {
                 gradeBtn.textContent = '⏸️ 暂停AI打分';
             }
 
@@ -793,11 +875,11 @@
             if (gradeBtn) {
                 if (window.aiGradingState.isPaused) {
                     gradeBtn.textContent = '▶️ 继续AI打分';
-                    gradeBtn.classList.remove('running');
+                    gradeBtn.classList.remove('running', 'unattended');
                     gradeBtn.classList.add('paused');
                 } else {
                     gradeBtn.textContent = '✨ 开始AI打分';
-                    gradeBtn.classList.remove('running', 'paused');
+                    gradeBtn.classList.remove('running', 'paused', 'unattended');
                 }
             }
         }
@@ -1088,7 +1170,7 @@
                 }
             </style>
             <div class="overlay"></div>
-            <h2>✅ AI评分完成</h2>
+            <h2>✅ AI评分完成 ${window.aiGradingState.unattendedMode ? '(无人值守模式)' : ''}</h2>
 
             <div class="content-grid">
                 <div class="student-image">
@@ -1113,7 +1195,9 @@
                 </div>
             </div>
 
-            <div class="countdown" id="countdown-display">将在 <span id="countdown-number">5</span> 秒后自动提交</div>
+            <div class="countdown ${window.aiGradingState.unattendedMode ? 'unattended' : ''}" id="countdown-display">
+                ${window.aiGradingState.unattendedMode ? '🤖 无人值守模式：' : ''}将在 <span id="countdown-number">${countdownSeconds}</span> 秒后自动提交
+            </div>
             <div class="buttons">
                 <button class="cancel-btn" id="pause-cancel-btn">⏸️ 暂停倒计时</button>
                 <button class="confirm-btn" id="confirm-submit-btn">✓ 立即提交</button>

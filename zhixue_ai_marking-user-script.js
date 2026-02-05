@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         智学网AI自动打分助手
 // @namespace    http://tampermonkey.net/
-// @version      1.0.1
+// @version      1.0.2
 // @description  智学网AI自动批改助手，支持OCR识别、AI评分、自动提交，让阅卷更轻松！
 // @author       5plus1
 // @match        https://www.zhixue.com/webmarking/*
@@ -902,7 +902,7 @@
         }
     }
 
-    // ========== 显示自动提交对话框（带暂停功能）==========
+    // ========== 显示自动提交对话框（使用addEventListener）==========
     function showAutoSubmitDialog(score, comment) {
         const oldDialog = document.getElementById('auto-submit-dialog');
         if (oldDialog) oldDialog.remove();
@@ -1069,16 +1069,24 @@
 
             <div class="countdown" id="countdown-display">将在 <span id="countdown-number">5</span> 秒后自动提交</div>
             <div class="buttons">
-                <button class="cancel-btn" id="pause-cancel-btn" onclick="window.toggleCountdownPause()">⏸️ 暂停倒计时</button>
-                <button class="confirm-btn" onclick="window.confirmSubmit()">✓ 立即提交</button>
+                <button class="cancel-btn" id="pause-cancel-btn">⏸️ 暂停倒计时</button>
+                <button class="confirm-btn" id="confirm-submit-btn">✓ 立即提交</button>
             </div>
         `;
 
         document.body.appendChild(dialog);
 
+        // ========== 使用 addEventListener 绑定事件 ==========
+        const pauseBtn = dialog.querySelector('#pause-cancel-btn');
+        const confirmBtn = dialog.querySelector('#confirm-submit-btn');
+
+        pauseBtn.addEventListener('click', toggleCountdownPause);
+        confirmBtn.addEventListener('click', confirmSubmit);
+
+        // ========== 倒计时逻辑 ==========
         let countdown = 5;
-        const countdownElement = document.getElementById('countdown-number');
-        const countdownDisplay = document.getElementById('countdown-display');
+        const countdownElement = dialog.querySelector('#countdown-number');
+        const countdownDisplay = dialog.querySelector('#countdown-display');
 
         const timer = setInterval(() => {
             // 如果暂停了，不减少倒计时
@@ -1093,18 +1101,18 @@
 
             if (countdown <= 0) {
                 clearInterval(timer);
-                window.confirmSubmit();
+                confirmSubmit();
             }
         }, 1000);
 
-        window.autoSubmitTimer = timer;
-        window.countdownDisplay = countdownDisplay;
+        // 保存定时器引用
+        dialog.countdownTimer = timer;
     }
 
     // ========== 切换倒计时暂停状态 ==========
-    window.toggleCountdownPause = function() {
+    function toggleCountdownPause() {
         const pauseBtn = document.getElementById('pause-cancel-btn');
-        const countdownDisplay = window.countdownDisplay;
+        const countdownDisplay = document.getElementById('countdown-display');
 
         if (!window.aiGradingState.countdownPaused) {
             // 第一次点击：暂停倒计时
@@ -1120,17 +1128,18 @@
             console.log('⏸️ 倒计时已暂停');
         } else {
             // 第二次点击：取消并退出
-            window.cancelAutoSubmit();
+            cancelAutoSubmit();
         }
-    };
+    }
 
     // ========== 取消自动提交 ==========
-    window.cancelAutoSubmit = function() {
-        if (window.autoSubmitTimer) {
-            clearInterval(window.autoSubmitTimer);
-        }
+    function cancelAutoSubmit() {
         const dialog = document.getElementById('auto-submit-dialog');
         if (dialog) {
+            // 清除倒计时
+            if (dialog.countdownTimer) {
+                clearInterval(dialog.countdownTimer);
+            }
             dialog.remove();
         }
 
@@ -1146,16 +1155,16 @@
         }
 
         console.log('❌ 已取消并退出AI阅卷');
-    };
+    }
 
     // ========== 确认提交（精确查找"提交分数"按钮）==========
-    window.confirmSubmit = function() {
-        if (window.autoSubmitTimer) {
-            clearInterval(window.autoSubmitTimer);
-        }
-
+    function confirmSubmit() {
         const dialog = document.getElementById('auto-submit-dialog');
         if (dialog) {
+            // 清除倒计时
+            if (dialog.countdownTimer) {
+                clearInterval(dialog.countdownTimer);
+            }
             dialog.remove();
         }
 
@@ -1187,7 +1196,7 @@
             console.log('📋 页面所有按钮:', Array.from(document.querySelectorAll('button')).map(b => b.textContent));
             alert('✅ 分数已填入，但未找到"提交分数"按钮，请手动提交！');
         }
-    };
+    }
 
     // ========== 初始化主函数 ==========
     async function init() {
@@ -1239,13 +1248,6 @@
         }
 
         console.log('✅ AI打分助手初始化完成！');
-        console.log('📌 使用说明：');
-        console.log('1. 点击右侧配置面板填写API信息');
-        console.log('2. 点击"开始AI打分"按钮进行自动评分');
-        console.log('3. AI评分完成后将显示确认界面，5秒后自动提交');
-        console.log('4. 倒计时期间可点击"暂停倒计时"，再次点击"取消并退出"完全停止');
-        console.log('5. 点击"暂停AI打分"可以随时暂停（会中断当前请求）');
-        console.log('6. 遇到403错误会自动刷新页面并继续批改');
     }
 
     // 启动脚本 - 使用多种方式确保加载

@@ -736,7 +736,12 @@
             // 检测403错误
             if (response.status === 403 && window.aiGradingState.autoRefreshOn403) {
                 console.warn('⚠️ 图片下载返回403，自动刷新页面...');
-                alert('⚠️ 图片访问权限过期(403)，即将自动刷新页面并继续批改...');
+                
+                if (!window.aiGradingState.unattendedMode) {
+                    alert('⚠️ 图片访问权限过期(403)，即将自动刷新页面并继续批改...');
+                } else {
+                    console.log('🔄 [无人值守] 检测到403错误，自动刷新页面...');
+                }
 
                 // 保存当前状态
                 sessionStorage.setItem('ai-grading-auto-resume', 'true');

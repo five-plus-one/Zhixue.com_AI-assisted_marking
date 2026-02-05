@@ -1428,7 +1428,7 @@
             const config = GM_getValue('ai-grading-config');
             if (!config || !JSON.parse(config).apiKey) {
                 setTimeout(() => {
-                    alert('👋 欢迎使用智学网AI打分助手！\n\n请先点击右上角配置面板，填写API密钥后即可使用。\n\n推荐使用 5+1 AI 服务，点击"获取API KEY"即可免费注册。');
+                    alert('👋 欢迎使用智学网AI打分助手！\n\n请先点击右上角配置面板，填写API密钥后即可使用。\n\n💡 新功能：支持无人值守模式，夜间挂机批改大量试卷！\n\n推荐使用 5+1 AI 服务，点击"获取API KEY"即可免费注册。');
                 }, 1000);
             }
         }

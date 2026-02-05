@@ -872,7 +872,31 @@
                 console.log('🔄 页面即将刷新...');
             } else {
                 console.error('❌ 打分失败:', error);
-                alert('❌ 打分失败: ' + error.message);
+                
+                // 无人值守模式：自动重试
+                if (window.aiGradingState.unattendedMode) {
+                    window.aiGradingState.errorRetryCount++;
+                    
+                    if (window.aiGradingState.errorRetryCount <= window.aiGradingState.maxRetries) {
+                        console.log(`🔄 [无人值守] 遇到错误，自动重试 (${window.aiGradingState.errorRetryCount}/${window.aiGradingState.maxRetries})...`);
+                        
+                        // 保存状态并刷新
+                        sessionStorage.setItem('ai-grading-auto-resume', 'true');
+                        sessionStorage.setItem('ai-grading-retry-count', window.aiGradingState.errorRetryCount.toString());
+                        
+                        setTimeout(() => {
+                            location.reload();
+                        }, 2000);
+                        return;
+                    } else {
+                        console.error('❌ [无人值守] 重试次数已达上限，停止批改');
+                        stopAutoGrading();
+                        safeAlert('❌ 遇到错误且重试失败，已自动停止批改。请检查配置或网络。');
+                        return;
+                    }
+                }
+                
+                safeAlert('❌ 打分失败: ' + error.message);
             }
 
             window.aiGradingState.isRunning = false;
@@ -888,6 +912,33 @@
                 }
             }
         }
+    }
+
+    // ========== 停止自动打分 ==========
+    function stopAutoGrading() {
+        window.aiGradingState.isRunning = false;
+        window.aiGradingState.isPaused = false;
+        window.aiGradingState.unattendedMode = false;
+        window.aiGradingState.errorRetryCount = 0;
+
+        // 中断正在进行的请求
+        if (window.aiGradingState.abortController) {
+            window.aiGradingState.abortController.abort();
+        }
+
+        const btn = document.querySelector('.ai-grade-btn');
+        if (btn) {
+            btn.textContent = '✨ 开始AI打分';
+            btn.classList.remove('running', 'paused', 'unattended');
+        }
+
+        // 关闭对话框
+        const dialog = document.getElementById('auto-submit-dialog');
+        if (dialog) {
+            dialog.remove();
+        }
+
+        console.log('🛑 AI打分已停止');
     }
 
     // ========== 调用AI API（使用GM_xmlhttpRequest）==========

@@ -158,6 +158,10 @@
                 background: linear-gradient(135deg, #67C23A 0%, #409EFF 100%);
                 animation: pulse-running 2s infinite;
             }
+            .ai-grade-btn.unattended {
+                background: linear-gradient(135deg, #E6A23C 0%, #F56C6C 100%);
+                animation: pulse-unattended 2s infinite;
+            }
             
             @keyframes pulse-pause {
                 0%, 100% {
@@ -175,6 +179,15 @@
                 }
                 50% {
                     box-shadow: 0 10px 40px rgba(103, 194, 58, 0.9);
+                }
+            }
+            
+            @keyframes pulse-unattended {
+                0%, 100% {
+                    box-shadow: 0 10px 30px rgba(230, 162, 60, 0.6);
+                }
+                50% {
+                    box-shadow: 0 10px 40px rgba(245, 108, 108, 0.9);
                 }
             }
         `;
@@ -371,6 +384,35 @@
                     font-size: 12px;
                     color: #909399;
                     margin-top: 4px;
+                }
+                .checkbox-group {
+                    display: flex;
+                    align-items: center;
+                    gap: 10px;
+                    padding: 12px;
+                    background: #f5f7fa;
+                    border-radius: 6px;
+                    margin-bottom: 15px;
+                }
+                .checkbox-group input[type="checkbox"] {
+                    width: 20px;
+                    height: 20px;
+                    cursor: pointer;
+                }
+                .checkbox-group label {
+                    margin: 0;
+                    cursor: pointer;
+                    flex: 1;
+                }
+                .unattended-warning {
+                    background: #FEF0F0;
+                    border: 1px solid #F56C6C;
+                    border-radius: 6px;
+                    padding: 12px;
+                    margin-top: 10px;
+                    font-size: 13px;
+                    color: #F56C6C;
+                    line-height: 1.6;
                 }
                 .api-key-link {
                     display: inline-block;
@@ -995,6 +1037,10 @@
                 }
                 #auto-submit-dialog .countdown.paused {
                     color: #F56C6C;
+                }
+                #auto-submit-dialog .countdown.unattended {
+                    color: #F56C6C;
+                    font-size: 16px;
                 }
                 #auto-submit-dialog .buttons {
                     display: flex;

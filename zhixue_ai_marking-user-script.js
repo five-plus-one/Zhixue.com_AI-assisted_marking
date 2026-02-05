@@ -1,10 +1,11 @@
 // ==UserScript==
 // @name         智学网AI自动打分助手
 // @namespace    http://tampermonkey.net/
-// @version      1.0.0
+// @version      1.0.1
 // @description  智学网AI自动批改助手，支持OCR识别、AI评分、自动提交，让阅卷更轻松！
 // @author       5plus1
-// @match        https://www.zhixue.com/webmarking/*/marking/personal/*
+// @match        https://www.zhixue.com/webmarking/*
+// @match        https://*.zhixue.com/webmarking/*
 // @icon         https://www.zhixue.com/favicon.ico
 // @grant        GM_xmlhttpRequest
 // @grant        GM_setValue
@@ -12,7 +13,7 @@
 // @connect      api.ai.five-plus-one.com
 // @connect      api.openai.com
 // @connect      *
-// @run-at       document-end
+// @run-at       document-idle
 // ==/UserScript==
 
 (function() {
@@ -21,34 +22,79 @@
     console.log('🚀 智学网AI打分助手加载中...');
 
     // 等待页面加载完成
-    function waitForElement(selector, timeout = 10000) {
+    function waitForElement(selector, timeout = 15000) {
         return new Promise((resolve, reject) => {
+            // 立即检查一次
+            const immediateCheck = document.querySelector(selector);
+            if (immediateCheck) {
+                resolve(immediateCheck);
+                return;
+            }
+
             const startTime = Date.now();
             const timer = setInterval(() => {
                 const element = document.querySelector(selector);
                 if (element) {
                     clearInterval(timer);
+                    console.log('✅ 找到元素:', selector);
                     resolve(element);
                 } else if (Date.now() - startTime > timeout) {
                     clearInterval(timer);
                     reject(new Error('等待元素超时: ' + selector));
                 }
-            }, 100);
+            }, 200);
         });
     }
 
-    // 检测是否在批改页面
+    // 检测是否在批改页面（多种检测方式）
     async function detectMarkingPage() {
+        console.log('🔍 开始检测批改页面...');
+        console.log('📍 当前URL:', window.location.href);
+        console.log('📍 Hash:', window.location.hash);
+
         try {
-            // 等待答题卡图片或分数输入框出现
-            await Promise.race([
-                waitForElement('div[name="topicImg"] img'),
-                waitForElement('input[type="number"]'),
-                waitForElement('input[placeholder*="分"]')
-            ]);
-            return true;
+            // 检查URL中是否包含marking关键字
+            if (!window.location.href.includes('marking')) {
+                console.log('⚠️ URL不包含marking，可能不是批改页面');
+            }
+
+            // 等待任意一个批改页面特征元素出现
+            const result = await Promise.race([
+                waitForElement('div[name="topicImg"]').then(() => 'topicImg'),
+                waitForElement('div[name="topicImg"] img').then(() => 'topicImg-img'),
+                waitForElement('input[type="number"]').then(() => 'score-input'),
+                waitForElement('input[placeholder*="分"]').then(() => 'score-placeholder'),
+                waitForElement('button:contains("提交分数")').then(() => 'submit-btn'),
+                waitForElement('.marking-container').then(() => 'marking-container'),
+                waitForElement('.student-answer').then(() => 'student-answer')
+            ]).catch(() => null);
+
+            if (result) {
+                console.log('✅ 检测到批改页面元素:', result);
+                return true;
+            }
+
+            console.log('⚠️ 未检测到批改页面元素，尝试通用检测...');
+
+            // 通用检测：等待3秒后检查页面内容
+            await new Promise(resolve => setTimeout(resolve, 3000));
+
+            const hasInput = document.querySelector('input[type="number"]') || 
+                           document.querySelector('input[type="text"]');
+            const hasButton = Array.from(document.querySelectorAll('button')).some(btn => 
+                btn.textContent.includes('提交') || btn.textContent.includes('分数')
+            );
+
+            if (hasInput && hasButton) {
+                console.log('✅ 通用检测通过：找到输入框和提交按钮');
+                return true;
+            }
+
+            console.log('⚠️ 通用检测未通过');
+            return false;
+
         } catch (error) {
-            console.log('⚠️ 未检测到批改界面元素');
+            console.error('❌ 检测批改页面失败:', error);
             return false;
         }
     }
@@ -61,11 +107,17 @@
         currentImageUrl: '',
         abortController: null,
         countdownPaused: false,
-        autoRefreshOn403: true  // 403自动刷新开关
+        autoRefreshOn403: true
     };
 
     // ========== 创建主按钮 ==========
     function createMainButton() {
+        // 避免重复创建
+        if (document.querySelector('.ai-grade-btn')) {
+            console.log('⚠️ 主按钮已存在，跳过创建');
+            return;
+        }
+
         const btn = document.createElement('button');
         btn.className = 'ai-grade-btn';
         btn.innerHTML = '✨ 开始AI打分';
@@ -182,6 +234,12 @@
 
     // ========== 创建配置面板 ==========
     function createSettingsPanel() {
+        // 避免重复创建
+        if (document.getElementById('ai-grading-settings')) {
+            console.log('⚠️ 配置面板已存在，跳过创建');
+            return;
+        }
+
         const panel = document.createElement('div');
         panel.id = 'ai-grading-settings';
         panel.innerHTML = `
@@ -1134,11 +1192,16 @@
     // ========== 初始化主函数 ==========
     async function init() {
         console.log('🔍 检测批改页面...');
+        console.log('📍 当前完整URL:', window.location.href);
+
+        // 等待一段时间让SPA页面完全加载
+        await new Promise(resolve => setTimeout(resolve, 2000));
 
         const isMarkingPage = await detectMarkingPage();
 
         if (!isMarkingPage) {
             console.log('⚠️ 未检测到批改页面，脚本待机中...');
+            console.log('💡 提示：如果您确定在批改页面，请尝试刷新页面');
             return;
         }
 
@@ -1155,13 +1218,16 @@
 
             console.log('🔄 检测到自动恢复标记，等待页面稳定后继续批改...');
 
-            setTimeout(() => {
+            setTimeout(async () => {
+                // 等待页面完全加载
+                await detectMarkingPage();
+
                 const config = GM_getValue('ai-grading-config');
                 if (config && JSON.parse(config).apiKey) {
                     alert('✅ 页面已刷新，即将继续AI批改...');
                     toggleAutoGrading(); // 自动开始
                 }
-            }, 2000);
+            }, 3000);
         } else {
             // 首次加载，显示欢迎提示
             const config = GM_getValue('ai-grading-config');
@@ -1182,11 +1248,24 @@
         console.log('6. 遇到403错误会自动刷新页面并继续批改');
     }
 
-    // 启动脚本
+    // 启动脚本 - 使用多种方式确保加载
     if (document.readyState === 'loading') {
         document.addEventListener('DOMContentLoaded', init);
     } else {
-        init();
+        // 页面已加载，延迟一下等待SPA路由完成
+        setTimeout(init, 1000);
     }
+
+    // 监听URL变化（适配SPA）
+    let lastUrl = location.href;
+    new MutationObserver(() => {
+        const url = location.href;
+        if (url !== lastUrl) {
+            lastUrl = url;
+            console.log('🔄 检测到URL变化:', url);
+            // URL变化后重新初始化
+            setTimeout(init, 1000);
+        }
+    }).observe(document, { subtree: true, childList: true });
 
 })();

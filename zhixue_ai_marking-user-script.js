@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         智学网AI自动打分助手
 // @namespace    http://tampermonkey.net/
-// @version      1.0.2
-// @description  智学网AI自动批改助手，支持OCR识别、AI评分、自动提交，让阅卷更轻松！
+// @version      1.1.0
+// @description  智学网AI自动批改助手，支持OCR识别、AI评分、自动提交、无人值守模式，让阅卷更轻松！
 // @author       5plus1
 // @match        https://www.zhixue.com/webmarking/*
 // @match        https://*.zhixue.com/webmarking/*

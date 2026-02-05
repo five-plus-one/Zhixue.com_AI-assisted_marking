@@ -1374,7 +1374,15 @@
         } else {
             console.warn('⚠️ 未找到"提交分数"按钮');
             console.log('📋 页面所有按钮:', Array.from(document.querySelectorAll('button')).map(b => b.textContent));
-            alert('✅ 分数已填入，但未找到"提交分数"按钮，请手动提交！');
+            
+            // 无人值守模式：可能已完成所有批改
+            if (window.aiGradingState.unattendedMode) {
+                console.log('✅ [无人值守] 未找到提交按钮，可能已完成所有批改，自动停止');
+                stopAutoGrading();
+                safeAlert('✅ 所有试卷已批改完成！无人值守模式已自动停止。');
+            } else {
+                safeAlert('✅ 分数已填入，但未找到"提交分数"按钮，请手动提交！');
+            }
         }
     }
 
@@ -1404,6 +1412,11 @@
         const autoResume = sessionStorage.getItem('ai-grading-auto-resume');
         if (autoResume === 'true') {
             sessionStorage.removeItem('ai-grading-auto-resume');
+            
+            // 恢复重试计数
+            const retryCount = parseInt(sessionStorage.getItem('ai-grading-retry-count') || '0');
+            window.aiGradingState.errorRetryCount = retryCount;
+            sessionStorage.removeItem('ai-grading-retry-count');
 
             console.log('🔄 检测到自动恢复标记，等待页面稳定后继续批改...');
 
@@ -1413,7 +1426,14 @@
 
                 const config = GM_getValue('ai-grading-config');
                 if (config && JSON.parse(config).apiKey) {
-                    alert('✅ 页面已刷新，即将继续AI批改...');
+                    const parsedConfig = JSON.parse(config);
+                    
+                    if (parsedConfig.unattendedMode) {
+                        console.log('🤖 [无人值守] 页面已刷新，自动继续批改...');
+                    } else {
+                        safeAlert('✅ 页面已刷新，即将继续AI批改...');
+                    }
+                    
                     toggleAutoGrading(); // 自动开始
                 }
             }, 3000);

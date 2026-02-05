@@ -72,7 +72,7 @@
 
 先确保您已安装 Tampermonkey 扩展，然后点击下面的链接，Tampermonkey 会自动提示安装：
 
-**👉 [一键安装脚本](https://raw.githubusercontent.com/five-plus-one/Zhixue.com_AI-assisted_marking/main/zhixue_ai_marking-user-script.js)**
+**👉 [一键安装脚本](https://raw.githubusercontent.com/five-plus-one/Zhixue.com_AI-assisted_marking/main/zhixue_ai_marking.user.js)**
 
 #### 方式二：手动安装
 

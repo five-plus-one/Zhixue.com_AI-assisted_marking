@@ -68,6 +68,14 @@
 
 ### 第二步：安装用户脚本
 
+#### 方式一：一键安装（推荐）
+
+先确保您已安装 Tampermonkey 扩展，然后点击下面的链接，Tampermonkey 会自动提示安装：
+
+**👉 [一键安装脚本](https://raw.githubusercontent.com/five-plus-one/Zhixue.com_AI-assisted_marking/main/zhixue_ai_marking-user-script.js)**
+
+#### 方式二：手动安装
+
 1. 点击下载 [zhixue_ai_marking-user-script.js](zhixue_ai_marking-user-script.js)
 2. 在Tampermonkey扩展中点击"创建新脚本"
 3. 将脚本内容复制粘贴到编辑器中

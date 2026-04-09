@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         智学网AI自动打分助手
 // @namespace    http://tampermonkey.net/
-// @version      1.1.0
+// @version      1.1.1
 // @description  智学网AI自动批改助手，支持OCR识别、AI评分、自动提交、无人值守模式，让阅卷更轻松！
 // @author       5plus1
 // @match        https://www.zhixue.com/webmarking/*
@@ -632,7 +632,9 @@
             document.getElementById('question-content').value = config.question || '';
             document.getElementById('standard-answer').value = config.answer || '';
             document.getElementById('grading-rubric').value = config.rubric || '';
+            // 恢复服务商选择
             document.getElementById('ai-provider').value = config.provider || '5plus1';
+            // 恢复端点、密钥、模型（这里是真正保存的自定义值）
             document.getElementById('api-endpoint').value = config.endpoint || 'https://api.ai.five-plus-one.com/v1/chat/completions';
             document.getElementById('api-key').value = config.apiKey || '';
             document.getElementById('model-name').value = config.model || 'doubao-seed-1-8-251228';
@@ -644,26 +646,29 @@
                 unattendedWarning.style.display = 'block';
             }
         } else {
+            // 第一次使用时的默认值
             document.getElementById('ai-provider').value = '5plus1';
             document.getElementById('api-endpoint').value = 'https://api.ai.five-plus-one.com/v1/chat/completions';
             document.getElementById('model-name').value = 'doubao-seed-1-8-251228';
         }
 
-        // 监听API服务商变化
         const providerSelect = document.getElementById('ai-provider');
         const apiKeyLinkContainer = document.getElementById('api-key-link-container');
 
-        function updateProviderUI() {
-            const provider = providerSelect.value;
-
-            // 显示/隐藏API KEY链接
-            if (provider === '5plus1') {
+        // 功能1：仅控制 UI 的显示与隐藏（不修改输入框的值）
+        function updateUIVisibility() {
+            if (providerSelect.value === '5plus1') {
                 apiKeyLinkContainer.style.display = 'block';
             } else {
                 apiKeyLinkContainer.style.display = 'none';
             }
+        }
 
-            // 更新默认值
+        // 功能2：当用户手动改变下拉框时，自动填充对应的默认预设值
+        function handleProviderChange() {
+            updateUIVisibility(); // 切换时顺便更新一下UI
+            
+            const provider = providerSelect.value;
             const presets = {
                 '5plus1': {
                     endpoint: 'https://api.ai.five-plus-one.com/v1/chat/completions',
@@ -677,13 +682,17 @@
 
             const preset = presets[provider];
             if (preset) {
+                // 只有用户手动切换下拉框时，才覆盖这些值
                 document.getElementById('api-endpoint').value = preset.endpoint;
                 document.getElementById('model-name').value = preset.model;
             }
         }
 
-        providerSelect.addEventListener('change', updateProviderUI);
-        updateProviderUI(); // 初始化
+        // 监听下拉框的手动改变事件
+        providerSelect.addEventListener('change', handleProviderChange);
+        
+        // 页面刚加载时，只更新UI可见性，千万不要去覆盖刚才读出来的真实数据
+        updateUIVisibility(); 
     }
 
     // ========== 保存配置 ==========

@@ -719,62 +719,75 @@
         }
     }
 
-    // ========== 通过Fetch获取图片并转Base64（支持403自动刷新）==========
+   // ========== 通过GM_xmlhttpRequest获取图片并转Base64（解决CORS跨域问题）==========
     async function fetchImageAsBase64(url) {
-        try {
-            console.log('📥 正在下载图片...');
+        return new Promise((resolve, reject) => {
+            console.log('📥 正在下载图片(通过 GM_xmlhttpRequest)...');
 
             // 检查是否被暂停
             if (window.aiGradingState.isPaused) {
-                throw new Error('用户暂停');
+                return reject(new Error('用户暂停'));
             }
 
-            const response = await fetch(url, {
-                signal: window.aiGradingState.abortController?.signal
-            });
+            const request = GM_xmlhttpRequest({
+                method: 'GET',
+                url: url,
+                responseType: 'blob', // 直接获取二进制 Blob 数据
+                onload: function(response) {
+                    // 检测403错误
+                    if (response.status === 403 && window.aiGradingState.autoRefreshOn403) {
+                        console.warn('⚠️ 图片下载返回403，自动刷新页面...');
+                        
+                        if (!window.aiGradingState.unattendedMode) {
+                            alert('⚠️ 图片访问权限过期(403)，即将自动刷新页面并继续批改...');
+                        } else {
+                            console.log('🔄 [无人值守] 检测到403错误，自动刷新页面...');
+                        }
 
-            // 检测403错误
-            if (response.status === 403 && window.aiGradingState.autoRefreshOn403) {
-                console.warn('⚠️ 图片下载返回403，自动刷新页面...');
-                
-                if (!window.aiGradingState.unattendedMode) {
-                    alert('⚠️ 图片访问权限过期(403)，即将自动刷新页面并继续批改...');
-                } else {
-                    console.log('🔄 [无人值守] 检测到403错误，自动刷新页面...');
+                        // 保存当前状态
+                        sessionStorage.setItem('ai-grading-auto-resume', 'true');
+
+                        // 刷新页面
+                        setTimeout(() => {
+                            location.reload();
+                        }, 1000);
+
+                        return reject(new Error('403错误，页面刷新中'));
+                    }
+
+                    if (response.status >= 200 && response.status < 300) {
+                        const blob = response.response;
+                        console.log('✅ 图片下载完成，大小:', (blob.size / 1024).toFixed(2), 'KB');
+
+                        const reader = new FileReader();
+                        reader.onloadend = () => {
+                            const base64 = reader.result.split(',')[1];
+                            console.log('✅ 转换为Base64完成');
+                            resolve(base64);
+                        };
+                        reader.onerror = reject;
+                        reader.readAsDataURL(blob);
+                    } else {
+                        reject(new Error(`图片下载失败: ${response.status}`));
+                    }
+                },
+                onerror: function(error) {
+                    console.error('❌ 图片处理失败:', error);
+                    reject(new Error('跨域请求被拒绝或网络错误'));
+                },
+                ontimeout: function() {
+                    reject(new Error('图片下载超时'));
                 }
-
-                // 保存当前状态
-                sessionStorage.setItem('ai-grading-auto-resume', 'true');
-
-                // 刷新页面
-                setTimeout(() => {
-                    location.reload();
-                }, 1000);
-
-                throw new Error('403错误，页面刷新中');
-            }
-
-            if (!response.ok) {
-                throw new Error(`图片下载失败: ${response.status}`);
-            }
-
-            const blob = await response.blob();
-            console.log('✅ 图片下载完成，大小:', (blob.size / 1024).toFixed(2), 'KB');
-
-            return new Promise((resolve, reject) => {
-                const reader = new FileReader();
-                reader.onloadend = () => {
-                    const base64 = reader.result.split(',')[1];
-                    console.log('✅ 转换为Base64完成');
-                    resolve(base64);
-                };
-                reader.onerror = reject;
-                reader.readAsDataURL(blob);
             });
-        } catch (error) {
-            console.error('❌ 图片处理失败:', error);
-            throw error;
-        }
+
+            // 将原有的 abortController 逻辑适配到 GM_xmlhttpRequest
+            if (window.aiGradingState.abortController) {
+                window.aiGradingState.abortController.signal.addEventListener('abort', () => {
+                    request.abort(); // 中断底层的 GM_xmlhttpRequest
+                    reject(new Error('用户暂停'));
+                });
+            }
+        });
     }
 
     // ========== AI自动打分主函数 ==========

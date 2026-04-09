@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         智学网AI自动打分助手
 // @namespace    http://tampermonkey.net/
-// @version      1.3.0
-// @description  智学网AI自动批改助手，支持OCR识别、AI评分、多图切片合并、自动提交、无人值守模式，让阅卷更轻松！
+// @version      1.6.0
+// @description  智学网AI自动批改助手，支持多套试卷方案管理、自动绑定切换、精准题号识别、未保存拦截、流式评分！
 // @author       5plus1
 // @match        https://www.zhixue.com/webmarking/*
 // @match        https://*.zhixue.com/webmarking/*
@@ -17,17 +17,104 @@
 // @run-at       document-idle
 // ==/UserScript==
 
+// ========== 封装 GM_xmlhttpRequest 支持标准 Response 接口 ==========
+function gmFetch(url, options = {}) {
+    return new Promise((resolve, reject) => {
+        const gmOptions = {
+            method: options.method || 'GET',
+            url: url,
+            headers: options.headers || {},
+            data: options.body,
+            responseType: options.stream ? 'stream' : 'arraybuffer', 
+            onload: function(res) {
+                try {
+                    const headers = new Headers();
+                    if (res.responseHeaders) {
+                        res.responseHeaders.trim().split('\n').forEach(line => {
+                            const index = line.indexOf(':');
+                            if (index > 0) {
+                                headers.append(line.slice(0, index).trim(), line.slice(index + 1).trim());
+                            }
+                        });
+                    }
+                    const response = new Response(res.response, {
+                        status: res.status,
+                        statusText: res.statusText,
+                        headers: headers
+                    });
+                    resolve(response);
+                } catch (e) {
+                    reject(new Error('封装 Response 接口失败: ' + e.message));
+                }
+            },
+            onerror: () => reject(new Error('网络请求被拦截，请检查跨域权限')),
+            ontimeout: () => reject(new Error('请求超时'))
+        };
+        const request = GM_xmlhttpRequest(gmOptions);
+        if (options.signal) {
+            options.signal.addEventListener('abort', () => {
+                request.abort();
+                reject(new Error('用户主动暂停'));
+            });
+        }
+    });
+}
+
 (function() {
     'use strict';
 
-    console.log('🚀 智学网AI打分助手加载中...');
+    console.log('🚀 智学网AI打分助手(多方案+状态拦截版)加载中...');
 
-    // 等待页面加载完成
+    // ========== 全局配置方案管理器 ==========
+    const PresetManager = {
+        data: null,
+        init() {
+            let saved = GM_getValue('ai-grading-presets');
+            if (saved) {
+                this.data = JSON.parse(saved);
+            } else {
+                let oldConfigStr = GM_getValue('ai-grading-config');
+                let defaultCfg = oldConfigStr ? JSON.parse(oldConfigStr) : {
+                    provider: '5plus1', endpoint: 'https://api.ai.five-plus-one.com/v1/chat/completions', model: 'doubao-seed-1-8-251228'
+                };
+                this.data = {
+                    list: { "默认配置": defaultCfg },
+                    active: "默认配置",
+                    bindings: {} 
+                };
+                this.save();
+            }
+        },
+        save() {
+            GM_setValue('ai-grading-presets', JSON.stringify(this.data));
+        },
+        getCurrentConfig() {
+            return this.data.list[this.data.active] || {};
+        },
+        getTaskIdentifier() {
+            const baseUrl = window.location.pathname + window.location.hash.split('&_t=')[0];
+            let questionIdentifier = '';
+            try {
+                const exactElement = document.querySelector('#currentTopicIndex');
+                if (exactElement && exactElement.textContent) {
+                    questionIdentifier = exactElement.textContent.trim();
+                } else {
+                    const titleElement = document.querySelector('.topic-title');
+                    if (titleElement) {
+                        questionIdentifier = titleElement.getAttribute('title') || titleElement.textContent.trim();
+                    }
+                }
+            } catch (e) {}
+            return baseUrl + (questionIdentifier ? '___' + questionIdentifier : '');
+        }
+    };
+    PresetManager.init();
+
+    // ========== 页面元素等待与检测 ==========
     function waitForElement(selector, timeout = 15000) {
         return new Promise((resolve, reject) => {
             const immediateCheck = document.querySelector(selector);
             if (immediateCheck) return resolve(immediateCheck);
-
             const startTime = Date.now();
             const timer = setInterval(() => {
                 const element = document.querySelector(selector);
@@ -42,7 +129,6 @@
         });
     }
 
-    // 检测是否在批改页面
     async function detectMarkingPage() {
         try {
             const result = await Promise.race([
@@ -50,31 +136,20 @@
                 waitForElement('input[type="number"]').then(() => 'score-input'),
                 waitForElement('button:contains("提交分数")').then(() => 'submit-btn')
             ]).catch(() => null);
-
             if (result) return true;
 
             await new Promise(resolve => setTimeout(resolve, 3000));
             const hasInput = document.querySelector('input[type="number"]') || document.querySelector('input[type="text"]');
             const hasButton = Array.from(document.querySelectorAll('button')).some(btn => btn.textContent.includes('提交') || btn.textContent.includes('分数'));
-            
             return !!(hasInput && hasButton);
-        } catch (error) {
-            return false;
-        }
+        } catch (error) { return false; }
     }
 
-    // 全局状态
     window.aiGradingState = {
-        isRunning: false,
-        isPaused: false,
-        currentStudentAnswer: '',
-        currentImageUrls: [], 
-        abortController: null,
-        countdownPaused: false,
-        autoRefreshOn403: true,
-        unattendedMode: false,
-        errorRetryCount: 0,
-        maxRetries: 3
+        isRunning: false, isPaused: false, currentStudentAnswer: '', currentImageUrls: [], 
+        abortController: null, countdownPaused: false, autoRefreshOn403: true,
+        unattendedMode: false, errorRetryCount: 0, maxRetries: 3,
+        hasUnsavedChanges: false // 【新增】未保存状态标记
     };
 
     function safeAlert(message) {
@@ -88,7 +163,6 @@
     // ========== 创建主按钮 ==========
     function createMainButton() {
         if (document.querySelector('.ai-grade-btn')) return;
-
         const btn = document.createElement('button');
         btn.className = 'ai-grade-btn';
         btn.innerHTML = '✨ 开始AI打分';
@@ -102,19 +176,86 @@
             .ai-grade-btn.paused { background: linear-gradient(135deg, #F56C6C 0%, #E6A23C 100%); animation: pulse-pause 1.5s infinite; }
             .ai-grade-btn.running { background: linear-gradient(135deg, #67C23A 0%, #409EFF 100%); animation: pulse-running 2s infinite; }
             .ai-grade-btn.unattended { background: linear-gradient(135deg, #E6A23C 0%, #F56C6C 100%); animation: pulse-unattended 2s infinite; }
+            
+            /* 【新增】未保存拦截状态的按钮样式 */
+            .ai-grade-btn.needs-save { background: linear-gradient(135deg, #909399 0%, #606266 100%) !important; box-shadow: 0 5px 15px rgba(0,0,0,0.2) !important; animation: none !important; border: 2px solid #F56C6C;}
+            
             @keyframes pulse-pause { 0%, 100% { box-shadow: 0 10px 30px rgba(245, 108, 108, 0.6); } 50% { box-shadow: 0 10px 40px rgba(245, 108, 108, 0.9); transform: scale(1.02); } }
             @keyframes pulse-running { 0%, 100% { box-shadow: 0 10px 30px rgba(103, 194, 58, 0.6); } 50% { box-shadow: 0 10px 40px rgba(103, 194, 58, 0.9); } }
             @keyframes pulse-unattended { 0%, 100% { box-shadow: 0 10px 30px rgba(230, 162, 60, 0.6); } 50% { box-shadow: 0 10px 40px rgba(245, 108, 108, 0.9); } }
+            .toast-notification { position: fixed; top: 30px; left: 50%; transform: translateX(-50%); background: rgba(0,0,0,0.8); color: white; padding: 12px 24px; border-radius: 30px; z-index: 100000; font-size: 14px; transition: opacity 0.5s; pointer-events: none;}
         `;
         document.head.appendChild(style);
         document.body.appendChild(btn);
     }
 
-    // ========== 切换打分状态 ==========
+    function showToast(msg) {
+        const toast = document.createElement('div');
+        toast.className = 'toast-notification';
+        toast.textContent = msg;
+        document.body.appendChild(toast);
+        setTimeout(() => { toast.style.opacity = '0'; setTimeout(() => toast.remove(), 500); }, 3000);
+    }
+
+    // ========== 未保存状态管理 (新增核心逻辑) ==========
+    function markUnsavedChanges() {
+        if (!window.aiGradingState.hasUnsavedChanges) {
+            window.aiGradingState.hasUnsavedChanges = true;
+            
+            const btn = document.querySelector('.ai-grade-btn');
+            if (btn && !window.aiGradingState.isRunning) {
+                btn.textContent = '⚠️ 请先保存配置';
+                btn.classList.add('needs-save');
+            }
+            
+            const saveBtn = document.getElementById('save-config-btn');
+            if (saveBtn) {
+                saveBtn.classList.add('highlight-save');
+                saveBtn.innerHTML = '💾 保存修改 <span style="font-size:12px;opacity:0.8;">(未保存)</span>';
+            }
+        }
+    }
+
+    function clearUnsavedChanges() {
+        window.aiGradingState.hasUnsavedChanges = false;
+        
+        const btn = document.querySelector('.ai-grade-btn');
+        if (btn && !window.aiGradingState.isRunning) {
+            btn.textContent = '✨ 开始AI打分';
+            btn.classList.remove('needs-save');
+        }
+        
+        const saveBtn = document.getElementById('save-config-btn');
+        if (saveBtn) {
+            saveBtn.classList.remove('highlight-save');
+            saveBtn.innerHTML = '💾 保存当前方案并启用';
+        }
+    }
+
     function toggleAutoGrading() {
         const btn = document.querySelector('.ai-grade-btn');
         btn.disabled = true;
-        setTimeout(() => btn.disabled = false, 800); // 防手抖
+        setTimeout(() => btn.disabled = false, 800); 
+
+        // 【新增】拦截未保存状态
+        if (window.aiGradingState.hasUnsavedChanges) {
+            safeAlert('⚠️ 检测到配置已被修改，请先点击配置面板上的【保存】按钮！');
+            const panel = document.getElementById('ai-grading-settings');
+            if (panel) {
+                panel.style.display = 'block';
+                panel.classList.remove('minimized');
+                const minimizeBtn = panel.querySelector('.minimize-btn');
+                if (minimizeBtn) minimizeBtn.textContent = '−';
+                
+                // 给保存按钮来个明显的缩放动画提示
+                const saveBtn = document.getElementById('save-config-btn');
+                if (saveBtn) {
+                    saveBtn.style.transform = 'scale(1.05)';
+                    setTimeout(() => saveBtn.style.transform = 'scale(1)', 200);
+                }
+            }
+            return;
+        }
 
         if (window.aiGradingState.isRunning) {
             window.aiGradingState.isPaused = true;
@@ -133,7 +274,7 @@
             window.aiGradingState.isPaused = false;
             window.aiGradingState.errorRetryCount = 0;
 
-            const config = JSON.parse(GM_getValue('ai-grading-config') || '{}');
+            const config = PresetManager.getCurrentConfig();
             window.aiGradingState.unattendedMode = config.unattendedMode || false;
 
             if (window.aiGradingState.unattendedMode) {
@@ -170,16 +311,25 @@
                 .settings-header h3 { margin: 0; font-size: 18px; }
                 .header-buttons { display: flex; gap: 8px; }
                 .header-btn { background: rgba(255,255,255,0.2); border: none; color: white; width: 28px; height: 28px; border-radius: 6px; cursor: pointer; }
-                .settings-body { padding: 20px; max-height: calc(90vh - 60px); overflow-y: auto; }
+                .settings-body { padding: 20px; max-height: calc(90vh - 60px); overflow-y: auto; position: relative;}
                 .form-section { margin-bottom: 25px; }
                 .form-section h4 { color: #303133; font-size: 15px; margin: 0 0 12px 0; padding-bottom: 8px; border-bottom: 2px solid #409EFF; }
                 .form-group { margin-bottom: 15px; }
                 .form-group label { display: block; margin-bottom: 6px; color: #606266; font-size: 14px; font-weight: 500; }
                 .form-group input, .form-group select, .form-group textarea { width: 100%; padding: 10px; border: 1px solid #DCDFE6; border-radius: 6px; box-sizing: border-box; }
                 .checkbox-group { display: flex; align-items: center; gap: 10px; padding: 12px; background: #f5f7fa; border-radius: 6px; }
+                .preset-controls { display: flex; gap: 8px; margin-bottom: 10px; }
+                .preset-btn { background: #f0f2f5; border: 1px solid #DCDFE6; border-radius: 4px; padding: 0 12px; cursor: pointer; font-size: 13px; color: #606266; transition: all 0.2s;}
+                .preset-btn:hover { border-color: #409EFF; color: #409EFF; }
+                .preset-btn.danger:hover { border-color: #F56C6C; color: #F56C6C; }
                 .unattended-warning { background: #FEF0F0; border: 1px solid #F56C6C; border-radius: 6px; padding: 12px; margin-top: 10px; font-size: 13px; color: #F56C6C; line-height: 1.6; }
                 .api-key-link { display: inline-block; margin-top: 8px; padding: 8px 16px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white !important; text-decoration: none; border-radius: 6px; font-size: 13px; }
-                .save-btn { width: 100%; padding: 12px; background: #409EFF; color: white; border: none; border-radius: 6px; font-size: 15px; font-weight: bold; cursor: pointer; }
+                
+                /* 【UI 调整】吸顶的保存按钮容器样式 */
+                .save-btn-container { position: sticky; top: -20px; background: rgba(255,255,255,0.95); backdrop-filter: blur(5px); margin: -20px -20px 15px -20px; padding: 20px 20px 15px 20px; z-index: 10; border-bottom: 1px solid #EBEEF5; box-shadow: 0 4px 6px -6px #333; }
+                .save-btn { width: 100%; padding: 12px; background: #409EFF; color: white; border: none; border-radius: 6px; font-size: 15px; font-weight: bold; cursor: pointer; transition: all 0.3s;}
+                .save-btn.highlight-save { background: #F56C6C !important; animation: pulse-save 1.5s infinite; }
+                @keyframes pulse-save { 0%, 100% { box-shadow: 0 0 0 0 rgba(245, 108, 108, 0.4); } 50% { box-shadow: 0 0 0 10px rgba(245, 108, 108, 0); } }
             </style>
             <div class="settings-header">
                 <h3>⚙️ AI打分配置</h3>
@@ -189,6 +339,23 @@
                 </div>
             </div>
             <div class="settings-body">
+                <div class="save-btn-container">
+                    <button class="save-btn" id="save-config-btn">💾 保存当前方案并启用</button>
+                </div>
+
+                <div class="form-section" style="background:#ecf5ff; padding:15px; border-radius:8px; border:1px solid #b3d8ff;">
+                    <h4 style="border-bottom:none; margin-bottom:10px; color:#409EFF;">📁 试卷配置管理</h4>
+                    <div class="preset-controls">
+                        <select id="preset-select" style="flex:1; padding:8px; border-radius:4px; border:1px solid #DCDFE6;"></select>
+                        <button class="preset-btn" id="btn-new-preset">➕ 新建</button>
+                        <button class="preset-btn danger" id="btn-del-preset">🗑️ 删除</button>
+                    </div>
+                    <div class="checkbox-group" style="background: white; padding: 8px;">
+                        <input type="checkbox" id="bind-url-checkbox">
+                        <label for="bind-url-checkbox" style="font-size:13px; margin:0;">🔗 绑定当前试题 (下次打开自动切换)</label>
+                    </div>
+                </div>
+
                 <div class="form-section">
                     <h4>🚀 运行模式</h4>
                     <div class="checkbox-group">
@@ -219,7 +386,6 @@
                     <div class="form-group"><label>API密钥 <span style="color: #F56C6C;">*</span></label><input type="password" id="api-key"></div>
                     <div class="form-group"><label>模型名称</label><input type="text" id="model-name"></div>
                 </div>
-                <button class="save-btn" id="save-config-btn">💾 保存配置并开始使用</button>
             </div>
         `;
         document.body.appendChild(panel);
@@ -229,6 +395,10 @@
             this.textContent = panel.classList.contains('minimized') ? '+' : '−';
         };
         panel.querySelector('.close-btn').onclick = () => panel.style.display = 'none';
+        
+        panel.querySelector('#btn-new-preset').onclick = handleNewPreset;
+        panel.querySelector('#btn-del-preset').onclick = handleDeletePreset;
+        panel.querySelector('#preset-select').onchange = handlePresetChange;
         panel.querySelector('#save-config-btn').onclick = saveAISettings;
 
         const unattendedCheckbox = panel.querySelector('#unattended-mode');
@@ -237,8 +407,15 @@
             unattendedWarning.style.display = this.checked ? 'block' : 'none';
         });
 
+        // 【新增】监听所有输入框和勾选框的变动，触发“未保存”状态
+        const inputs = panel.querySelectorAll('input:not(#preset-select), textarea, select:not(#preset-select)');
+        inputs.forEach(input => {
+            input.addEventListener('input', markUnsavedChanges);
+            input.addEventListener('change', markUnsavedChanges);
+        });
+
         makeDraggable(panel);
-        loadSettings();
+        loadSettings(); 
     }
 
     function makeDraggable(element) {
@@ -259,49 +436,102 @@
         };
     }
 
+    // ========== 加载与切换方案 ==========
     function loadSettings() {
-        const saved = GM_getValue('ai-grading-config');
-        if (saved) {
-            const config = JSON.parse(saved);
-            document.getElementById('question-content').value = config.question || '';
-            document.getElementById('standard-answer').value = config.answer || '';
-            document.getElementById('grading-rubric').value = config.rubric || '';
-            document.getElementById('ai-provider').value = config.provider || '5plus1';
-            document.getElementById('api-endpoint').value = config.endpoint || 'https://api.ai.five-plus-one.com/v1/chat/completions';
-            document.getElementById('api-key').value = config.apiKey || '';
-            document.getElementById('model-name').value = config.model || 'doubao-seed-1-8-251228';
-            document.getElementById('unattended-mode').checked = config.unattendedMode || false;
-            
-            const unattendedWarning = document.getElementById('unattended-warning');
-            if (config.unattendedMode) unattendedWarning.style.display = 'block';
-        } else {
-            document.getElementById('ai-provider').value = '5plus1';
-            document.getElementById('api-endpoint').value = 'https://api.ai.five-plus-one.com/v1/chat/completions';
-            document.getElementById('model-name').value = 'doubao-seed-1-8-251228';
+        const currentUrlId = PresetManager.getTaskIdentifier();
+        
+        if (PresetManager.data.bindings[currentUrlId] && PresetManager.data.list[PresetManager.data.bindings[currentUrlId]]) {
+            PresetManager.data.active = PresetManager.data.bindings[currentUrlId];
+            PresetManager.save();
+        } else if (PresetManager.data.active !== "默认配置" && PresetManager.data.list["默认配置"]) {
+            PresetManager.data.active = "默认配置";
+            PresetManager.save();
         }
 
-        const providerSelect = document.getElementById('ai-provider');
-        const apiKeyLinkContainer = document.getElementById('api-key-link-container');
+        renderPresetDropdown();
+        fillFormFromActivePreset();
+    }
 
-        function updateUIVisibility() {
-            apiKeyLinkContainer.style.display = providerSelect.value === '5plus1' ? 'block' : 'none';
+    function renderPresetDropdown() {
+        const select = document.getElementById('preset-select');
+        select.innerHTML = '';
+        for (const name in PresetManager.data.list) {
+            const option = document.createElement('option');
+            option.value = name;
+            option.textContent = name;
+            select.appendChild(option);
         }
+        select.value = PresetManager.data.active;
+    }
 
-        function handleProviderChange() {
-            updateUIVisibility();
-            const presets = {
-                '5plus1': { endpoint: 'https://api.ai.five-plus-one.com/v1/chat/completions', model: 'doubao-seed-1-8-251228' },
-                'openai': { endpoint: 'https://api.openai.com/v1/chat/completions', model: 'gpt-4o' }
-            };
-            const preset = presets[providerSelect.value];
-            if (preset) {
-                document.getElementById('api-endpoint').value = preset.endpoint;
-                document.getElementById('model-name').value = preset.model;
+    function fillFormFromActivePreset() {
+        const config = PresetManager.getCurrentConfig();
+        const currentUrlId = PresetManager.getTaskIdentifier();
+
+        document.getElementById('question-content').value = config.question || '';
+        document.getElementById('standard-answer').value = config.answer || '';
+        document.getElementById('grading-rubric').value = config.rubric || '';
+        document.getElementById('ai-provider').value = config.provider || '5plus1';
+        document.getElementById('api-endpoint').value = config.endpoint || 'https://api.ai.five-plus-one.com/v1/chat/completions';
+        document.getElementById('api-key').value = config.apiKey || '';
+        document.getElementById('model-name').value = config.model || 'doubao-seed-1-8-251228';
+        document.getElementById('unattended-mode').checked = config.unattendedMode || false;
+        
+        document.getElementById('bind-url-checkbox').checked = (PresetManager.data.bindings[currentUrlId] === PresetManager.data.active);
+
+        const unattendedWarning = document.getElementById('unattended-warning');
+        unattendedWarning.style.display = config.unattendedMode ? 'block' : 'none';
+
+        updateUIVisibility();
+        
+        // 成功加载已有配置后，清除未保存红灯警告
+        clearUnsavedChanges();
+    }
+
+    function updateUIVisibility() {
+        const provider = document.getElementById('ai-provider').value;
+        document.getElementById('api-key-link-container').style.display = provider === '5plus1' ? 'block' : 'none';
+    }
+
+    // ========== 方案操作功能 ==========
+    function handlePresetChange() {
+        PresetManager.data.active = document.getElementById('preset-select').value;
+        PresetManager.save();
+        fillFormFromActivePreset();
+    }
+
+    function handleNewPreset() {
+        const name = prompt("请输入新的配置方案名称 (例如: 语文作文)：");
+        if (!name || !name.trim()) return;
+        if (PresetManager.data.list[name]) {
+            alert("该方案名称已存在！");
+            return;
+        }
+        PresetManager.data.list[name] = { ...PresetManager.getCurrentConfig() };
+        PresetManager.data.active = name;
+        PresetManager.save();
+        renderPresetDropdown();
+        fillFormFromActivePreset();
+        showToast(`✅ 新建方案【${name}】成功！`);
+    }
+
+    function handleDeletePreset() {
+        const name = PresetManager.data.active;
+        if (Object.keys(PresetManager.data.list).length <= 1) {
+            alert("必须至少保留一个配置方案！");
+            return;
+        }
+        if (confirm(`确定要删除配置方案【${name}】吗？`)) {
+            delete PresetManager.data.list[name];
+            for (const url in PresetManager.data.bindings) {
+                if (PresetManager.data.bindings[url] === name) delete PresetManager.data.bindings[url];
             }
+            PresetManager.data.active = Object.keys(PresetManager.data.list)[0];
+            PresetManager.save();
+            renderPresetDropdown();
+            fillFormFromActivePreset();
+            showToast("🗑️ 方案已删除");
         }
-
-        providerSelect.addEventListener('change', handleProviderChange);
-        updateUIVisibility(); 
     }
 
     function saveAISettings() {
@@ -315,8 +545,25 @@
             model: document.getElementById('model-name').value,
             unattendedMode: document.getElementById('unattended-mode').checked
         };
-        GM_setValue('ai-grading-config', JSON.stringify(config));
-        safeAlert(config.unattendedMode ? '✅ 已开启无人值守模式并保存配置！' : '✅ 配置已保存！');
+
+        const activeName = PresetManager.data.active;
+        PresetManager.data.list[activeName] = config;
+
+        const currentUrlId = PresetManager.getTaskIdentifier();
+        const bindChecked = document.getElementById('bind-url-checkbox').checked;
+        if (bindChecked) {
+            PresetManager.data.bindings[currentUrlId] = activeName;
+        } else {
+            if (PresetManager.data.bindings[currentUrlId] === activeName) {
+                delete PresetManager.data.bindings[currentUrlId];
+            }
+        }
+
+        PresetManager.save();
+        
+        // 【核心】保存成功，清除红灯未保存状态
+        clearUnsavedChanges();
+        safeAlert(config.unattendedMode ? `✅ 【${activeName}】方案已保存，并开启无人值守！` : `✅ 【${activeName}】配置已保存！`);
         
         const panel = document.getElementById('ai-grading-settings');
         if (panel) {
@@ -326,6 +573,24 @@
         }
     }
 
+    document.addEventListener('change', function(e) {
+        if (e.target && e.target.id === 'ai-provider') {
+            updateUIVisibility();
+            const presets = {
+                '5plus1': { endpoint: 'https://api.ai.five-plus-one.com/v1/chat/completions', model: 'doubao-seed-1-8-251228' },
+                'openai': { endpoint: 'https://api.openai.com/v1/chat/completions', model: 'gpt-4o' }
+            };
+            const preset = presets[e.target.value];
+            if (preset) {
+                document.getElementById('api-endpoint').value = preset.endpoint;
+                document.getElementById('model-name').value = preset.model;
+                // 自动预设输入后，也标记为未保存
+                markUnsavedChanges();
+            }
+        }
+    });
+
+    // ========== 图片下载处理 ==========
     async function fetchImageAsBase64(url) {
         return new Promise((resolve, reject) => {
             console.log(`📥 正在请求下载图片: ${url.substring(0, 60)}...`);
@@ -374,7 +639,7 @@
         });
     }
 
-    // ========== AI 核心流式请求 (底层兼容终极版) ==========
+    // ========== AI 核心请求 (Response + 流式) ==========
     async function callAIGrading(base64DataArray, config, onStreamUpdate) {
         const prompt = buildPrompt(config);
         const messageContent = [{ type: "text", text: prompt }];
@@ -386,25 +651,45 @@
             model: config.model, 
             messages: [{ role: "user", content: messageContent }], 
             max_tokens: 2048,
-            stream: true 
+            stream: true
         };
 
         console.log(`📤 发送请求到: ${config.endpoint}`);
 
-        return new Promise((resolve, reject) => {
+        try {
+            const response = await gmFetch(config.endpoint, {
+                method: 'POST',
+                headers: { 
+                    'Content-Type': 'application/json', 
+                    'Authorization': `Bearer ${config.apiKey}` 
+                },
+                body: JSON.stringify(requestBody),
+                stream: true, 
+                signal: window.aiGradingState.abortController?.signal
+            });
+
+            if (!response.ok) {
+                const errorText = await response.text();
+                let errorMsg = errorText;
+                try {
+                    const errObj = JSON.parse(errorText);
+                    if (errObj.error?.message) errorMsg = errObj.error.message;
+                } catch (e) {}
+                throw new Error(`API报错 (${response.status}): ${errorMsg}`);
+            }
+
+            const reader = response.body.getReader();
+            const decoder = new TextDecoder('utf-8');
             let fullText = '';
-            let processedLength = 0;
             let buffer = '';
 
-            const processChunk = (responseText) => {
-                if (!responseText) return;
-                const chunk = responseText.substring(processedLength);
-                if (!chunk) return;
-                processedLength = responseText.length;
-                buffer += chunk;
+            while (true) {
+                const { done, value } = await reader.read();
+                if (done) break;
 
+                buffer += decoder.decode(value, { stream: true });
                 const lines = buffer.split('\n');
-                buffer = lines.pop(); // 保留最后一行不完整的
+                buffer = lines.pop(); 
 
                 for (let line of lines) {
                     line = line.trim();
@@ -418,56 +703,14 @@
                                 fullText += delta;
                                 if (onStreamUpdate) onStreamUpdate(fullText);
                             }
-                        } catch (e) {} // 忽略截断块
+                        } catch (e) {}
                     }
                 }
-            };
-
-            const request = GM_xmlhttpRequest({
-                method: 'POST',
-                url: config.endpoint,
-                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${config.apiKey}` },
-                data: JSON.stringify(requestBody),
-                timeout: 120000,
-                onreadystatechange: function(response) {
-                    // 标准油猴的完美流式读取时机
-                    if (response.readyState === 3 || response.readyState === 4) {
-                        if (response.status >= 200 && response.status < 300) processChunk(response.responseText);
-                    }
-                },
-                onload: function(response) {
-                    if (response.status >= 200 && response.status < 300) {
-                        processChunk(response.responseText); // 处理最后残余
-                        if (fullText) {
-                            resolve(parseAIResponseText(fullText));
-                        } else {
-                            try {
-                                const data = JSON.parse(response.responseText);
-                                resolve(parseAIResponseText(data.choices?.[0]?.message?.content || ''));
-                            } catch (e) {
-                                reject(new Error('无法解析API返回数据'));
-                            }
-                        }
-                    } else {
-                        let errorMsg = response.responseText;
-                        try {
-                            const errObj = JSON.parse(response.responseText);
-                            if (errObj.error?.message) errorMsg = errObj.error.message;
-                        } catch (e) {}
-                        reject(new Error(`API报错 (${response.status}): ${errorMsg}`));
-                    }
-                },
-                onerror: () => reject(new Error('网络请求被拦截，请允许跨域')),
-                ontimeout: () => reject(new Error('API请求超时'))
-            });
-
-            if (window.aiGradingState.abortController) {
-                window.aiGradingState.abortController.signal.addEventListener('abort', () => {
-                    request.abort();
-                    reject(new Error('用户主动暂停'));
-                });
             }
-        });
+            return parseAIResponseText(fullText);
+        } catch (error) {
+            throw error;
+        }
     }
 
     // ========== 主控流程 ==========
@@ -475,14 +718,14 @@
         window.aiGradingState.abortController = new AbortController();
 
         try {
-            const config = JSON.parse(GM_getValue('ai-grading-config') || '{}');
+            const config = PresetManager.getCurrentConfig();
             if (!config.apiKey) {
                 safeAlert('❌ 请先配置API密钥！');
                 window.aiGradingState.isRunning = false;
                 return;
             }
 
-            console.log('🔍 正在查找答题卡图片...');
+            console.log(`🔍 使用方案【${PresetManager.data.active}】查找答卷...`);
             const imgElements = document.querySelectorAll('div[name="topicImg"] img');
 
             if (!imgElements || imgElements.length === 0) {
@@ -625,6 +868,9 @@
         const dialog = document.getElementById('auto-submit-dialog');
         if (dialog) dialog.remove();
         hideStreamPanel();
+        
+        // 恢复按钮的未保存样式(如果刚才有未保存变动)
+        if (window.aiGradingState.hasUnsavedChanges) markUnsavedChanges();
     }
 
     // ========== 填充分数及弹窗 ==========
@@ -714,7 +960,6 @@
             if (submitBtn) {
                 submitBtn.click();
                 
-                // 【核心修复】防止因页面没刷新导致重复批改同一份试卷的死循环
                 if (window.aiGradingState.isRunning && !window.aiGradingState.isPaused) {
                     console.log('⏳ 已点击提交，正在等待智学网加载下一份试卷...');
                     const oldImgUrl = window.aiGradingState.currentImageUrls[0];
@@ -728,7 +973,7 @@
                             clearInterval(checkNextTimer);
                             console.log('✅ 新试卷已加载完毕！继续批改...');
                             setTimeout(startAutoGrading, 500); 
-                        } else if (checkTimes > 50) { // 等待超过10秒
+                        } else if (checkTimes > 50) { 
                             clearInterval(checkNextTimer);
                             console.warn('⚠️ 等待下一份试卷超时');
                             stopAutoGrading();
@@ -779,11 +1024,32 @@
         setTimeout(init, 1000);
     }
 
-    // 【核心修复】废弃严重吃性能的 MutationObserver，改为轻量级轮询检测路由变化
-    let lastUrl = location.href;
+    // URL 及 题号变化监听器 (轻量级轮询)
+    let lastUrlId = PresetManager.getTaskIdentifier();
     setInterval(() => {
-        if (location.href !== lastUrl) {
-            lastUrl = location.href;
+        const currentUrlId = PresetManager.getTaskIdentifier();
+        if (currentUrlId !== lastUrlId) {
+            lastUrlId = currentUrlId;
+            
+            if (!window.aiGradingState.isRunning) {
+                const boundPreset = PresetManager.data.bindings[currentUrlId];
+                
+                if (boundPreset && PresetManager.data.list[boundPreset]) {
+                    PresetManager.data.active = boundPreset;
+                    PresetManager.save();
+                    showToast(`✨ 检测到新试题，已自动切换至【${PresetManager.data.active}】方案`);
+                } else if (PresetManager.data.active !== "默认配置" && PresetManager.data.list["默认配置"]) {
+                    PresetManager.data.active = "默认配置";
+                    PresetManager.save();
+                    showToast(`📝 未找到当前题目的专属方案，已恢复为【默认配置】`);
+                }
+
+                const select = document.getElementById('preset-select');
+                if (select) {
+                    select.value = PresetManager.data.active;
+                    select.dispatchEvent(new Event('change'));
+                }
+            }
             setTimeout(init, 1000);
         }
     }, 1000);

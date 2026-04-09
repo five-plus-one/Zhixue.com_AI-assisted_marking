@@ -419,40 +419,69 @@
     }
 
     // ========== 通过GM_xmlhttpRequest获取图片并转Base64（解决CORS跨域问题）==========
+    // ========== 通过GM_xmlhttpRequest获取图片并转Base64（解决CORS跨域问题）==========
     async function fetchImageAsBase64(url) {
         return new Promise((resolve, reject) => {
-            console.log('📥 正在下载图片(GM_xmlhttpRequest)...');
+            console.log(`📥 正在请求下载图片: ${url.substring(0, 60)}...`);
             if (window.aiGradingState.isPaused) return reject(new Error('用户暂停'));
 
             const request = GM_xmlhttpRequest({
                 method: 'GET',
                 url: url,
-                responseType: 'blob',
+                // 【修复点1】改用 arraybuffer，兼容性比 blob 更好，不易卡死
+                responseType: 'arraybuffer',
+                // 【修复点2】强制增加30秒超时，防止无限挂起
+                timeout: 30000, 
                 onload: function(response) {
+                    console.log(`📥 图片下载响应状态码: ${response.status}`);
+                    
                     if (response.status === 403 && window.aiGradingState.autoRefreshOn403) {
                         console.warn('⚠️ 图片返回403，自动刷新页面...');
                         sessionStorage.setItem('ai-grading-auto-resume', 'true');
                         setTimeout(() => location.reload(), 1000);
                         return reject(new Error('403错误，页面刷新中'));
                     }
+                    
                     if (response.status >= 200 && response.status < 300) {
-                        const blob = response.response;
-                        const reader = new FileReader();
-                        reader.onloadend = () => resolve(reader.result.split(',')[1]);
-                        reader.onerror = reject;
-                        reader.readAsDataURL(blob);
+                        try {
+                            const arrayBuffer = response.response;
+                            if (!arrayBuffer || arrayBuffer.byteLength === 0) {
+                                throw new Error('下载的图片数据为空');
+                            }
+                            
+                            // 将 ArrayBuffer 转换为 Base64
+                            let binary = '';
+                            const bytes = new Uint8Array(arrayBuffer);
+                            const len = bytes.byteLength;
+                            for (let i = 0; i < len; i++) {
+                                binary += String.fromCharCode(bytes[i]);
+                            }
+                            const base64 = window.btoa(binary);
+                            
+                            console.log(`✅ 图片转换成功 (${(len / 1024).toFixed(2)} KB)`);
+                            resolve(base64);
+                        } catch (e) {
+                            console.error('❌ 图片转换Base64失败:', e);
+                            reject(new Error('图片转换失败: ' + e.message));
+                        }
                     } else {
-                        reject(new Error(`图片下载失败: ${response.status}`));
+                        reject(new Error(`图片下载失败，状态码: ${response.status}`));
                     }
                 },
-                onerror: () => reject(new Error('跨域请求被拒绝或网络错误')),
-                ontimeout: () => reject(new Error('图片下载超时'))
+                onerror: function(err) {
+                    console.error('❌ 图片下载网络错误(可能被拦截):', err);
+                    reject(new Error('图片下载跨域请求被拒绝或网络断开'));
+                },
+                ontimeout: function() {
+                    console.error('❌ 图片下载超时(已超过30秒)');
+                    reject(new Error('图片下载超时，请检查网络或刷新重试'));
+                }
             });
 
             if (window.aiGradingState.abortController) {
                 window.aiGradingState.abortController.signal.addEventListener('abort', () => {
                     request.abort();
-                    reject(new Error('用户暂停'));
+                    reject(new Error('用户主动暂停'));
                 });
             }
         });
@@ -497,9 +526,22 @@
             const base64DataArray = await Promise.all(imageUrls.map(url => fetchImageAsBase64(url)));
 
             if (window.aiGradingState.isPaused) throw new Error('用户暂停');
-            if (gradeBtn && !window.aiGradingState.unattendedMode) gradeBtn.textContent = '⏳ AI分析中...';
+            
+            if (gradeBtn && !window.aiGradingState.unattendedMode) {
+                gradeBtn.textContent = '⏳ AI分析中...';
+                // 弹出流式加载面板
+                showStreamPanel();
+            }
 
-            const result = await callAIGrading(base64DataArray, config);
+            // 调用 API 并传入流式更新的回调函数
+            const result = await callAIGrading(base64DataArray, config, (streamedText) => {
+                if (!window.aiGradingState.unattendedMode) {
+                    updateStreamPanel(streamedText);
+                }
+            });
+
+            // 获取完成后隐藏面板
+            hideStreamPanel();
 
             if (window.aiGradingState.isPaused) throw new Error('用户暂停');
 
@@ -512,6 +554,7 @@
             }
 
         } catch (error) {
+            hideStreamPanel();
             if (error.message === '用户暂停') {
                 console.log('⏸️ 请求已被暂停');
             } else {
@@ -537,6 +580,42 @@
         }
     }
 
+    // ========== 流式输出 UI 面板 ==========
+    function showStreamPanel() {
+        let panel = document.getElementById('ai-stream-panel');
+        if (!panel) {
+            panel = document.createElement('div');
+            panel.id = 'ai-stream-panel';
+            panel.innerHTML = `
+                <style>
+                    #ai-stream-panel { position:fixed; bottom:220px; right:30px; width:360px; background:white; border-radius:12px; box-shadow:0 10px 40px rgba(0,0,0,0.2); padding:20px; z-index:99998; font-family:-apple-system, sans-serif; border: 2px solid #409EFF; transition: opacity 0.3s;}
+                    #ai-stream-panel h4 { margin:0 0 12px 0; color:#409EFF; font-size:16px; display:flex; align-items:center;}
+                    #ai-stream-panel .loading-dots::after { content: ''; animation: dots 1.5s steps(4, end) infinite;}
+                    @keyframes dots { 0%, 20% { content: ''; } 40% { content: '.'; } 60% { content: '..'; } 80%, 100% { content: '...'; } }
+                    #ai-stream-content { font-size:14px; color:#606266; line-height:1.6; max-height:250px; overflow-y:auto; white-space:pre-wrap; background: #f5f7fa; padding: 12px; border-radius: 6px; border: 1px solid #EBEEF5;}
+                </style>
+                <h4>🤖 AI 正在实时阅卷<span class="loading-dots"></span></h4>
+                <div id="ai-stream-content">连接已建立，等待 AI 思考...</div>
+            `;
+            document.body.appendChild(panel);
+        }
+        panel.style.display = 'block';
+        panel.querySelector('#ai-stream-content').textContent = '连接已建立，等待 AI 思考...';
+    }
+
+    function updateStreamPanel(text) {
+        const content = document.getElementById('ai-stream-content');
+        if (content) {
+            content.textContent = text;
+            content.scrollTop = content.scrollHeight; // 自动滚动到底部
+        }
+    }
+
+    function hideStreamPanel() {
+        const panel = document.getElementById('ai-stream-panel');
+        if (panel) panel.style.display = 'none';
+    }
+
     // ========== 停止自动打分 ==========
     function stopAutoGrading() {
         window.aiGradingState.isRunning = false;
@@ -549,48 +628,121 @@
         if (btn) { btn.textContent = '✨ 开始AI打分'; btn.classList.remove('running', 'paused', 'unattended'); }
         const dialog = document.getElementById('auto-submit-dialog');
         if (dialog) dialog.remove();
+        hideStreamPanel();
     }
 
-    // ========== 调用AI API (支持多图切片与健壮捕获) ==========
-    async function callAIGrading(base64DataArray, config) {
+    // ========== 调用AI API (支持 SSE 流式解析) ==========
+    // ========== 调用AI API (支持 SSE 流式解析进阶版) ==========
+    async function callAIGrading(base64DataArray, config, onStreamUpdate) {
         const prompt = buildPrompt(config);
         const messageContent = [{ type: "text", text: prompt }];
         base64DataArray.forEach(base64Data => {
             messageContent.push({ type: "image_url", image_url: { url: `data:image/png;base64,${base64Data}` } });
         });
 
-        const requestBody = { model: config.model, messages: [{ role: "user", content: messageContent }], max_tokens: 2048 };
+        const requestBody = { 
+            model: config.model, 
+            messages: [{ role: "user", content: messageContent }], 
+            max_tokens: 2048,
+            stream: true  // 开启流式输出
+        };
+
+        console.log(`📤 [1/3] 图片处理完毕，准备向 AI 接口发送数据...`);
+        console.log(`🔗 [2/3] 目标端点: ${config.endpoint}`);
+        console.log(`📦 [3/3] 已开启 Stream 流式模式，等待接收数据...`);
 
         return new Promise((resolve, reject) => {
+            let fullText = '';
+            let processedLength = 0;
+            let buffer = '';
+
+            // 核心解析逻辑封装
+            const processStreamChunk = (responseText) => {
+                if (!responseText) return;
+                const chunk = responseText.substring(processedLength);
+                if (!chunk) return;
+                processedLength = responseText.length;
+                buffer += chunk;
+                
+                // 按行分割，保留最后一行不完整的留到下次处理
+                const lines = buffer.split('\n');
+                buffer = lines.pop(); 
+                
+                for (let line of lines) {
+                    line = line.trim();
+                    if (line.startsWith('data:')) {
+                        // 兼容各种厂商带不带空格的格式
+                        const dataStr = line.substring(5).trim();
+                        if (dataStr === '[DONE]' || !dataStr) continue;
+                        try {
+                            const parsed = JSON.parse(dataStr);
+                            const delta = parsed.choices?.[0]?.delta?.content || '';
+                            if (delta) {
+                                fullText += delta;
+                                // 触发回调更新悬浮窗
+                                if (onStreamUpdate) onStreamUpdate(fullText);
+                            }
+                        } catch (e) {
+                            // 忽略被截断的异常 JSON
+                        }
+                    }
+                }
+            };
+
             try {
                 const request = GM_xmlhttpRequest({
                     method: 'POST',
                     url: config.endpoint,
                     headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${config.apiKey}` },
                     data: JSON.stringify(requestBody),
-                    timeout: 60000,
-                    onload: function(response) {
+                    timeout: 120000,
+                    // 兜底1：标准状态改变事件
+                    onreadystatechange: function(response) {
+                        if ((response.readyState === 3 || response.readyState === 4) && response.status >= 200 && response.status < 300) {
+                            processStreamChunk(response.responseText);
+                        }
+                    },
+                    // 兜底2：进度事件（部分油猴扩展需要依赖此事件获取流）
+                    onprogress: function(response) {
                         if (response.status >= 200 && response.status < 300) {
-                            try {
-                                resolve(parseAIResponse(JSON.parse(response.responseText)));
-                            } catch (e) { reject(new Error('解析响应失败')); }
+                            processStreamChunk(response.responseText);
+                        }
+                    },
+                    onload: function(response) {
+                        console.log(`📥 API请求结束，最终状态码: ${response.status}`);
+                        if (response.status >= 200 && response.status < 300) {
+                            processStreamChunk(response.responseText); // 处理最后残留的数据
+                            
+                            if (fullText) {
+                                resolve(parseAIResponseText(fullText));
+                            } else {
+                                // 万一连流式都被拦截，降级处理普通响应
+                                try {
+                                    const data = JSON.parse(response.responseText);
+                                    const fallbackText = data.choices?.[0]?.message?.content || '';
+                                    resolve(parseAIResponseText(fallbackText));
+                                } catch (e) { 
+                                    reject(new Error('无法解析非流式响应')); 
+                                }
+                            }
                         } else {
                             let errorMsg = response.responseText;
                             try {
                                 const errObj = JSON.parse(response.responseText);
                                 if (errObj.error && errObj.error.message) errorMsg = errObj.error.message;
                             } catch (e) {}
+                            console.error(`❌ API请求失败:`, errorMsg);
                             reject(new Error(`API报错 (${response.status}): ${errorMsg}`));
                         }
                     },
-                    onerror: () => reject(new Error('网络请求被拦截，请允许油猴跨域权限')),
+                    onerror: () => reject(new Error('网络请求被拦截，请允许跨域权限')),
                     ontimeout: () => reject(new Error('API请求超时'))
                 });
 
                 if (window.aiGradingState.abortController) {
                     window.aiGradingState.abortController.signal.addEventListener('abort', () => {
                         request.abort();
-                        reject(new Error('用户暂停'));
+                        reject(new Error('用户主动暂停'));
                     });
                 }
             } catch (e) { reject(new Error('内部错误: ' + e.message)); }
@@ -630,6 +782,17 @@
         };
     }
 
+   // ========== 解析AI纯文本响应 ==========
+    function parseAIResponseText(text) {
+        const studentAnswerMatch = text.match(/学生答案[：:]\s*(.+?)(?=\n分数|$)/s);
+        const scoreMatch = text.match(/分数[：:]\s*(\d+\.?\d*)/);
+        const commentMatch = text.match(/评语[：:]\s*(.+)/s);
+        return {
+            studentAnswer: studentAnswerMatch ? studentAnswerMatch[1].trim() : '未能识别',
+            score: scoreMatch ? parseFloat(scoreMatch[1]) : null,
+            comment: commentMatch ? commentMatch[1].trim() : text
+        };
+    }
     // ========== 填入分数 ==========
     function fillScore(score, comment) {
         const scoreInput = document.querySelector('input[type="number"]') || 
@@ -642,12 +805,14 @@
             scoreInput.dispatchEvent(new Event('input', { bubbles: true }));
             scoreInput.dispatchEvent(new Event('change', { bubbles: true }));
             scoreInput.dispatchEvent(new Event('blur', { bubbles: true }));
+            console.log('✅ 已自动填入分数:', score);
             showAutoSubmitDialog(score, comment);
         } else {
-            safeAlert(`AI打分：${score}分\n请手动输入！`);
+            console.warn('⚠️ 未找到分数输入框');
+            safeAlert(`AI打分结果：\n分数：${score}\n评语：${comment}\n\n请手动输入分数！`);
+            showAutoSubmitDialog(score, comment); // 找不到输入框也把弹窗展示出来，方便看结果
         }
     }
-
     // ========== 显示自动提交对话框 (支持多图渲染) ==========
     function showAutoSubmitDialog(score, comment) {
         const oldDialog = document.getElementById('auto-submit-dialog');

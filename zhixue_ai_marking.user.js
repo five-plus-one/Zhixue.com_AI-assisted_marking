@@ -703,11 +703,10 @@ function gmFetch(url, options = {}) {
                     'Authorization': `Bearer ${config.apiKey}`
                 },
                 data: JSON.stringify(requestBody),
-                responseType: 'stream',
+                // 不指定 responseType，让 Tampermonkey 自动选择最兼容的模式
+                // 避免 responseType:'stream' 导致 onload 中 responseText 为空的问题
                 onprogress: function(res) {
-                    // 兼容两种情况：
-                    // 1. 支持 stream 的 Tampermonkey：responseText 会逐步追加
-                    // 2. 不支持 stream 的环境：onprogress 可能不触发，最终走 onload
+                    // 支持 stream 的 Tampermonkey 版本：responseText 会逐步追加
                     if (res.responseText) {
                         progressCallCount++;
                         if (progressCallCount === 1) {

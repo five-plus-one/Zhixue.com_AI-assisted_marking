@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         智学网AI自动打分助手
 // @namespace    http://tampermonkey.net/
-// @version      1.6.0
+// @version      1.6.4
 // @description  智学网AI自动批改助手，支持多套试卷方案管理、自动绑定切换、精准题号识别、未保存拦截、流式评分！
 // @author       5plus1
 // @match        https://www.zhixue.com/webmarking/*
@@ -64,6 +64,7 @@ function gmFetch(url, options = {}) {
     'use strict';
 
     console.log('🚀 智学网AI打分助手(多方案+状态拦截版)加载中...');
+    console.log(`📌 [诊断] 脚本版本: 1.6.4 | 浏览器: ${navigator.userAgent.match(/(Chrome|Firefox|Edge)\/[\d.]+/)?.[0] || '未知'} | 时间: ${new Date().toLocaleString()}`);
 
     // ========== 全局配置方案管理器 ==========
     const PresetManager = {
@@ -130,19 +131,31 @@ function gmFetch(url, options = {}) {
     }
 
     async function detectMarkingPage() {
+        console.log('🔎 [诊断] 开始检测批改页面元素...');
         try {
             const result = await Promise.race([
                 waitForElement('div[name="topicImg"]').then(() => 'topicImg'),
                 waitForElement('input[type="number"]').then(() => 'score-input'),
                 waitForElement('button:contains("提交分数")').then(() => 'submit-btn')
             ]).catch(() => null);
-            if (result) return true;
+            if (result) {
+                console.log(`✅ [诊断] 检测到批改页面元素: ${result}`);
+                return true;
+            }
 
             await new Promise(resolve => setTimeout(resolve, 3000));
             const hasInput = document.querySelector('input[type="number"]') || document.querySelector('input[type="text"]');
             const hasButton = Array.from(document.querySelectorAll('button')).some(btn => btn.textContent.includes('提交') || btn.textContent.includes('分数'));
-            return !!(hasInput && hasButton);
-        } catch (error) { return false; }
+            const detected = !!(hasInput && hasButton);
+            console.log(`🔎 [诊断] 兜底检测结果 — 输入框: ${!!hasInput}, 提交按钮: ${hasButton}, 最终判断: ${detected}`);
+            if (!detected) {
+                console.warn('⚠️ [诊断] 未检测到批改页面，脚本将不会初始化。当前所有按钮文字:', Array.from(document.querySelectorAll('button')).map(b => b.textContent.trim()).filter(t => t).join(' | '));
+            }
+            return detected;
+        } catch (error) {
+            console.error('❌ [诊断] detectMarkingPage 抛出异常:', error);
+            return false;
+        }
     }
 
     window.aiGradingState = {
@@ -639,83 +652,127 @@ function gmFetch(url, options = {}) {
         });
     }
 
-    // ========== AI 核心请求 (Response + 流式) ==========
-    async function callAIGrading(base64DataArray, config, onStreamUpdate) {
-        const prompt = buildPrompt(config);
-        const messageContent = [{ type: "text", text: prompt }];
-        base64DataArray.forEach(base64Data => {
-            messageContent.push({ type: "image_url", image_url: { url: `data:image/png;base64,${base64Data}` } });
-        });
-
-        const requestBody = { 
-            model: config.model, 
-            messages: [{ role: "user", content: messageContent }], 
-            max_tokens: 2048,
-            stream: true
-        };
-
-        console.log(`📤 发送请求到: ${config.endpoint}`);
-
-        try {
-            const response = await gmFetch(config.endpoint, {
-                method: 'POST',
-                headers: { 
-                    'Content-Type': 'application/json', 
-                    'Authorization': `Bearer ${config.apiKey}` 
-                },
-                body: JSON.stringify(requestBody),
-                stream: true, 
-                signal: window.aiGradingState.abortController?.signal
+    // ========== AI 核心请求 (直接用 GM_xmlhttpRequest onprogress 处理 SSE，兼容所有 Tampermonkey 版本) ==========
+    function callAIGrading(base64DataArray, config, onStreamUpdate) {
+        return new Promise((resolve, reject) => {
+            const prompt = buildPrompt(config);
+            const messageContent = [{ type: "text", text: prompt }];
+            base64DataArray.forEach(base64Data => {
+                messageContent.push({ type: "image_url", image_url: { url: `data:image/png;base64,${base64Data}` } });
             });
 
-            if (!response.ok) {
-                const errorText = await response.text();
-                let errorMsg = errorText;
-                try {
-                    const errObj = JSON.parse(errorText);
-                    if (errObj.error?.message) errorMsg = errObj.error.message;
-                } catch (e) {}
-                throw new Error(`API报错 (${response.status}): ${errorMsg}`);
-            }
+            const requestBody = {
+                model: config.model,
+                messages: [{ role: "user", content: messageContent }],
+                max_tokens: 2048,
+                stream: true
+            };
 
-            const reader = response.body.getReader();
-            const decoder = new TextDecoder('utf-8');
+            console.log(`📤 发送请求到: ${config.endpoint}`);
+
             let fullText = '';
             let buffer = '';
+            let settled = false;
+            let progressCallCount = 0;
 
-            while (true) {
-                const { done, value } = await reader.read();
-                if (done) break;
-
-                buffer += decoder.decode(value, { stream: true });
+            function parseSSEBuffer(chunk) {
+                buffer += chunk;
                 const lines = buffer.split('\n');
-                buffer = lines.pop(); 
-
+                buffer = lines.pop();
                 for (let line of lines) {
                     line = line.trim();
-                    if (line.startsWith('data:')) {
-                        const dataStr = line.substring(5).trim();
-                        if (dataStr === '[DONE]' || !dataStr) continue;
-                        try {
-                            const parsed = JSON.parse(dataStr);
-                            const delta = parsed.choices?.[0]?.delta?.content || '';
-                            if (delta) {
-                                fullText += delta;
-                                if (onStreamUpdate) onStreamUpdate(fullText);
-                            }
-                        } catch (e) {}
-                    }
+                    if (!line.startsWith('data:')) continue;
+                    const dataStr = line.substring(5).trim();
+                    if (dataStr === '[DONE]' || !dataStr) continue;
+                    try {
+                        const parsed = JSON.parse(dataStr);
+                        const delta = parsed.choices?.[0]?.delta?.content || '';
+                        if (delta) {
+                            fullText += delta;
+                            if (onStreamUpdate) onStreamUpdate(fullText);
+                        }
+                    } catch (e) {}
                 }
             }
-            return parseAIResponseText(fullText);
-        } catch (error) {
-            throw error;
-        }
+
+            const request = GM_xmlhttpRequest({
+                method: 'POST',
+                url: config.endpoint,
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${config.apiKey}`
+                },
+                data: JSON.stringify(requestBody),
+                responseType: 'stream',
+                onprogress: function(res) {
+                    // 兼容两种情况：
+                    // 1. 支持 stream 的 Tampermonkey：responseText 会逐步追加
+                    // 2. 不支持 stream 的环境：onprogress 可能不触发，最终走 onload
+                    if (res.responseText) {
+                        progressCallCount++;
+                        if (progressCallCount === 1) {
+                            console.log('✅ [诊断] onprogress 已触发，当前环境支持流式输出');
+                        }
+                        // onprogress 每次给的是全量 responseText，重置后重新解析以保证流式面板实时更新
+                        fullText = '';
+                        buffer = '';
+                        parseSSEBuffer(res.responseText);
+                    }
+                },
+                onload: function(res) {
+                    if (settled) return;
+                    settled = true;
+                    console.log(`✅ [诊断] onload 触发 — HTTP状态: ${res.status}, onprogress累计触发次数: ${progressCallCount}, 响应长度: ${(res.responseText || '').length} 字节`);
+                    if (res.status < 200 || res.status >= 300) {
+                        let errorMsg = res.responseText || res.statusText;
+                        try {
+                            const errObj = JSON.parse(res.responseText);
+                            if (errObj.error?.message) errorMsg = errObj.error.message;
+                        } catch (e) {}
+                        console.error(`❌ [诊断] API返回错误: ${res.status} — ${errorMsg}`);
+                        return reject(new Error(`API报错 (${res.status}): ${errorMsg}`));
+                    }
+                    // onload 时用完整 responseText 做最终解析（确保不遗漏任何内容）
+                    fullText = '';
+                    buffer = '';
+                    parseSSEBuffer(res.responseText || '');
+                    const parsed = parseAIResponseText(fullText);
+                    console.log(`🧠 [诊断] AI响应解析结果 — 分数: ${parsed.score}, 识别答案长度: ${(parsed.studentAnswer || '').length}字, 原始文本长度: ${fullText.length}字`);
+                    if (parsed.score === null) {
+                        console.warn('⚠️ [诊断] 分数解析为 null，原始AI返回文本如下：\n' + fullText);
+                    }
+                    resolve(parsed);
+                },
+                onerror: function() {
+                    if (settled) return;
+                    settled = true;
+                    console.error('❌ [诊断] GM_xmlhttpRequest onerror 触发 — 请求被拦截或网络断开');
+                    reject(new Error('网络请求被拦截，请检查跨域权限'));
+                },
+                ontimeout: function() {
+                    if (settled) return;
+                    settled = true;
+                    console.error('❌ [诊断] GM_xmlhttpRequest ontimeout 触发 — 请求超时');
+                    reject(new Error('请求超时'));
+                }
+            });
+
+            if (window.aiGradingState.abortController) {
+                window.aiGradingState.abortController.signal.addEventListener('abort', () => {
+                    if (!settled) {
+                        settled = true;
+                        request.abort();
+                        reject(new Error('用户主动暂停'));
+                    }
+                });
+            }
+        });
     }
 
     // ========== 主控流程 ==========
     async function startAutoGrading() {
         window.aiGradingState.abortController = new AbortController();
+        console.log('▶️ [诊断] startAutoGrading 开始执行');
 
         try {
             const config = PresetManager.getCurrentConfig();
@@ -727,6 +784,7 @@ function gmFetch(url, options = {}) {
 
             console.log(`🔍 使用方案【${PresetManager.data.active}】查找答卷...`);
             const imgElements = document.querySelectorAll('div[name="topicImg"] img');
+            console.log(`🖼️ [诊断] 找到答题卡图片数量: ${imgElements.length}`);
 
             if (!imgElements || imgElements.length === 0) {
                 if (window.aiGradingState.unattendedMode) {
@@ -747,15 +805,18 @@ function gmFetch(url, options = {}) {
                 gradeBtn.textContent = imageUrls.length > 1 ? `📥 下载多图(${imageUrls.length})...` : '📥 下载图片...';
             }
 
+            console.log(`📥 [诊断] 开始下载 ${imageUrls.length} 张图片...`);
             const base64DataArray = await Promise.all(imageUrls.map(url => fetchImageAsBase64(url)));
+            console.log(`✅ [诊断] 图片下载完成，各图片Base64大小: ${base64DataArray.map(b => Math.round(b.length / 1024) + 'KB').join(', ')}`);
 
             if (window.aiGradingState.isPaused) throw new Error('用户暂停');
-            
+
             if (gradeBtn && !window.aiGradingState.unattendedMode) {
                 gradeBtn.textContent = '⏳ AI分析中...';
                 showStreamPanel();
             }
 
+            console.log('🤖 [诊断] 开始调用AI接口...');
             const result = await callAIGrading(base64DataArray, config, (streamedText) => {
                 if (!window.aiGradingState.unattendedMode) updateStreamPanel(streamedText);
             });
@@ -763,9 +824,11 @@ function gmFetch(url, options = {}) {
             hideStreamPanel();
             if (window.aiGradingState.isPaused) throw new Error('用户暂停');
 
+            console.log(`📊 [诊断] callAIGrading 返回 — score: ${result.score}, comment长度: ${(result.comment || '').length}字`);
             if (result.score !== undefined && result.score !== null) {
                 window.aiGradingState.currentStudentAnswer = result.studentAnswer || '未能识别';
                 window.aiGradingState.errorRetryCount = 0;
+                console.log(`✏️ [诊断] 准备填入分数: ${result.score}，调用 fillScore...`);
                 fillScore(result.score, result.comment);
             } else {
                 throw new Error('AI返回异常: ' + JSON.stringify(result));
@@ -875,18 +938,25 @@ function gmFetch(url, options = {}) {
 
     // ========== 填充分数及弹窗 ==========
     function fillScore(score, comment) {
-        const scoreInput = document.querySelector('input[type="number"]') || 
-                           document.querySelector('input[placeholder*="分"]') || 
+        const allInputs = document.querySelectorAll('input');
+        console.log(`🔎 [诊断] fillScore 调用 — 分数: ${score}, 页面上所有input数量: ${allInputs.length}`);
+        console.log(`🔎 [诊断] 各input类型: ${Array.from(allInputs).map(i => `type=${i.type} placeholder=${i.placeholder} name=${i.name}`).join(' | ')}`);
+
+        const scoreInput = document.querySelector('input[type="number"]') ||
+                           document.querySelector('input[placeholder*="分"]') ||
                            Array.from(document.querySelectorAll('input[type="text"]')).find(i => i.placeholder?.includes('分') || i.name?.includes('score'));
 
         if (scoreInput) {
+            console.log(`✅ [诊断] 找到分数输入框: type=${scoreInput.type} placeholder=${scoreInput.placeholder} name=${scoreInput.name}`);
             scoreInput.value = score;
             scoreInput.focus();
             scoreInput.dispatchEvent(new Event('input', { bubbles: true }));
             scoreInput.dispatchEvent(new Event('change', { bubbles: true }));
             scoreInput.dispatchEvent(new Event('blur', { bubbles: true }));
+            console.log(`✅ [诊断] 分数已填入，准备弹出确认窗口...`);
             showAutoSubmitDialog(score, comment);
         } else {
+            console.warn('⚠️ [诊断] 未找到分数输入框，将直接弹出确认窗口');
             safeAlert(`AI打分结果：\n分数：${score}\n请手动输入分数！`);
             showAutoSubmitDialog(score, comment);
         }
@@ -895,6 +965,7 @@ function gmFetch(url, options = {}) {
     function showAutoSubmitDialog(score, comment) {
         const oldDialog = document.getElementById('auto-submit-dialog');
         if (oldDialog) oldDialog.remove();
+        console.log(`🪟 [诊断] showAutoSubmitDialog 调用 — 分数: ${score}, 无人值守: ${window.aiGradingState.unattendedMode}`);
 
         window.aiGradingState.countdownPaused = false;
         const studentAnswer = window.aiGradingState.currentStudentAnswer;
@@ -939,6 +1010,7 @@ function gmFetch(url, options = {}) {
             </div>
         `;
         document.body.appendChild(dialog);
+        console.log(`✅ [诊断] 弹窗已插入DOM，z-index: 999999，倒计时: ${countdownSeconds}秒`);
 
         dialog.querySelector('#pause-cancel-btn').addEventListener('click', () => {
             if (!window.aiGradingState.countdownPaused) {
@@ -955,9 +1027,12 @@ function gmFetch(url, options = {}) {
         const confirmSubmitFn = () => {
             if (dialog.countdownTimer) clearInterval(dialog.countdownTimer);
             dialog.remove();
-            
-            const submitBtn = Array.from(document.querySelectorAll('button')).find(btn => btn.textContent.includes('提交分数'));
+
+            const allBtns = Array.from(document.querySelectorAll('button'));
+            console.log(`🔎 [诊断] confirmSubmitFn 执行 — 页面按钮总数: ${allBtns.length}，文字列表: ${allBtns.map(b => b.textContent.trim()).filter(t => t).join(' | ')}`);
+            const submitBtn = allBtns.find(btn => btn.textContent.includes('提交分数'));
             if (submitBtn) {
+                console.log(`✅ [诊断] 找到"提交分数"按钮，准备点击`);
                 submitBtn.click();
                 
                 if (window.aiGradingState.isRunning && !window.aiGradingState.isPaused) {
@@ -985,6 +1060,7 @@ function gmFetch(url, options = {}) {
                     window.aiGradingState.isRunning = false;
                 }
             } else {
+                console.warn(`⚠️ [诊断] 未找到"提交分数"按钮，无法自动提交`);
                 safeAlert('✅ 分数已填，但未找到页面的"提交分数"按钮');
                 if (window.aiGradingState.unattendedMode) stopAutoGrading();
             }

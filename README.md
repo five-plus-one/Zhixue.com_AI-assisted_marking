@@ -2,7 +2,7 @@
 
 > 让AI帮你批改试卷，解放双手，提高效率！
 
-[![版本](https://img.shields.io/badge/version-1.6.4-blue.svg)](https://github.com/five-plus-one/Zhixue.com_AI-assisted_marking)
+[![版本](https://img.shields.io/badge/version-1.7.0-blue.svg)](https://github.com/five-plus-one/Zhixue.com_AI-assisted_marking)
 [![许可证](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 
 ## ⚠️ 反馈
@@ -14,7 +14,7 @@
 > - 📮 **提交 Issue**：[GitHub Issues](https://github.com/five-plus-one/Zhixue.com_AI-assisted_marking/issues)
 > - 📧 **联系作者**：[各种联系方式](https://r-l.ink/contact)
 >
-> **特别希望获得智学网教师账号用于复现和测试问题。** 如果你愿意提供测试账号（可临时使用），请通过邮件联系作者，非常感谢！
+>  如果你愿意提供测试账号，请联系作者，非常感谢！
 
 ---
 
@@ -85,11 +85,11 @@
 
 确保已安装 Tampermonkey，点击以下链接，Tampermonkey 会自动提示安装：
 
-**👉 [一键安装脚本](https://raw.githubusercontent.com/five-plus-one/Zhixue.com_AI-assisted_marking/main/zhixue_ai_marking.user.js)**
+**👉 [一键安装脚本](https://raw.githubusercontent.com/five-plus-one/Zhixue.com_AI-assisted_marking/main/dist/zhixue_ai_marking.user.js)**
 
 #### 方式二：手动安装
 
-1. 下载 [zhixue_ai_marking.user.js](zhixue_ai_marking.user.js)
+1. 下载 [zhixue_ai_marking.user.js](dist/zhixue_ai_marking.user.js)
 2. 在 Tampermonkey 扩展中点击"创建新脚本"
 3. 将脚本内容复制粘贴到编辑器中
 4. 按 `Ctrl+S` 保存脚本
@@ -224,6 +224,10 @@
 ---
 
 ## 📝 更新日志
+
+### v1.7.0 (2026-04-10)
+- ✨ 新增自动检查更新功能，每 24 小时检查一次，发现新版本时弹出非打扰式提示卡片
+- 🏗️ 重构代码结构：将单文件脚本拆分为 `src/` 模块，通过 `node build.js` 构建输出 `dist/zhixue_ai_marking.user.js`
 
 ### v1.6.4 (2026-04-10)
 - 🐛 修复 `responseType:'stream'` 导致部分 Tampermonkey 版本 `onload.responseText` 为空、弹窗不出现的问题

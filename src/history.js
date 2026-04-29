@@ -53,15 +53,27 @@ const HistoryManager = {
         this._download(JSON.stringify(this.records, null, 2), '评阅历史_' + this._fileTimestamp() + '.json', 'application/json');
     },
 
-    exportHTML() {
+    async exportHTML() {
         const modeLabel = { normal: '普通', unattended: '无人', trial: '试改' };
+
+        // 预加载所有图片为 base64
+        const imageCache = {};
+        const allUrls = [...new Set(this.records.flatMap(r => r.imageUrls || []))];
+        showToast(`正在加载 ${allUrls.length} 张图片...`);
+        await Promise.all(allUrls.map(async url => {
+            try { imageCache[url] = await fetchImageAsBase64(url); } catch (e) { console.warn('图片加载失败:', url); }
+        }));
+
         const rows = this.records.map(r => {
             const time = new Date(r.timestamp).toLocaleString('zh-CN');
             const mode = modeLabel[r.gradingMode] || r.gradingMode;
             const scoreText = r.isCorrected ? `${r.aiScore} → ${r.finalScore} ✓` : `${r.finalScore}`;
             const correctedRow = r.isCorrected ? `<div style="color:#0052FF;font-size:12px;margin-top:4px;">纠错理由：${r.correctionReason || '无'}</div>` : '';
             const markedRow = r.status === 'marked' ? `<span style="color:#D93025;font-size:11px;margin-left:8px;">⚠ 待回评</span>` : '';
-            const images = (r.imageUrls || []).map(url => `<img src="${url}" style="max-width:100%;border-radius:6px;margin-top:8px;">`).join('');
+            const images = (r.imageUrls || []).map(url => {
+                const b64 = imageCache[url];
+                return b64 ? `<img src="data:image/png;base64,${b64}" style="max-width:100%;border-radius:6px;margin-top:8px;">` : '';
+            }).join('');
             return `
                 <div style="border:1px solid #e5e5e5;border-radius:10px;padding:16px;margin-bottom:12px;page-break-inside:avoid;">
                     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
@@ -92,6 +104,7 @@ const HistoryManager = {
     ${rows || '<div style="color:#aaa;text-align:center;padding:40px;">暂无记录</div>'}
 </body></html>`;
         this._download(html, '评阅历史_' + this._fileTimestamp() + '.html', 'text/html;charset=utf-8');
+        showToast('HTML导出完成');
     },
 
     _fileTimestamp() {
@@ -168,6 +181,7 @@ function showHistoryPanel() {
             .hist-toolbar button { padding:6px 14px; border:1px solid rgba(0,0,0,0.1); background:transparent; border-radius:6px; font-size:12px; cursor:pointer; transition:all 0.2s; }
             .hist-toolbar button:hover { background:rgba(0,0,0,0.03); }
             .hist-toolbar .count { margin-left:auto; font-size:12px; color:#86868b; }
+            #ai-history-panel-inner { display:flex; flex-direction:column; flex:1; min-height:0; overflow:hidden; }
             .hist-list { flex:1; min-height:0; overflow-y:auto; padding:12px 28px; }
             .hist-item { padding:16px; border:1px solid rgba(0,0,0,0.06); border-radius:12px; margin-bottom:10px; transition:all 0.2s; }
             .hist-item:hover { border-color:rgba(0,0,0,0.12); box-shadow:0 2px 8px rgba(0,0,0,0.04); }

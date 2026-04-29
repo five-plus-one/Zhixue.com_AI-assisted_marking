@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         智学网AI自动打分助手
 // @namespace    http://tampermonkey.net/
-// @version      1.8.0
+// @version      1.8.1
 // @description  智学网AI自动批改助手，支持多套试卷方案管理、自动绑定切换、自动检查更新、精准题号识别、未保存拦截、流式评分！
 // @author       5plus1
 // @match        https://www.zhixue.com/webmarking/*
@@ -26,7 +26,7 @@
 
 const SCRIPT_CONFIG = {
     /** 当前脚本版本号，修改此处即可同步更新所有引用 */
-    VERSION: '1.8.0',
+    VERSION: '1.8.1',
 
     /** 远端原始脚本地址（用于检查更新） */
     UPDATE_CHECK_URL: 'https://raw.githubusercontent.com/five-plus-one/Zhixue.com_AI-assisted_marking/main/dist/zhixue_ai_marking.user.js',
@@ -647,6 +647,14 @@ function showAutoSubmitDialog(score, comment) {
                         finalScore, isCorrected: correctionInfo.isCorrected,
                         correctionReason: correctionInfo.correctionReason
                     });
+                    // 将纠错后的提示词写回配置
+                    if (correctionInfo.newAnswer || correctionInfo.newRubric) {
+                        const cfg = PresetManager.getCurrentConfig();
+                        if (correctionInfo.newAnswer) cfg.answer = correctionInfo.newAnswer;
+                        if (correctionInfo.newRubric) cfg.rubric = correctionInfo.newRubric;
+                        PresetManager.save();
+                        showToast('提示词已更新');
+                    }
                     fillScore(finalScore, comment);
                 },
                 onCancel() {
@@ -1347,8 +1355,8 @@ function showCorrectionPanel(context) {
     overlay.id = 'correction-panel';
     overlay.style.zIndex = '999998';
 
-    const imagesHtml = (context.imageUrls || []).map(url =>
-        `<img src="${url}" crossorigin="anonymous" style="width:100%;border-radius:10px;margin-bottom:12px;box-shadow:0 2px 8px rgba(0,0,0,0.08);">`
+    const imagesHtml = (context.base64DataArray || []).map(b64 =>
+        `<img src="data:image/png;base64,${b64}" style="width:100%;border-radius:10px;margin-bottom:12px;box-shadow:0 2px 8px rgba(0,0,0,0.08);">`
     ).join('');
 
     overlay.innerHTML = `
@@ -1395,6 +1403,11 @@ function showCorrectionPanel(context) {
                 padding: 16px 28px 20px; border-top: 1px solid rgba(0,0,0,0.06);
                 display: flex; justify-content: flex-end; gap: 12px;
                 background: rgba(255,255,255,0.3);
+            }
+            .cor-footer button {
+                padding: 10px 24px; border: none; border-radius: 10px;
+                font-size: 14px; font-weight: 500; cursor: pointer;
+                transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
             }
             .cor-footer-between { justify-content: space-between; }
             .cor-score-block { margin-bottom: 20px; }
@@ -1539,7 +1552,7 @@ function showCorrectionPanel(context) {
         `;
         footer.innerHTML = `
             <button class="ai-modal-btn-cancel" id="cor-cancel2">取消</button>
-            <button class="ai-modal-btn-confirm" id="cor-regrade" style="display:none;">重新批改</button>
+            <button class="ai-modal-btn-confirm" id="cor-regrade" style="display:none;">应用建议并重新批改</button>
         `;
         footer.className = 'cor-footer';
 
@@ -1746,15 +1759,27 @@ const HistoryManager = {
         this._download(JSON.stringify(this.records, null, 2), '评阅历史_' + this._fileTimestamp() + '.json', 'application/json');
     },
 
-    exportHTML() {
+    async exportHTML() {
         const modeLabel = { normal: '普通', unattended: '无人', trial: '试改' };
+
+        // 预加载所有图片为 base64
+        const imageCache = {};
+        const allUrls = [...new Set(this.records.flatMap(r => r.imageUrls || []))];
+        showToast(`正在加载 ${allUrls.length} 张图片...`);
+        await Promise.all(allUrls.map(async url => {
+            try { imageCache[url] = await fetchImageAsBase64(url); } catch (e) { console.warn('图片加载失败:', url); }
+        }));
+
         const rows = this.records.map(r => {
             const time = new Date(r.timestamp).toLocaleString('zh-CN');
             const mode = modeLabel[r.gradingMode] || r.gradingMode;
             const scoreText = r.isCorrected ? `${r.aiScore} → ${r.finalScore} ✓` : `${r.finalScore}`;
             const correctedRow = r.isCorrected ? `<div style="color:#0052FF;font-size:12px;margin-top:4px;">纠错理由：${r.correctionReason || '无'}</div>` : '';
             const markedRow = r.status === 'marked' ? `<span style="color:#D93025;font-size:11px;margin-left:8px;">⚠ 待回评</span>` : '';
-            const images = (r.imageUrls || []).map(url => `<img src="${url}" style="max-width:100%;border-radius:6px;margin-top:8px;">`).join('');
+            const images = (r.imageUrls || []).map(url => {
+                const b64 = imageCache[url];
+                return b64 ? `<img src="data:image/png;base64,${b64}" style="max-width:100%;border-radius:6px;margin-top:8px;">` : '';
+            }).join('');
             return `
                 <div style="border:1px solid #e5e5e5;border-radius:10px;padding:16px;margin-bottom:12px;page-break-inside:avoid;">
                     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
@@ -1785,6 +1810,7 @@ const HistoryManager = {
     ${rows || '<div style="color:#aaa;text-align:center;padding:40px;">暂无记录</div>'}
 </body></html>`;
         this._download(html, '评阅历史_' + this._fileTimestamp() + '.html', 'text/html;charset=utf-8');
+        showToast('HTML导出完成');
     },
 
     _fileTimestamp() {
@@ -1861,6 +1887,7 @@ function showHistoryPanel() {
             .hist-toolbar button { padding:6px 14px; border:1px solid rgba(0,0,0,0.1); background:transparent; border-radius:6px; font-size:12px; cursor:pointer; transition:all 0.2s; }
             .hist-toolbar button:hover { background:rgba(0,0,0,0.03); }
             .hist-toolbar .count { margin-left:auto; font-size:12px; color:#86868b; }
+            #ai-history-panel-inner { display:flex; flex-direction:column; flex:1; min-height:0; overflow:hidden; }
             .hist-list { flex:1; min-height:0; overflow-y:auto; padding:12px 28px; }
             .hist-item { padding:16px; border:1px solid rgba(0,0,0,0.06); border-radius:12px; margin-bottom:10px; transition:all 0.2s; }
             .hist-item:hover { border-color:rgba(0,0,0,0.12); box-shadow:0 2px 8px rgba(0,0,0,0.04); }
@@ -2268,6 +2295,14 @@ async function startAutoGrading() {
             console.log(`✏️ [诊断] 准备填入分数: ${result.score}，调用 fillScore...`);
             fillScore(result.score, result.comment);
         } else {
+            // 分数解析失败（"未能识别"），自动重试
+            window.aiGradingState.errorRetryCount++;
+            if (window.aiGradingState.errorRetryCount <= window.aiGradingState.maxRetries) {
+                console.warn(`⚠️ AI未能识别分数，第 ${window.aiGradingState.errorRetryCount} 次重试...`);
+                safeAlert(`⚠️ AI未能识别分数，正在重试 (${window.aiGradingState.errorRetryCount}/${window.aiGradingState.maxRetries})...`);
+                setTimeout(() => startAutoGrading(), 1500);
+                return;
+            }
             throw new Error('AI返回异常: ' + JSON.stringify(result));
         }
 

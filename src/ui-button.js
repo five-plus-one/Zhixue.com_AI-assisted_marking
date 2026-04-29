@@ -539,6 +539,14 @@ function showAutoSubmitDialog(score, comment) {
                         finalScore, isCorrected: correctionInfo.isCorrected,
                         correctionReason: correctionInfo.correctionReason
                     });
+                    // 将纠错后的提示词写回配置
+                    if (correctionInfo.newAnswer || correctionInfo.newRubric) {
+                        const cfg = PresetManager.getCurrentConfig();
+                        if (correctionInfo.newAnswer) cfg.answer = correctionInfo.newAnswer;
+                        if (correctionInfo.newRubric) cfg.rubric = correctionInfo.newRubric;
+                        PresetManager.save();
+                        showToast('提示词已更新');
+                    }
                     fillScore(finalScore, comment);
                 },
                 onCancel() {

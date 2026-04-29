@@ -108,6 +108,14 @@ async function startAutoGrading() {
             console.log(`✏️ [诊断] 准备填入分数: ${result.score}，调用 fillScore...`);
             fillScore(result.score, result.comment);
         } else {
+            // 分数解析失败（"未能识别"），自动重试
+            window.aiGradingState.errorRetryCount++;
+            if (window.aiGradingState.errorRetryCount <= window.aiGradingState.maxRetries) {
+                console.warn(`⚠️ AI未能识别分数，第 ${window.aiGradingState.errorRetryCount} 次重试...`);
+                safeAlert(`⚠️ AI未能识别分数，正在重试 (${window.aiGradingState.errorRetryCount}/${window.aiGradingState.maxRetries})...`);
+                setTimeout(() => startAutoGrading(), 1500);
+                return;
+            }
             throw new Error('AI返回异常: ' + JSON.stringify(result));
         }
 

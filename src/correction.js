@@ -8,8 +8,8 @@ function showCorrectionPanel(context) {
     overlay.id = 'correction-panel';
     overlay.style.zIndex = '999998';
 
-    const imagesHtml = (context.imageUrls || []).map(url =>
-        `<img src="${url}" crossorigin="anonymous" style="width:100%;border-radius:10px;margin-bottom:12px;box-shadow:0 2px 8px rgba(0,0,0,0.08);">`
+    const imagesHtml = (context.base64DataArray || []).map(b64 =>
+        `<img src="data:image/png;base64,${b64}" style="width:100%;border-radius:10px;margin-bottom:12px;box-shadow:0 2px 8px rgba(0,0,0,0.08);">`
     ).join('');
 
     overlay.innerHTML = `
@@ -56,6 +56,11 @@ function showCorrectionPanel(context) {
                 padding: 16px 28px 20px; border-top: 1px solid rgba(0,0,0,0.06);
                 display: flex; justify-content: flex-end; gap: 12px;
                 background: rgba(255,255,255,0.3);
+            }
+            .cor-footer button {
+                padding: 10px 24px; border: none; border-radius: 10px;
+                font-size: 14px; font-weight: 500; cursor: pointer;
+                transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
             }
             .cor-footer-between { justify-content: space-between; }
             .cor-score-block { margin-bottom: 20px; }
@@ -200,7 +205,7 @@ function showCorrectionPanel(context) {
         `;
         footer.innerHTML = `
             <button class="ai-modal-btn-cancel" id="cor-cancel2">取消</button>
-            <button class="ai-modal-btn-confirm" id="cor-regrade" style="display:none;">重新批改</button>
+            <button class="ai-modal-btn-confirm" id="cor-regrade" style="display:none;">应用建议并重新批改</button>
         `;
         footer.className = 'cor-footer';
 

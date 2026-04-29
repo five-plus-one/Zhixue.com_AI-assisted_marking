@@ -249,11 +249,11 @@ function handlePresetChange() {
     fillFormFromActivePreset();
 }
 
-function handleNewPreset() {
-    const name = prompt("请输入新的配置方案名称 (例如: 语文作文)：");
+async function handleNewPreset() {
+    const name = await showPromptModal("请输入新的配置方案名称 (例如: 语文作文)：");
     if (!name || !name.trim()) return;
     if (PresetManager.data.list[name]) {
-        alert("该方案名称已存在！");
+        showAlertModal("该方案名称已存在！");
         return;
     }
     PresetManager.data.list[name] = { ...PresetManager.getCurrentConfig() };
@@ -264,13 +264,13 @@ function handleNewPreset() {
     showToast(`新方案「${name}」创建成功`);
 }
 
-function handleDeletePreset() {
+async function handleDeletePreset() {
     const name = PresetManager.data.active;
     if (Object.keys(PresetManager.data.list).length <= 1) {
-        alert("必须至少保留一个配置方案！");
+        showAlertModal("必须至少保留一个配置方案！");
         return;
     }
-    if (confirm(`确定要删除配置方案【${name}】吗？`)) {
+    if (await showConfirmModal(`确定要删除配置方案【${name}】吗？`)) {
         delete PresetManager.data.list[name];
         for (const url in PresetManager.data.bindings) {
             if (PresetManager.data.bindings[url] === name) delete PresetManager.data.bindings[url];

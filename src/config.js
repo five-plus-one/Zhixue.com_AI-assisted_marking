@@ -15,5 +15,5 @@ const SCRIPT_CONFIG = {
     DEFAULT_ENDPOINT: 'https://api.ai.five-plus-one.com/v1/chat/completions',
 
     /** 默认模型 */
-    DEFAULT_MODEL: 'doubao-seed-1-8-251228',
+    DEFAULT_MODEL: 'mimo-v2.5',
 };

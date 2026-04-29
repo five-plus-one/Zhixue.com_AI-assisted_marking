@@ -53,6 +53,47 @@ const HistoryManager = {
         this._download(JSON.stringify(this.records, null, 2), '评阅历史_' + this._fileTimestamp() + '.json', 'application/json');
     },
 
+    exportHTML() {
+        const modeLabel = { normal: '普通', unattended: '无人', trial: '试改' };
+        const rows = this.records.map(r => {
+            const time = new Date(r.timestamp).toLocaleString('zh-CN');
+            const mode = modeLabel[r.gradingMode] || r.gradingMode;
+            const scoreText = r.isCorrected ? `${r.aiScore} → ${r.finalScore} ✓` : `${r.finalScore}`;
+            const correctedRow = r.isCorrected ? `<div style="color:#0052FF;font-size:12px;margin-top:4px;">纠错理由：${r.correctionReason || '无'}</div>` : '';
+            const markedRow = r.status === 'marked' ? `<span style="color:#D93025;font-size:11px;margin-left:8px;">⚠ 待回评</span>` : '';
+            const images = (r.imageUrls || []).map(url => `<img src="${url}" style="max-width:100%;border-radius:6px;margin-top:8px;">`).join('');
+            return `
+                <div style="border:1px solid #e5e5e5;border-radius:10px;padding:16px;margin-bottom:12px;page-break-inside:avoid;">
+                    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+                        <span style="color:#86868b;font-size:12px;">${time} · ${r.presetName} · ${mode}模式</span>
+                        <span style="font-size:16px;font-weight:600;">${scoreText}分${markedRow}</span>
+                    </div>
+                    ${correctedRow}
+                    <div style="font-size:13px;color:#4a4a4a;margin:8px 0;line-height:1.6;">
+                        <div><strong>识别答案：</strong>${(r.studentAnswer || '未能识别').replace(/\n/g, '<br>')}</div>
+                        <div style="margin-top:4px;"><strong>AI评语：</strong>${(r.aiComment || '无').replace(/\n/g, '<br>')}</div>
+                    </div>
+                    ${images ? `<div style="margin-top:8px;">${images}</div>` : ''}
+                </div>
+            `;
+        }).join('\n');
+
+        const html = `<!DOCTYPE html>
+<html lang="zh-CN">
+<head><meta charset="UTF-8"><title>评阅历史</title>
+<style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Inter", sans-serif; max-width: 800px; margin: 0 auto; padding: 40px 20px; color: #1d1d1f; }
+    h1 { font-size: 20px; margin-bottom: 4px; }
+    .meta { color: #86868b; font-size: 13px; margin-bottom: 24px; }
+</style></head>
+<body>
+    <h1>评阅历史</h1>
+    <div class="meta">导出时间：${new Date().toLocaleString('zh-CN')} · 共 ${this.records.length} 条记录</div>
+    ${rows || '<div style="color:#aaa;text-align:center;padding:40px;">暂无记录</div>'}
+</body></html>`;
+        this._download(html, '评阅历史_' + this._fileTimestamp() + '.html', 'text/html;charset=utf-8');
+    },
+
     _fileTimestamp() {
         const d = new Date();
         return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0') + '_' +
@@ -127,7 +168,7 @@ function showHistoryPanel() {
             .hist-toolbar button { padding:6px 14px; border:1px solid rgba(0,0,0,0.1); background:transparent; border-radius:6px; font-size:12px; cursor:pointer; transition:all 0.2s; }
             .hist-toolbar button:hover { background:rgba(0,0,0,0.03); }
             .hist-toolbar .count { margin-left:auto; font-size:12px; color:#86868b; }
-            .hist-list { flex:1; overflow-y:auto; padding:12px 28px; }
+            .hist-list { flex:1; min-height:0; overflow-y:auto; padding:12px 28px; }
             .hist-item { padding:16px; border:1px solid rgba(0,0,0,0.06); border-radius:12px; margin-bottom:10px; transition:all 0.2s; }
             .hist-item:hover { border-color:rgba(0,0,0,0.12); box-shadow:0 2px 8px rgba(0,0,0,0.04); }
             .hist-item.marked { border-left:3px solid #D93025; }
@@ -156,6 +197,7 @@ function showHistoryPanel() {
             <div class="hist-toolbar">
                 <button id="hist-export-csv">导出CSV</button>
                 <button id="hist-export-json">导出JSON</button>
+                <button id="hist-export-html">导出HTML</button>
                 <button id="hist-clear" style="color:#D93025;border-color:rgba(217,48,37,0.2);">清空</button>
                 <span class="count">共 ${HistoryManager.records.length} 条</span>
             </div>
@@ -169,6 +211,7 @@ function showHistoryPanel() {
     document.getElementById('hist-close').onclick = close;
     document.getElementById('hist-export-csv').onclick = () => HistoryManager.exportCSV();
     document.getElementById('hist-export-json').onclick = () => HistoryManager.exportJSON();
+    document.getElementById('hist-export-html').onclick = () => HistoryManager.exportHTML();
     document.getElementById('hist-clear').onclick = async () => {
         if (await showConfirmModal('确定要清空所有评阅历史吗？此操作不可撤销。')) {
             HistoryManager.records = [];
@@ -208,7 +251,6 @@ function showHistoryPanel() {
                     <div class="hist-item-actions">
                         <button class="hist-detail-btn" data-id="${r.id}">查看详情</button>
                         ${r.status !== 'marked' ? `<button class="hist-mark-btn danger" data-id="${r.id}">标记不正确</button>` : ''}
-                        <button class="hist-regrade-btn primary" data-id="${r.id}">回评</button>
                     </div>
                 </div>
             `;
@@ -219,14 +261,6 @@ function showHistoryPanel() {
         });
         listEl.querySelectorAll('.hist-mark-btn').forEach(btn => {
             btn.onclick = () => { HistoryManager.markIncorrect(btn.dataset.id); renderList(); showToast('已标记为不正确'); };
-        });
-        listEl.querySelectorAll('.hist-regrade-btn').forEach(btn => {
-            btn.onclick = async () => {
-                if (await showConfirmModal('确定要回评此记录吗？将导航到对应试题页面。')) {
-                    panel.remove();
-                    HistoryManager.startRegrade(btn.dataset.id);
-                }
-            };
         });
     }
 
@@ -249,12 +283,12 @@ function showHistoryDetail(record) {
     const imagesHtml = (record.imageUrls || []).map(url => `<img src="${url}" style="max-width:100%;border-radius:8px;margin-bottom:8px;">`).join('');
 
     overlay.innerHTML = `
-        <div class="ai-modal-card" style="max-width:700px;max-height:85vh;overflow-y:auto;">
+        <div class="ai-modal-card" style="max-width:700px;max-height:85vh;overflow:hidden;">
             <div class="ai-modal-header" style="display:flex;justify-content:space-between;align-items:center;">
                 <span>评阅详情</span>
                 <button style="background:none;border:none;font-size:18px;cursor:pointer;color:#666;padding:4px 8px;" id="detail-close">×</button>
             </div>
-            <div class="ai-modal-body">
+            <div class="ai-modal-body" style="max-height:calc(85vh - 60px);overflow-y:auto;">
                 <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px;">
                     <div><div style="font-size:11px;color:#86868b;text-transform:uppercase;font-weight:600;margin-bottom:4px;">时间</div><div style="font-size:13px;">${time}</div></div>
                     <div><div style="font-size:11px;color:#86868b;text-transform:uppercase;font-weight:600;margin-bottom:4px;">方案 / 模式</div><div style="font-size:13px;">${record.presetName} · ${modeLabel}</div></div>

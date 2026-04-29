@@ -38,7 +38,7 @@ const SCRIPT_CONFIG = {
     DEFAULT_ENDPOINT: 'https://api.ai.five-plus-one.com/v1/chat/completions',
 
     /** 默认模型 */
-    DEFAULT_MODEL: 'doubao-seed-1-8-251228',
+    DEFAULT_MODEL: 'mimo-v2.5',
 };
 
 
@@ -1345,7 +1345,121 @@ function showCorrectionPanel(context) {
     const overlay = document.createElement('div');
     overlay.className = 'ai-modal-overlay';
     overlay.id = 'correction-panel';
+    overlay.style.zIndex = '999998';
+
+    const imagesHtml = (context.imageUrls || []).map(url =>
+        `<img src="${url}" crossorigin="anonymous" style="width:100%;border-radius:10px;margin-bottom:12px;box-shadow:0 2px 8px rgba(0,0,0,0.08);">`
+    ).join('');
+
+    overlay.innerHTML = `
+        <style>
+            .cor-container {
+                width: 900px; max-width: 94vw; max-height: 85vh;
+                background: rgba(255,255,255,0.95);
+                backdrop-filter: blur(32px) saturate(180%);
+                border: 1px solid rgba(255,255,255,0.6); border-radius: 20px;
+                box-shadow: 0 40px 80px rgba(0,0,0,0.12), inset 0 1px 0 rgba(255,255,255,0.4);
+                display: grid; grid-template-columns: 340px 1fr; overflow: hidden;
+                font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Inter", sans-serif;
+                animation: ai-modal-scalein 0.3s cubic-bezier(0.16,1,0.3,1);
+            }
+            .cor-left {
+                background: rgba(0,0,0,0.02); border-right: 1px solid rgba(0,0,0,0.06);
+                overflow-y: auto; padding: 28px; max-height: 85vh;
+            }
+            .cor-left::-webkit-scrollbar { width: 4px; }
+            .cor-left::-webkit-scrollbar-thumb { background: rgba(0,0,0,0.15); border-radius: 4px; }
+            .cor-left-label {
+                font-size: 11px; text-transform: uppercase; letter-spacing: 0.8px;
+                color: #86868b; font-weight: 600; margin-bottom: 16px;
+            }
+            .cor-right {
+                display: flex; flex-direction: column; overflow: hidden; max-height: 85vh;
+            }
+            .cor-header {
+                padding: 20px 28px 16px; border-bottom: 1px solid rgba(0,0,0,0.06);
+                display: flex; justify-content: space-between; align-items: center;
+                font-size: 16px; font-weight: 600; color: #1d1d1f;
+            }
+            .cor-header-close {
+                background: transparent; border: none; font-size: 20px; cursor: pointer;
+                color: #666; padding: 4px 8px; border-radius: 6px; transition: all 0.2s;
+            }
+            .cor-header-close:hover { background: rgba(0,0,0,0.04); color: #1a1a1a; }
+            .cor-body {
+                flex: 1; overflow-y: auto; padding: 24px 28px;
+            }
+            .cor-body::-webkit-scrollbar { width: 4px; }
+            .cor-body::-webkit-scrollbar-thumb { background: rgba(0,0,0,0.15); border-radius: 4px; }
+            .cor-footer {
+                padding: 16px 28px 20px; border-top: 1px solid rgba(0,0,0,0.06);
+                display: flex; justify-content: flex-end; gap: 12px;
+                background: rgba(255,255,255,0.3);
+            }
+            .cor-footer-between { justify-content: space-between; }
+            .cor-score-block { margin-bottom: 20px; }
+            .cor-score-label {
+                font-size: 11px; text-transform: uppercase; letter-spacing: 0.8px;
+                color: #86868b; font-weight: 600; margin-bottom: 4px;
+            }
+            .cor-score-value { font-size: 36px; font-weight: 700; color: #1d1d1f; }
+            .cor-answer-block {
+                font-size: 13px; color: #4a4a4a; line-height: 1.6;
+                font-family: 'SF Mono', monospace; background: rgba(0,0,0,0.02);
+                padding: 12px; border-radius: 10px; max-height: 100px; overflow-y: auto;
+                border: 1px solid rgba(0,0,0,0.04);
+            }
+            .cor-field-label {
+                display: block; margin-bottom: 6px; color: #666; font-size: 12px; font-weight: 500;
+            }
+            .cor-input {
+                width: 100%; padding: 10px 12px; background: rgba(0,0,0,0.02);
+                border: 1px solid rgba(0,0,0,0.1); border-radius: 8px; font-size: 13px;
+                box-sizing: border-box; transition: all 0.2s; font-family: inherit;
+            }
+            .cor-input:focus {
+                outline: none; border-color: #0052FF; background: #fff;
+                box-shadow: 0 0 0 3px rgba(0,82,255,0.1);
+            }
+            .cor-textarea { min-height: 70px; resize: vertical; }
+            .cor-stream-box {
+                font-family: 'SF Mono', 'JetBrains Mono', Consolas, monospace;
+                font-size: 12px; color: #4a4a4a; line-height: 1.7;
+                max-height: 200px; overflow-y: auto; white-space: pre-wrap;
+                background: rgba(0,0,0,0.02); padding: 14px; border-radius: 10px;
+                border: 1px solid rgba(0,0,0,0.06);
+            }
+            .cor-big-score {
+                font-size: 52px; font-weight: 700; color: #1d1d1f; text-align: center;
+                margin-bottom: 20px; letter-spacing: -1px;
+            }
+            .cor-result-row { font-size: 13px; color: #666; margin-bottom: 8px; text-align: left; }
+            .cor-result-row strong { color: #1d1d1f; }
+            @keyframes cor-slidein {
+                from { opacity: 0; transform: translateX(12px); }
+                to { opacity: 1; transform: translateX(0); }
+            }
+            .cor-step-enter { animation: cor-slidein 0.25s ease-out; }
+        </style>
+        <div class="cor-container">
+            <div class="cor-left">
+                <div class="cor-left-label">学生答题卡</div>
+                ${imagesHtml || '<div style="color:#aaa;font-size:13px;">无图片</div>'}
+            </div>
+            <div class="cor-right">
+                <div class="cor-header">
+                    <span id="cor-step-title">分数纠错</span>
+                    <button class="cor-header-close" id="cor-close-btn">&times;</button>
+                </div>
+                <div class="cor-body" id="cor-step-body"></div>
+                <div class="cor-footer" id="cor-step-footer"></div>
+            </div>
+        </div>
+    `;
     document.body.appendChild(overlay);
+
+    overlay.querySelector('#cor-close-btn').onclick = e => { e.stopPropagation(); cleanup(); if (context.onCancel) context.onCancel(); };
+    overlay.onclick = e => { if (e.target === overlay) { cleanup(); if (context.onCancel) context.onCancel(); } };
 
     let currentStep = 1;
     let feedback = null;
@@ -1353,86 +1467,83 @@ function showCorrectionPanel(context) {
     let newResult = null;
 
     function render() {
-        if (currentStep === 1) renderStep1();
-        else if (currentStep === 2) renderStep2();
-        else if (currentStep === 3) renderStep3();
+        const body = document.getElementById('cor-step-body');
+        const footer = document.getElementById('cor-step-footer');
+        const title = document.getElementById('cor-step-title');
+        if (!body || !footer) return;
+        body.className = 'cor-body cor-step-enter';
+        if (currentStep === 1) renderStep1(title, body, footer);
+        else if (currentStep === 2) renderStep2(title, body, footer);
+        else if (currentStep === 3) renderStep3(title, body, footer);
     }
 
     // ===== 步骤1：教师反馈 =====
-    function renderStep1() {
-        overlay.innerHTML = `
-            <div class="ai-modal-card" style="max-width:600px;">
-                <div class="ai-modal-header">分数纠错</div>
-                <div class="ai-modal-body">
-                    <div style="display:flex;gap:20px;margin-bottom:20px;">
-                        <div style="flex:1;">
-                            <div style="font-size:11px;text-transform:uppercase;letter-spacing:0.8px;color:#86868b;font-weight:600;margin-bottom:6px;">AI评分</div>
-                            <div style="font-size:36px;font-weight:700;color:#1d1d1f;">${context.score}</div>
-                        </div>
-                        <div style="flex:2;">
-                            <div style="font-size:11px;text-transform:uppercase;letter-spacing:0.8px;color:#86868b;font-weight:600;margin-bottom:6px;">识别答案</div>
-                            <div style="font-size:13px;color:#4a4a4a;line-height:1.5;max-height:80px;overflow-y:auto;font-family:'SF Mono',monospace;background:rgba(0,0,0,0.02);padding:10px;border-radius:8px;">${context.studentAnswer || '未能识别'}</div>
-                        </div>
-                    </div>
-                    <div style="border-top:1px solid rgba(0,0,0,0.06);padding-top:16px;">
-                        <div style="font-size:13px;font-weight:600;color:#1a1a1a;margin-bottom:14px;">教师反馈</div>
-                        <div style="margin-bottom:14px;">
-                            <label style="display:block;margin-bottom:6px;color:#666;font-size:12px;font-weight:500;">正确得分</label>
-                            <input id="cor-teacher-score" type="number" style="width:120px;padding:8px 12px;background:rgba(0,0,0,0.02);border:1px solid rgba(0,0,0,0.1);border-radius:8px;font-size:14px;" placeholder="分数">
-                        </div>
-                        <div>
-                            <label style="display:block;margin-bottom:6px;color:#666;font-size:12px;font-weight:500;">评分理由</label>
-                            <textarea id="cor-teacher-reason" style="width:100%;min-height:80px;padding:10px 12px;background:rgba(0,0,0,0.02);border:1px solid rgba(0,0,0,0.1);border-radius:8px;font-size:13px;resize:vertical;box-sizing:border-box;" placeholder="解释为什么应该是这个分数..."></textarea>
-                        </div>
-                    </div>
+    function renderStep1(title, body, footer) {
+        title.textContent = '分数纠错';
+        body.innerHTML = `
+            <div class="cor-score-block">
+                <div class="cor-score-label">AI 评分</div>
+                <div class="cor-score-value">${context.score}</div>
+            </div>
+            <div style="margin-bottom:20px;">
+                <div class="cor-score-label">识别答案</div>
+                <div class="cor-answer-block">${context.studentAnswer || '未能识别'}</div>
+            </div>
+            <div style="border-top:1px solid rgba(0,0,0,0.06);padding-top:16px;">
+                <div style="font-size:13px;font-weight:600;color:#1a1a1a;margin-bottom:14px;">教师反馈</div>
+                <div style="margin-bottom:14px;">
+                    <label class="cor-field-label">正确得分</label>
+                    <input id="cor-teacher-score" class="cor-input" type="number" style="width:120px;" placeholder="分数">
                 </div>
-                <div class="ai-modal-footer">
-                    <button class="ai-modal-btn-cancel" id="cor-cancel">取消</button>
-                    <button class="ai-modal-btn-confirm" id="cor-next">下一步分析</button>
+                <div>
+                    <label class="cor-field-label">评分理由</label>
+                    <textarea id="cor-teacher-reason" class="cor-input cor-textarea" placeholder="解释为什么应该是这个分数..."></textarea>
                 </div>
             </div>
         `;
-        overlay.querySelector('#cor-cancel').onclick = e => { e.stopPropagation(); cleanup(); if (context.onCancel) context.onCancel(); };
-        overlay.querySelector('#cor-next').onclick = e => {
+        footer.innerHTML = `
+            <button class="ai-modal-btn-cancel" id="cor-cancel">取消</button>
+            <button class="ai-modal-btn-confirm" id="cor-next">下一步分析</button>
+        `;
+        footer.className = 'cor-footer';
+
+        footer.querySelector('#cor-cancel').onclick = e => { e.stopPropagation(); cleanup(); if (context.onCancel) context.onCancel(); };
+        footer.querySelector('#cor-next').onclick = e => {
             e.stopPropagation();
-            const scoreVal = overlay.querySelector('#cor-teacher-score').value;
-            const reasonVal = overlay.querySelector('#cor-teacher-reason').value.trim();
+            const scoreVal = body.querySelector('#cor-teacher-score').value;
+            const reasonVal = body.querySelector('#cor-teacher-reason').value.trim();
             if (!scoreVal && scoreVal !== 0) { showAlertModal('请输入正确得分'); return; }
             feedback = { teacherScore: parseFloat(scoreVal), teacherReason: reasonVal || '未说明理由' };
             currentStep = 2;
             render();
         };
-        overlay.onclick = e => { if (e.target === overlay) { cleanup(); if (context.onCancel) context.onCancel(); } };
     }
 
     // ===== 步骤2：AI分析 + 提示词建议 =====
-    function renderStep2() {
-        overlay.innerHTML = `
-            <div class="ai-modal-card" style="max-width:640px;">
-                <div class="ai-modal-header">提示词优化</div>
-                <div class="ai-modal-body" style="max-height:60vh;overflow-y:auto;">
-                    <div id="cor-analysis-stream" style="font-family:'SF Mono','JetBrains Mono',Consolas,monospace;font-size:12px;color:#4a4a4a;line-height:1.6;max-height:180px;overflow-y:auto;white-space:pre-wrap;background:rgba(0,0,0,0.02);padding:14px;border-radius:10px;border:1px solid rgba(0,0,0,0.06);margin-bottom:16px;">AI分析中...</div>
-                    <div id="cor-reason" style="font-size:13px;color:#666;margin-bottom:16px;display:none;"></div>
-                    <div id="cor-edit-section" style="display:none;">
-                        <div style="font-size:13px;font-weight:600;color:#1a1a1a;margin-bottom:12px;">建议修改</div>
-                        <div style="margin-bottom:12px;">
-                            <label style="display:block;margin-bottom:6px;color:#666;font-size:12px;font-weight:500;">参考答案</label>
-                            <textarea id="cor-new-answer" style="width:100%;min-height:70px;padding:10px 12px;background:rgba(0,0,0,0.02);border:1px solid rgba(0,0,0,0.1);border-radius:8px;font-size:13px;resize:vertical;box-sizing:border-box;"></textarea>
-                        </div>
-                        <div style="margin-bottom:12px;">
-                            <label style="display:block;margin-bottom:6px;color:#666;font-size:12px;font-weight:500;">评分标准</label>
-                            <textarea id="cor-new-rubric" style="width:100%;min-height:70px;padding:10px 12px;background:rgba(0,0,0,0.02);border:1px solid rgba(0,0,0,0.1);border-radius:8px;font-size:13px;resize:vertical;box-sizing:border-box;"></textarea>
-                        </div>
-                    </div>
+    function renderStep2(title, body, footer) {
+        title.textContent = '提示词优化';
+        body.innerHTML = `
+            <div id="cor-analysis-stream" class="cor-stream-box" style="margin-bottom:16px;">AI分析中...</div>
+            <div id="cor-reason" style="font-size:13px;color:#666;margin-bottom:16px;display:none;"></div>
+            <div id="cor-edit-section" style="display:none;">
+                <div style="font-size:13px;font-weight:600;color:#1a1a1a;margin-bottom:12px;">建议修改</div>
+                <div style="margin-bottom:12px;">
+                    <label class="cor-field-label">参考答案</label>
+                    <textarea id="cor-new-answer" class="cor-input cor-textarea"></textarea>
                 </div>
-                <div class="ai-modal-footer">
-                    <button class="ai-modal-btn-cancel" id="cor-cancel2">取消</button>
-                    <button class="ai-modal-btn-confirm" id="cor-regrade" style="display:none;">重新批改</button>
+                <div style="margin-bottom:12px;">
+                    <label class="cor-field-label">评分标准</label>
+                    <textarea id="cor-new-rubric" class="cor-input cor-textarea"></textarea>
                 </div>
             </div>
         `;
-        overlay.querySelector('#cor-cancel2').onclick = e => { e.stopPropagation(); cleanup(); if (context.onCancel) context.onCancel(); };
-        overlay.onclick = e => { if (e.target === overlay) { cleanup(); if (context.onCancel) context.onCancel(); } };
+        footer.innerHTML = `
+            <button class="ai-modal-btn-cancel" id="cor-cancel2">取消</button>
+            <button class="ai-modal-btn-confirm" id="cor-regrade" style="display:none;">重新批改</button>
+        `;
+        footer.className = 'cor-footer';
+
+        footer.querySelector('#cor-cancel2').onclick = e => { e.stopPropagation(); cleanup(); if (context.onCancel) context.onCancel(); };
 
         startAnalysis();
     }
@@ -1473,27 +1584,24 @@ function showCorrectionPanel(context) {
     }
 
     // ===== 步骤3：重新批改结果 =====
-    function renderStep3() {
-        overlay.innerHTML = `
-            <div class="ai-modal-card" style="max-width:560px;">
-                <div class="ai-modal-header">纠错结果</div>
-                <div class="ai-modal-body" style="text-align:center;">
-                    <div id="cor-regrade-stream" style="font-family:'SF Mono',monospace;font-size:12px;color:#4a4a4a;line-height:1.6;max-height:120px;overflow-y:auto;white-space:pre-wrap;background:rgba(0,0,0,0.02);padding:14px;border-radius:10px;border:1px solid rgba(0,0,0,0.06);margin-bottom:20px;text-align:left;">重新批改中...</div>
-                    <div id="cor-result-area" style="display:none;">
-                        <div style="font-size:48px;font-weight:700;color:#1d1d1f;margin-bottom:16px;" id="cor-new-score"></div>
-                        <div style="font-size:13px;color:#666;text-align:left;margin-bottom:8px;"><strong>识别答案：</strong><span id="cor-new-answer-text"></span></div>
-                        <div style="font-size:13px;color:#666;text-align:left;"><strong>评语：</strong><span id="cor-new-comment"></span></div>
-                    </div>
-                </div>
-                <div class="ai-modal-footer" style="justify-content:space-between;">
-                    <button class="ai-modal-btn-cancel" id="cor-abandon" style="display:none;">放弃纠错</button>
-                    <div style="display:flex;gap:12px;">
-                        <button class="ai-modal-btn-cancel" id="cor-continue" style="display:none;">继续纠错</button>
-                        <button class="ai-modal-btn-confirm" id="cor-accept" style="display:none;">确认提交</button>
-                    </div>
-                </div>
+    function renderStep3(title, body, footer) {
+        title.textContent = '纠错结果';
+        body.innerHTML = `
+            <div id="cor-regrade-stream" class="cor-stream-box" style="margin-bottom:20px;">重新批改中...</div>
+            <div id="cor-result-area" style="display:none;">
+                <div class="cor-big-score" id="cor-new-score"></div>
+                <div class="cor-result-row"><strong>识别答案：</strong><span id="cor-new-answer-text"></span></div>
+                <div class="cor-result-row"><strong>评语：</strong><span id="cor-new-comment"></span></div>
             </div>
         `;
+        footer.innerHTML = `
+            <button class="ai-modal-btn-cancel" id="cor-abandon" style="display:none;">放弃纠错</button>
+            <div style="display:flex;gap:12px;">
+                <button class="ai-modal-btn-cancel" id="cor-continue" style="display:none;">继续纠错</button>
+                <button class="ai-modal-btn-confirm" id="cor-accept" style="display:none;">确认提交</button>
+            </div>
+        `;
+        footer.className = 'cor-footer cor-footer-between';
     }
 
     async function startRegrading() {
@@ -1638,6 +1746,47 @@ const HistoryManager = {
         this._download(JSON.stringify(this.records, null, 2), '评阅历史_' + this._fileTimestamp() + '.json', 'application/json');
     },
 
+    exportHTML() {
+        const modeLabel = { normal: '普通', unattended: '无人', trial: '试改' };
+        const rows = this.records.map(r => {
+            const time = new Date(r.timestamp).toLocaleString('zh-CN');
+            const mode = modeLabel[r.gradingMode] || r.gradingMode;
+            const scoreText = r.isCorrected ? `${r.aiScore} → ${r.finalScore} ✓` : `${r.finalScore}`;
+            const correctedRow = r.isCorrected ? `<div style="color:#0052FF;font-size:12px;margin-top:4px;">纠错理由：${r.correctionReason || '无'}</div>` : '';
+            const markedRow = r.status === 'marked' ? `<span style="color:#D93025;font-size:11px;margin-left:8px;">⚠ 待回评</span>` : '';
+            const images = (r.imageUrls || []).map(url => `<img src="${url}" style="max-width:100%;border-radius:6px;margin-top:8px;">`).join('');
+            return `
+                <div style="border:1px solid #e5e5e5;border-radius:10px;padding:16px;margin-bottom:12px;page-break-inside:avoid;">
+                    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+                        <span style="color:#86868b;font-size:12px;">${time} · ${r.presetName} · ${mode}模式</span>
+                        <span style="font-size:16px;font-weight:600;">${scoreText}分${markedRow}</span>
+                    </div>
+                    ${correctedRow}
+                    <div style="font-size:13px;color:#4a4a4a;margin:8px 0;line-height:1.6;">
+                        <div><strong>识别答案：</strong>${(r.studentAnswer || '未能识别').replace(/\n/g, '<br>')}</div>
+                        <div style="margin-top:4px;"><strong>AI评语：</strong>${(r.aiComment || '无').replace(/\n/g, '<br>')}</div>
+                    </div>
+                    ${images ? `<div style="margin-top:8px;">${images}</div>` : ''}
+                </div>
+            `;
+        }).join('\n');
+
+        const html = `<!DOCTYPE html>
+<html lang="zh-CN">
+<head><meta charset="UTF-8"><title>评阅历史</title>
+<style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Inter", sans-serif; max-width: 800px; margin: 0 auto; padding: 40px 20px; color: #1d1d1f; }
+    h1 { font-size: 20px; margin-bottom: 4px; }
+    .meta { color: #86868b; font-size: 13px; margin-bottom: 24px; }
+</style></head>
+<body>
+    <h1>评阅历史</h1>
+    <div class="meta">导出时间：${new Date().toLocaleString('zh-CN')} · 共 ${this.records.length} 条记录</div>
+    ${rows || '<div style="color:#aaa;text-align:center;padding:40px;">暂无记录</div>'}
+</body></html>`;
+        this._download(html, '评阅历史_' + this._fileTimestamp() + '.html', 'text/html;charset=utf-8');
+    },
+
     _fileTimestamp() {
         const d = new Date();
         return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0') + '_' +
@@ -1712,7 +1861,7 @@ function showHistoryPanel() {
             .hist-toolbar button { padding:6px 14px; border:1px solid rgba(0,0,0,0.1); background:transparent; border-radius:6px; font-size:12px; cursor:pointer; transition:all 0.2s; }
             .hist-toolbar button:hover { background:rgba(0,0,0,0.03); }
             .hist-toolbar .count { margin-left:auto; font-size:12px; color:#86868b; }
-            .hist-list { flex:1; overflow-y:auto; padding:12px 28px; }
+            .hist-list { flex:1; min-height:0; overflow-y:auto; padding:12px 28px; }
             .hist-item { padding:16px; border:1px solid rgba(0,0,0,0.06); border-radius:12px; margin-bottom:10px; transition:all 0.2s; }
             .hist-item:hover { border-color:rgba(0,0,0,0.12); box-shadow:0 2px 8px rgba(0,0,0,0.04); }
             .hist-item.marked { border-left:3px solid #D93025; }
@@ -1741,6 +1890,7 @@ function showHistoryPanel() {
             <div class="hist-toolbar">
                 <button id="hist-export-csv">导出CSV</button>
                 <button id="hist-export-json">导出JSON</button>
+                <button id="hist-export-html">导出HTML</button>
                 <button id="hist-clear" style="color:#D93025;border-color:rgba(217,48,37,0.2);">清空</button>
                 <span class="count">共 ${HistoryManager.records.length} 条</span>
             </div>
@@ -1754,6 +1904,7 @@ function showHistoryPanel() {
     document.getElementById('hist-close').onclick = close;
     document.getElementById('hist-export-csv').onclick = () => HistoryManager.exportCSV();
     document.getElementById('hist-export-json').onclick = () => HistoryManager.exportJSON();
+    document.getElementById('hist-export-html').onclick = () => HistoryManager.exportHTML();
     document.getElementById('hist-clear').onclick = async () => {
         if (await showConfirmModal('确定要清空所有评阅历史吗？此操作不可撤销。')) {
             HistoryManager.records = [];
@@ -1793,7 +1944,6 @@ function showHistoryPanel() {
                     <div class="hist-item-actions">
                         <button class="hist-detail-btn" data-id="${r.id}">查看详情</button>
                         ${r.status !== 'marked' ? `<button class="hist-mark-btn danger" data-id="${r.id}">标记不正确</button>` : ''}
-                        <button class="hist-regrade-btn primary" data-id="${r.id}">回评</button>
                     </div>
                 </div>
             `;
@@ -1804,14 +1954,6 @@ function showHistoryPanel() {
         });
         listEl.querySelectorAll('.hist-mark-btn').forEach(btn => {
             btn.onclick = () => { HistoryManager.markIncorrect(btn.dataset.id); renderList(); showToast('已标记为不正确'); };
-        });
-        listEl.querySelectorAll('.hist-regrade-btn').forEach(btn => {
-            btn.onclick = async () => {
-                if (await showConfirmModal('确定要回评此记录吗？将导航到对应试题页面。')) {
-                    panel.remove();
-                    HistoryManager.startRegrade(btn.dataset.id);
-                }
-            };
         });
     }
 
@@ -1834,12 +1976,12 @@ function showHistoryDetail(record) {
     const imagesHtml = (record.imageUrls || []).map(url => `<img src="${url}" style="max-width:100%;border-radius:8px;margin-bottom:8px;">`).join('');
 
     overlay.innerHTML = `
-        <div class="ai-modal-card" style="max-width:700px;max-height:85vh;overflow-y:auto;">
+        <div class="ai-modal-card" style="max-width:700px;max-height:85vh;overflow:hidden;">
             <div class="ai-modal-header" style="display:flex;justify-content:space-between;align-items:center;">
                 <span>评阅详情</span>
                 <button style="background:none;border:none;font-size:18px;cursor:pointer;color:#666;padding:4px 8px;" id="detail-close">×</button>
             </div>
-            <div class="ai-modal-body">
+            <div class="ai-modal-body" style="max-height:calc(85vh - 60px);overflow-y:auto;">
                 <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px;">
                     <div><div style="font-size:11px;color:#86868b;text-transform:uppercase;font-weight:600;margin-bottom:4px;">时间</div><div style="font-size:13px;">${time}</div></div>
                     <div><div style="font-size:11px;color:#86868b;text-transform:uppercase;font-weight:600;margin-bottom:4px;">方案 / 模式</div><div style="font-size:13px;">${record.presetName} · ${modeLabel}</div></div>

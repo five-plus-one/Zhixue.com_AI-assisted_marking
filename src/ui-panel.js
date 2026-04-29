@@ -63,10 +63,35 @@ function createSettingsPanel() {
             }
             .preset-btn:hover { background: rgba(0,0,0,0.03); color: #1a1a1a; border-color: rgba(0,0,0,0.2); }
             .preset-btn.danger:hover { color: #D93025; border-color: rgba(217,48,37,0.3); background: rgba(217,48,37,0.04); }
-            .unattended-warning { 
-                background: rgba(245, 108, 108, 0.05); border-left: 3px solid #F56C6C; border-radius: 0 6px 6px 0; 
-                padding: 10px 14px; font-size: 12px; color: #D93025; line-height: 1.5; margin-top: 8px; 
+            .unattended-warning {
+                background: rgba(245, 108, 108, 0.05); border-left: 3px solid #F56C6C; border-radius: 0 6px 6px 0;
+                padding: 10px 14px; font-size: 12px; color: #D93025; line-height: 1.5; margin-top: 8px;
             }
+            .mode-segmented {
+                display: flex; gap: 0; background: rgba(0,0,0,0.04); border-radius: 10px; padding: 3px; position: relative;
+            }
+            .mode-segmented input[type="radio"] { display: none; }
+            .mode-segmented label {
+                flex: 1; text-align: center; padding: 10px 0; font-size: 13px; font-weight: 500;
+                color: #666; cursor: pointer; border-radius: 8px; transition: all 0.25s; position: relative; z-index: 1;
+            }
+            .mode-segmented input[type="radio"]:checked + label {
+                background: #1d1d1f; color: #fff; box-shadow: 0 2px 8px rgba(0,0,0,0.12);
+            }
+            .mode-segmented input[value="trial"]:checked + label { background: #7c3aed; }
+            .mode-segmented input[value="unattended"]:checked + label { background: #D93025; }
+            .mode-desc {
+                font-size: 12px; color: #86868b; line-height: 1.5; margin-top: 10px; min-height: 36px;
+            }
+            .mode-desc.trial-desc { color: #7c3aed; }
+            .mode-desc.unattended-desc { color: #D93025; }
+            .history-btn {
+                width: 100%; padding: 10px; background: transparent; color: #666;
+                border: 1px solid rgba(0,0,0,0.1); border-radius: 8px;
+                font-size: 13px; font-weight: 500; cursor: pointer; transition: all 0.2s;
+                display: flex; align-items: center; justify-content: center; gap: 6px;
+            }
+            .history-btn:hover { background: rgba(0,0,0,0.03); color: #1a1a1a; border-color: rgba(0,0,0,0.2); }
             .api-key-link { display: inline-block; margin-top: 8px; font-size: 12px; color: #0052FF; text-decoration: none; font-weight: 500; }
             .api-key-link:hover { text-decoration: underline; }
             .save-btn-container { 
@@ -110,13 +135,15 @@ function createSettingsPanel() {
 
             <div class="form-section">
                 <h4>运行模式</h4>
-                <div class="checkbox-group" style="margin-bottom:0;">
-                    <input type="checkbox" id="unattended-mode">
-                    <label for="unattended-mode">开启无人值守</label>
+                <div class="mode-segmented">
+                    <input type="radio" name="grading-mode" value="normal" id="mode-normal">
+                    <label for="mode-normal">普通模式</label>
+                    <input type="radio" name="grading-mode" value="trial" id="mode-trial">
+                    <label for="mode-trial">试改模式</label>
+                    <input type="radio" name="grading-mode" value="unattended" id="mode-unattended">
+                    <label for="mode-unattended">无人模式</label>
                 </div>
-                <div class="unattended-warning" id="unattended-warning" style="display: none;">
-                    无人值守：错误时自动重试，静默运行，分析完成后1秒自动跳转提交。
-                </div>
+                <div class="mode-desc" id="mode-desc">每批改一份，等待教师确认后提交。</div>
             </div>
             <div class="form-section">
                 <h4>批改上下文</h4>
@@ -138,6 +165,9 @@ function createSettingsPanel() {
                 <div class="form-group"><label>通信密钥 (Token) *</label><input type="password" id="api-key"></div>
                 <div class="form-group"><label>调用模型 ID</label><input type="text" id="model-name"></div>
             </div>
+            <div class="form-section" style="padding-bottom:20px;">
+                <button class="history-btn" id="btn-history">评阅历史</button>
+            </div>
         </div>
     `;
     document.body.appendChild(panel);
@@ -152,14 +182,24 @@ function createSettingsPanel() {
     panel.querySelector('#btn-del-preset').onclick = handleDeletePreset;
     panel.querySelector('#preset-select').onchange = handlePresetChange;
     panel.querySelector('#save-config-btn').onclick = saveAISettings;
+    panel.querySelector('#btn-history').onclick = () => showHistoryPanel();
 
-    const unattendedCheckbox = panel.querySelector('#unattended-mode');
-    const unattendedWarning = panel.querySelector('#unattended-warning');
-    unattendedCheckbox.addEventListener('change', function() {
-        unattendedWarning.style.display = this.checked ? 'block' : 'none';
+    const modeDescs = {
+        normal: '每批改一份，5秒自动提交或手动确认。支持分数纠错。',
+        trial: '试改模式：每次批改后暂停，教师确认分数后才提交。支持分数纠错和提示词优化。',
+        unattended: '无人值守：错误时自动重试，静默运行，分析完成后1秒自动跳转提交。'
+    };
+    const modeDescClasses = { normal: '', trial: 'trial-desc', unattended: 'unattended-desc' };
+    panel.querySelectorAll('input[name="grading-mode"]').forEach(radio => {
+        radio.addEventListener('change', function() {
+            const desc = panel.querySelector('#mode-desc');
+            desc.textContent = modeDescs[this.value];
+            desc.className = 'mode-desc ' + (modeDescClasses[this.value] || '');
+            markUnsavedChanges();
+        });
     });
 
-    const inputs = panel.querySelectorAll('input:not(#preset-select), textarea, select:not(#preset-select)');
+    const inputs = panel.querySelectorAll('input:not([name="grading-mode"]), textarea, select:not(#preset-select)');
     inputs.forEach(input => {
         input.addEventListener('input', markUnsavedChanges);
         input.addEventListener('change', markUnsavedChanges);
@@ -226,12 +266,20 @@ function fillFormFromActivePreset() {
     document.getElementById('api-endpoint').value = config.endpoint || SCRIPT_CONFIG.DEFAULT_ENDPOINT;
     document.getElementById('api-key').value = config.apiKey || '';
     document.getElementById('model-name').value = config.model || SCRIPT_CONFIG.DEFAULT_MODEL;
-    document.getElementById('unattended-mode').checked = config.unattendedMode || false;
+
+    const gradingMode = config.gradingMode || 'normal';
+    const modeRadio = document.querySelector(`input[name="grading-mode"][value="${gradingMode}"]`);
+    if (modeRadio) modeRadio.checked = true;
+    const modeDescs = {
+        normal: '每批改一份，5秒自动提交或手动确认。支持分数纠错。',
+        trial: '试改模式：每次批改后暂停，教师确认分数后才提交。支持分数纠错和提示词优化。',
+        unattended: '无人值守：错误时自动重试，静默运行，分析完成后1秒自动跳转提交。'
+    };
+    const modeDescClasses = { normal: '', trial: 'trial-desc', unattended: 'unattended-desc' };
+    const desc = document.getElementById('mode-desc');
+    if (desc) { desc.textContent = modeDescs[gradingMode]; desc.className = 'mode-desc ' + (modeDescClasses[gradingMode] || ''); }
 
     document.getElementById('bind-url-checkbox').checked = (PresetManager.data.bindings[currentUrlId] === PresetManager.data.active);
-
-    const unattendedWarning = document.getElementById('unattended-warning');
-    unattendedWarning.style.display = config.unattendedMode ? 'block' : 'none';
 
     updateUIVisibility();
     clearUnsavedChanges();
@@ -284,6 +332,9 @@ async function handleDeletePreset() {
 }
 
 function saveAISettings() {
+    const checkedMode = document.querySelector('input[name="grading-mode"]:checked');
+    const gradingMode = checkedMode ? checkedMode.value : 'normal';
+
     const config = {
         question: document.getElementById('question-content').value,
         answer: document.getElementById('standard-answer').value,
@@ -292,7 +343,7 @@ function saveAISettings() {
         endpoint: document.getElementById('api-endpoint').value,
         apiKey: document.getElementById('api-key').value,
         model: document.getElementById('model-name').value,
-        unattendedMode: document.getElementById('unattended-mode').checked
+        gradingMode
     };
 
     const activeName = PresetManager.data.active;
@@ -310,7 +361,8 @@ function saveAISettings() {
 
     PresetManager.save();
     clearUnsavedChanges();
-    safeAlert(config.unattendedMode ? `「${activeName}」已保存并开启无人值守。` : `「${activeName}」配置已保存。`);
+    const modeLabel = { normal: '普通模式', trial: '试改模式', unattended: '无人模式' }[gradingMode];
+    safeAlert(`「${activeName}」已保存 — ${modeLabel}`);
 
     const panel = document.getElementById('ai-grading-settings');
     if (panel) {

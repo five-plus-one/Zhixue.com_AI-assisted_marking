@@ -101,7 +101,7 @@ function showUpdateDialog(remoteVersion) {
  */
 function checkForUpdate() {
     // 无人值守模式：不提醒
-    if (window.aiGradingState && window.aiGradingState.unattendedMode) return;
+    if (window.aiGradingState && window.aiGradingState.gradingMode === 'unattended') return;
 
     const now = Date.now();
     const lastCheck = GM_getValue('last-update-check', 0);

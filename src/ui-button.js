@@ -1,13 +1,14 @@
 // ========== 全局状态 ==========
 window.aiGradingState = {
     isRunning: false, isPaused: false, currentStudentAnswer: '', currentImageUrls: [],
+    currentBase64DataArray: [],
     abortController: null, countdownPaused: false, autoRefreshOn403: true,
-    unattendedMode: false, errorRetryCount: 0, maxRetries: 3,
-    hasUnsavedChanges: false
+    gradingMode: 'normal', errorRetryCount: 0, maxRetries: 3,
+    hasUnsavedChanges: false, isRegrading: false
 };
 
 function safeAlert(message) {
-    if (window.aiGradingState.unattendedMode) {
+    if (window.aiGradingState.gradingMode === 'unattended') {
         console.log('📢 [静默提示]', message);
     } else {
         showToast(message);
@@ -48,6 +49,7 @@ function createMainButton() {
         .ai-grade-btn.paused { border-color: rgba(230, 162, 60, 0.5); background: rgba(30,30,30,0.9); }
         .ai-grade-btn.running { border-color: rgba(64, 158, 255, 0.5); }
         .ai-grade-btn.unattended { border-color: rgba(245, 108, 108, 0.5); }
+        .ai-grade-btn.trial { border-color: rgba(124, 58, 237, 0.5); }
         .ai-grade-btn.needs-save { background: rgba(245, 108, 108, 0.05) !important; color: #D93025; border-color: rgba(217, 48, 37, 0.2); box-shadow: none !important; }
         
         .toast-notification { 
@@ -300,16 +302,18 @@ function toggleAutoGrading() {
         window.aiGradingState.errorRetryCount = 0;
 
         const config = PresetManager.getCurrentConfig();
-        window.aiGradingState.unattendedMode = config.unattendedMode || false;
+        window.aiGradingState.gradingMode = config.gradingMode || 'normal';
 
-        if (window.aiGradingState.unattendedMode) {
+        btn.classList.remove('paused', 'unattended', 'trial');
+        btn.classList.add('running');
+        if (window.aiGradingState.gradingMode === 'unattended') {
             btn.textContent = '自动批改中…';
-            btn.classList.remove('paused');
-            btn.classList.add('running', 'unattended');
+            btn.classList.add('unattended');
+        } else if (window.aiGradingState.gradingMode === 'trial') {
+            btn.textContent = '试改中…';
+            btn.classList.add('trial');
         } else {
             btn.textContent = '暂停';
-            btn.classList.remove('paused', 'unattended');
-            btn.classList.add('running');
         }
 
         const panel = document.getElementById('ai-grading-settings');
@@ -389,12 +393,12 @@ function hideStreamPanel() {
 function stopAutoGrading() {
     window.aiGradingState.isRunning = false;
     window.aiGradingState.isPaused = false;
-    window.aiGradingState.unattendedMode = false;
+    window.aiGradingState.gradingMode = 'normal';
     window.aiGradingState.errorRetryCount = 0;
     if (window.aiGradingState.abortController) window.aiGradingState.abortController.abort();
 
     const btn = document.querySelector('.ai-grade-btn');
-    if (btn) { btn.textContent = 'AI 批改'; btn.classList.remove('running', 'paused', 'unattended'); }
+    if (btn) { btn.textContent = 'AI 批改'; btn.classList.remove('running', 'paused', 'unattended', 'trial'); }
     const dialog = document.getElementById('auto-submit-dialog');
     if (dialog) dialog.remove();
     hideStreamPanel();
@@ -431,28 +435,46 @@ function fillScore(score, comment) {
 function showAutoSubmitDialog(score, comment) {
     const oldDialog = document.getElementById('auto-submit-dialog');
     if (oldDialog) oldDialog.remove();
-    console.log(`🪟 [诊断] showAutoSubmitDialog 调用 — 分数: ${score}, 无人值守: ${window.aiGradingState.unattendedMode}`);
+
+    const mode = window.aiGradingState.gradingMode;
+    console.log(`🪟 [诊断] showAutoSubmitDialog 调用 — 分数: ${score}, 模式: ${mode}`);
 
     window.aiGradingState.countdownPaused = false;
     const studentAnswer = window.aiGradingState.currentStudentAnswer;
     const imageUrls = window.aiGradingState.currentImageUrls || [];
-    const countdownSeconds = window.aiGradingState.unattendedMode ? 1 : 5;
+    const isUnattended = mode === 'unattended';
+    const isTrial = mode === 'trial';
+    const countdownSeconds = isUnattended ? 1 : 5;
+    const showCountdown = !isTrial;
+    const showCorrectionBtn = !isUnattended; // 普通模式和试改模式显示"分数有误"
+
+    const headerLabel = isTrial ? '试改确认' : '批改完成';
+    const modeTag = isUnattended ? '<span style="color:#888;font-weight:normal;font-size:13px;margin-left:8px;">[自动模式]</span>'
+                   : isTrial ? '<span style="color:#7c3aed;font-weight:normal;font-size:13px;margin-left:8px;">[试改模式]</span>' : '';
 
     const imagesHtml = imageUrls.map(url => `<img src="${url}" style="width: 100%; height: auto; display: block; border-bottom: 2px dashed #DCDFE6; margin-bottom: -2px;">`).join('');
+
+    const correctionBtnHtml = showCorrectionBtn
+        ? `<button class="cancel-btn" id="correction-btn" style="color:#D93025;border:1px solid rgba(217,48,37,0.2);background:rgba(217,48,37,0.04);">分数有误</button>` : '';
+    const pauseBtnHtml = isTrial ? '' : `<button class="cancel-btn" id="pause-cancel-btn">暂停</button>`;
+    const confirmLabel = isTrial ? '确认提交' : '立即提交';
+    const countdownHtml = showCountdown
+        ? `<div class="countdown-text" id="countdown-display">自动跳转提交 <span id="countdown-number">${countdownSeconds}</span>秒</div>`
+        : `<div class="countdown-text" id="countdown-display" style="color:#7c3aed;">等待教师确认</div>`;
 
     const dialog = document.createElement('div');
     dialog.id = 'auto-submit-dialog';
     dialog.innerHTML = `
         <style>
-            #auto-submit-dialog { 
-                position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); z-index: 999999; 
-                background: rgba(255, 255, 255, 0.85); 
+            #auto-submit-dialog {
+                position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); z-index: 999999;
+                background: rgba(255, 255, 255, 0.85);
                 backdrop-filter: blur(32px) saturate(180%);
                 -webkit-backdrop-filter: blur(32px) saturate(180%);
                 border: 1px solid rgba(255, 255, 255, 0.6);
-                border-radius: 24px; 
-                box-shadow: 0 40px 80px rgba(0,0,0,0.12), inset 0 1px 0 rgba(255,255,255,0.4); 
-                width: 900px; max-width: 94vw; max-height: 90vh; overflow: hidden; 
+                border-radius: 24px;
+                box-shadow: 0 40px 80px rgba(0,0,0,0.12), inset 0 1px 0 rgba(255,255,255,0.4);
+                width: 900px; max-width: 94vw; max-height: 90vh; overflow: hidden;
                 display: flex; flex-direction: column;
                 font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Inter", sans-serif;
             }
@@ -478,7 +500,7 @@ function showAutoSubmitDialog(score, comment) {
         </style>
         <div class="overlay"></div>
         <div class="dialog-header">
-            <span>批改完成 ${window.aiGradingState.unattendedMode ? '<span style="color:#888;font-weight:normal;font-size:13px;margin-left:8px;">[自动模式]</span>' : ''}</span>
+            <span>${headerLabel} ${modeTag}</span>
         </div>
         <div class="content-grid">
             <div class="student-image">${imagesHtml}</div>
@@ -489,31 +511,71 @@ function showAutoSubmitDialog(score, comment) {
             </div>
         </div>
         <div class="dialog-footer">
-            <div class="countdown-text" id="countdown-display">自动跳转提交 <span id="countdown-number">${countdownSeconds}</span>秒</div>
+            ${countdownHtml}
             <div class="buttons">
-                <button class="cancel-btn" id="pause-cancel-btn">暂停</button>
-                <button class="confirm-btn" id="confirm-submit-btn">立即提交</button>
+                ${correctionBtnHtml}
+                ${pauseBtnHtml}
+                <button class="confirm-btn" id="confirm-submit-btn">${confirmLabel}</button>
             </div>
         </div>
     `;
     document.body.appendChild(dialog);
-    console.log(`✅ [诊断] 弹窗已插入DOM，z-index: 999999，倒计时: ${countdownSeconds}秒`);
 
-    dialog.querySelector('#pause-cancel-btn').addEventListener('click', () => {
-        if (!window.aiGradingState.countdownPaused) {
-            window.aiGradingState.countdownPaused = true;
-            dialog.querySelector('#pause-cancel-btn').textContent = '撤销并退出';
-            dialog.querySelector('#countdown-display').innerHTML = '已暂停';
-        } else {
+    // "分数有误" 按钮 — 打开纠错流程
+    if (showCorrectionBtn) {
+        dialog.querySelector('#correction-btn').addEventListener('click', () => {
             if (dialog.countdownTimer) clearInterval(dialog.countdownTimer);
             dialog.remove();
-            stopAutoGrading();
-        }
-    });
+            showCorrectionPanel({
+                score, comment, studentAnswer, imageUrls,
+                base64DataArray: window.aiGradingState.currentBase64DataArray || [],
+                config: PresetManager.getCurrentConfig(),
+                onAccept(finalScore, correctionInfo) {
+                    HistoryManager.add({
+                        presetName: PresetManager.data.active,
+                        gradingMode: mode,
+                        imageUrls, studentAnswer,
+                        aiScore: score, aiComment: comment,
+                        finalScore, isCorrected: correctionInfo.isCorrected,
+                        correctionReason: correctionInfo.correctionReason
+                    });
+                    fillScore(finalScore, comment);
+                },
+                onCancel() {
+                    // 纠错取消，重新弹出原对话框
+                    showAutoSubmitDialog(score, comment);
+                }
+            });
+        });
+    }
+
+    // "暂停" 按钮（试改模式不显示）
+    if (!isTrial) {
+        dialog.querySelector('#pause-cancel-btn').addEventListener('click', () => {
+            if (!window.aiGradingState.countdownPaused) {
+                window.aiGradingState.countdownPaused = true;
+                dialog.querySelector('#pause-cancel-btn').textContent = '撤销并退出';
+                dialog.querySelector('#countdown-display').innerHTML = '已暂停';
+            } else {
+                if (dialog.countdownTimer) clearInterval(dialog.countdownTimer);
+                dialog.remove();
+                stopAutoGrading();
+            }
+        });
+    }
 
     const confirmSubmitFn = () => {
         if (dialog.countdownTimer) clearInterval(dialog.countdownTimer);
         dialog.remove();
+
+        // 记录评阅历史
+        HistoryManager.add({
+            presetName: PresetManager.data.active,
+            gradingMode: mode,
+            imageUrls, studentAnswer,
+            aiScore: score, aiComment: comment,
+            finalScore: score, isCorrected: false, correctionReason: ''
+        });
 
         const allBtns = Array.from(document.querySelectorAll('button'));
         console.log(`🔎 [诊断] confirmSubmitFn 执行 — 页面按钮总数: ${allBtns.length}，文字列表: ${allBtns.map(b => b.textContent.trim()).filter(t => t).join(' | ')}`);
@@ -548,18 +610,21 @@ function showAutoSubmitDialog(score, comment) {
         } else {
             console.warn(`⚠️ [诊断] 未找到"提交分数"按钮，无法自动提交`);
             safeAlert('✅ 分数已填，但未找到页面的"提交分数"按钮');
-            if (window.aiGradingState.unattendedMode) stopAutoGrading();
+            if (mode === 'unattended') stopAutoGrading();
         }
     };
 
     dialog.querySelector('#confirm-submit-btn').addEventListener('click', confirmSubmitFn);
 
-    let countdown = countdownSeconds;
-    dialog.countdownTimer = setInterval(() => {
-        if (window.aiGradingState.countdownPaused) return;
-        countdown--;
-        const span = dialog.querySelector('#countdown-number');
-        if (span) span.textContent = countdown;
-        if (countdown <= 0) confirmSubmitFn();
-    }, 1000);
+    // 试改模式不启动倒计时
+    if (showCountdown) {
+        let countdown = countdownSeconds;
+        dialog.countdownTimer = setInterval(() => {
+            if (window.aiGradingState.countdownPaused) return;
+            countdown--;
+            const span = dialog.querySelector('#countdown-number');
+            if (span) span.textContent = countdown;
+            if (countdown <= 0) confirmSubmitFn();
+        }, 1000);
+    }
 }

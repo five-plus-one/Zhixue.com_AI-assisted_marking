@@ -19,10 +19,22 @@ function parseAIResponseText(text) {
     };
 }
 
-// ========== AI 核心请求 (直接用 GM_xmlhttpRequest onprogress 处理 SSE，兼容所有 Tampermonkey 版本) ==========
-function callAIGrading(base64DataArray, config, onStreamUpdate) {
+function parsePromptModification(text) {
+    const reasonMatch = text.match(/修改理由[：:]\s*(.+?)(?=\n新|$)/s);
+    const questionMatch = text.match(/新题目内容[：:]\s*(.+?)(?=\n新|$)/s);
+    const answerMatch = text.match(/新参考答案[：:]\s*(.+?)(?=\n新|$)/s);
+    const rubricMatch = text.match(/新评分标准[：:]\s*(.+)/s);
+    return {
+        reason: reasonMatch ? reasonMatch[1].trim() : '',
+        question: questionMatch ? questionMatch[1].trim() : '不变',
+        answer: answerMatch ? answerMatch[1].trim() : '不变',
+        rubric: rubricMatch ? rubricMatch[1].trim() : '不变'
+    };
+}
+
+// ========== 通用 AI 请求函数 ==========
+function callAI(prompt, base64DataArray, config, onStreamUpdate) {
     return new Promise((resolve, reject) => {
-        const prompt = buildPrompt(config);
         const messageContent = [{ type: "text", text: prompt }];
         base64DataArray.forEach(base64Data => {
             messageContent.push({ type: "image_url", image_url: { url: `data:image/png;base64,${base64Data}` } });
@@ -70,16 +82,12 @@ function callAIGrading(base64DataArray, config, onStreamUpdate) {
                 'Authorization': `Bearer ${config.apiKey}`
             },
             data: JSON.stringify(requestBody),
-            // 不指定 responseType，让 Tampermonkey 自动选择最兼容的模式
-            // 避免 responseType:'stream' 导致 onload 中 responseText 为空的问题
             onprogress: function(res) {
-                // 支持 stream 的 Tampermonkey 版本：responseText 会逐步追加
                 if (res.responseText) {
                     progressCallCount++;
                     if (progressCallCount === 1) {
                         console.log('✅ [诊断] onprogress 已触发，当前环境支持流式输出');
                     }
-                    // onprogress 每次给的是全量 responseText，重置后重新解析以保证流式面板实时更新
                     fullText = '';
                     buffer = '';
                     parseSSEBuffer(res.responseText);
@@ -98,16 +106,10 @@ function callAIGrading(base64DataArray, config, onStreamUpdate) {
                     console.error(`❌ [诊断] API返回错误: ${res.status} — ${errorMsg}`);
                     return reject(new Error(`API报错 (${res.status}): ${errorMsg}`));
                 }
-                // onload 时用完整 responseText 做最终解析（确保不遗漏任何内容）
                 fullText = '';
                 buffer = '';
                 parseSSEBuffer(res.responseText || '');
-                const parsed = parseAIResponseText(fullText);
-                console.log(`🧠 [诊断] AI响应解析结果 — 分数: ${parsed.score}, 识别答案长度: ${(parsed.studentAnswer || '').length}字, 原始文本长度: ${fullText.length}字`);
-                if (parsed.score === null) {
-                    console.warn('⚠️ [诊断] 分数解析为 null，原始AI返回文本如下：\n' + fullText);
-                }
-                resolve(parsed);
+                resolve(fullText);
             },
             onerror: function() {
                 if (settled) return;
@@ -133,4 +135,17 @@ function callAIGrading(base64DataArray, config, onStreamUpdate) {
             });
         }
     });
+}
+
+// ========== 打分专用函数 ==========
+function callAIGrading(base64DataArray, config, onStreamUpdate) {
+    return callAI(buildPrompt(config), base64DataArray, config, onStreamUpdate)
+        .then(fullText => {
+            const parsed = parseAIResponseText(fullText);
+            console.log(`🧠 [诊断] AI响应解析结果 — 分数: ${parsed.score}, 识别答案长度: ${(parsed.studentAnswer || '').length}字, 原始文本长度: ${fullText.length}字`);
+            if (parsed.score === null) {
+                console.warn('⚠️ [诊断] 分数解析为 null，原始AI返回文本如下：\n' + fullText);
+            }
+            return parsed;
+        });
 }

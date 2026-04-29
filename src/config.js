@@ -3,7 +3,7 @@
 
 const SCRIPT_CONFIG = {
     /** 当前脚本版本号，修改此处即可同步更新所有引用 */
-    VERSION: '1.7.0',
+    VERSION: '1.8.0',
 
     /** 远端原始脚本地址（用于检查更新） */
     UPDATE_CHECK_URL: 'https://raw.githubusercontent.com/five-plus-one/Zhixue.com_AI-assisted_marking/main/dist/zhixue_ai_marking.user.js',
@@ -15,5 +15,5 @@ const SCRIPT_CONFIG = {
     DEFAULT_ENDPOINT: 'https://api.ai.five-plus-one.com/v1/chat/completions',
 
     /** 默认模型 */
-    DEFAULT_MODEL: 'doubao-seed-1-8-251228',
+    DEFAULT_MODEL: 'mimo-v2.5',
 };

@@ -63,7 +63,7 @@ async function startAutoGrading() {
         console.log(`🖼️ [诊断] 找到答题卡图片数量: ${imgElements.length}`);
 
         if (!imgElements || imgElements.length === 0) {
-            if (window.aiGradingState.unattendedMode) {
+            if (window.aiGradingState.gradingMode === 'unattended') {
                 stopAutoGrading();
                 safeAlert('✅ 所有试卷已批改完成！');
                 return;
@@ -77,24 +77,25 @@ async function startAutoGrading() {
         window.aiGradingState.currentImageUrls = imageUrls;
 
         const gradeBtn = document.querySelector('.ai-grade-btn');
-        if (gradeBtn && !window.aiGradingState.unattendedMode) {
+        if (gradeBtn && window.aiGradingState.gradingMode !== 'unattended') {
             gradeBtn.textContent = imageUrls.length > 1 ? `📥 下载多图(${imageUrls.length})...` : '📥 下载图片...';
         }
 
         console.log(`📥 [诊断] 开始下载 ${imageUrls.length} 张图片...`);
         const base64DataArray = await Promise.all(imageUrls.map(url => fetchImageAsBase64(url)));
+        window.aiGradingState.currentBase64DataArray = base64DataArray;
         console.log(`✅ [诊断] 图片下载完成，各图片Base64大小: ${base64DataArray.map(b => Math.round(b.length / 1024) + 'KB').join(', ')}`);
 
         if (window.aiGradingState.isPaused) throw new Error('用户暂停');
 
-        if (gradeBtn && !window.aiGradingState.unattendedMode) {
+        if (gradeBtn && window.aiGradingState.gradingMode !== 'unattended') {
             gradeBtn.textContent = '⏳ AI分析中...';
             showStreamPanel();
         }
 
         console.log('🤖 [诊断] 开始调用AI接口...');
         const result = await callAIGrading(base64DataArray, config, (streamedText) => {
-            if (!window.aiGradingState.unattendedMode) updateStreamPanel(streamedText);
+            if (window.aiGradingState.gradingMode !== 'unattended') updateStreamPanel(streamedText);
         });
 
         hideStreamPanel();
@@ -116,7 +117,7 @@ async function startAutoGrading() {
             console.log('⏸️ 请求已被暂停');
         } else {
             console.error('❌ 打分失败:', error);
-            if (window.aiGradingState.unattendedMode) {
+            if (window.aiGradingState.gradingMode === 'unattended') {
                 window.aiGradingState.errorRetryCount++;
                 if (window.aiGradingState.errorRetryCount <= window.aiGradingState.maxRetries) {
                     sessionStorage.setItem('ai-grading-auto-resume', 'true');
@@ -154,6 +155,57 @@ async function init() {
         sessionStorage.removeItem('ai-grading-retry-count');
         setTimeout(() => toggleAutoGrading(), 3000);
     }
+
+    // 检查是否有回评任务
+    const regradeData = sessionStorage.getItem('ai-grading-regrade');
+    if (regradeData) {
+        try {
+            const { id } = JSON.parse(regradeData);
+            const record = HistoryManager.getById(id);
+            if (record) {
+                window.aiGradingState.isRegrading = true;
+                showToast('正在加载回评数据...');
+                setTimeout(async () => {
+                    // 等待图片加载
+                    const imgElements = document.querySelectorAll('div[name="topicImg"] img');
+                    if (imgElements.length === 0) {
+                        showAlertModal('未找到答题卡图片，无法回评。').then(() => {
+                            sessionStorage.removeItem('ai-grading-regrade');
+                            window.aiGradingState.isRegrading = false;
+                        });
+                        return;
+                    }
+                    const imageUrls = Array.from(imgElements).map(img => img.src);
+                    const base64DataArray = await Promise.all(imageUrls.map(url => fetchImageAsBase64(url)));
+                    window.aiGradingState.currentBase64DataArray = base64DataArray;
+
+                    showCorrectionPanel({
+                        score: record.aiScore, comment: record.aiComment,
+                        studentAnswer: record.studentAnswer, imageUrls,
+                        base64DataArray, config: PresetManager.getCurrentConfig(),
+                        onAccept(finalScore, correctionInfo) {
+                            HistoryManager.update(id, {
+                                finalScore, isCorrected: correctionInfo.isCorrected,
+                                correctionReason: correctionInfo.correctionReason, status: 'submitted'
+                            });
+                            fillScore(finalScore, record.aiComment);
+                            sessionStorage.removeItem('ai-grading-regrade');
+                            window.aiGradingState.isRegrading = false;
+                            showToast('回评完成！分数已填入。');
+                        },
+                        onCancel() {
+                            sessionStorage.removeItem('ai-grading-regrade');
+                            window.aiGradingState.isRegrading = false;
+                            showToast('已取消回评');
+                        }
+                    });
+                }, 3000);
+            }
+        } catch (e) {
+            console.error('回评数据解析失败:', e);
+            sessionStorage.removeItem('ai-grading-regrade');
+        }
+    }
 }
 
 console.log('🚀 智学网AI打分助手加载中...');
@@ -171,6 +223,8 @@ setInterval(() => {
     const currentUrlId = PresetManager.getTaskIdentifier();
     if (currentUrlId !== lastUrlId) {
         lastUrlId = currentUrlId;
+
+        if (window.aiGradingState.isRegrading) return;
 
         if (!window.aiGradingState.isRunning) {
             const boundPreset = PresetManager.data.bindings[currentUrlId];

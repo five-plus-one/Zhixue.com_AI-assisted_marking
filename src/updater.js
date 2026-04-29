@@ -40,31 +40,40 @@ function showUpdateDialog(remoteVersion) {
         <style>
             #ai-update-dialog {
                 position: fixed; bottom: 30px; left: 30px; z-index: 1000000;
-                background: white; border-radius: 12px;
-                box-shadow: 0 10px 40px rgba(0,0,0,0.25);
-                padding: 20px 24px; width: 320px;
-                font-family: sans-serif; border-left: 4px solid #67C23A;
-                animation: slide-in-update 0.4s ease;
+                background: rgba(255, 255, 255, 0.95); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
+                border: 1px solid rgba(0,0,0,0.06); border-radius: 12px;
+                box-shadow: 0 16px 40px rgba(0,0,0,0.1), 0 4px 12px rgba(0,0,0,0.04);
+                padding: 24px; width: 320px;
+                font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Inter", sans-serif;
+                animation: slide-in-update 0.4s cubic-bezier(0.16, 1, 0.3, 1);
             }
             @keyframes slide-in-update {
                 from { opacity: 0; transform: translateY(20px); }
                 to   { opacity: 1; transform: translateY(0); }
             }
-            #ai-update-dialog .upd-title { font-size: 15px; font-weight: bold; color: #303133; margin-bottom: 8px; }
-            #ai-update-dialog .upd-body  { font-size: 13px; color: #606266; margin-bottom: 16px; line-height: 1.6; }
-            #ai-update-dialog .upd-btns  { display: flex; gap: 8px; }
-            #ai-update-dialog .upd-btn   { flex: 1; padding: 8px 0; border: none; border-radius: 6px; font-size: 13px; font-weight: bold; cursor: pointer; }
-            #ai-update-dialog .upd-btn-primary { background: #67C23A; color: white; }
-            #ai-update-dialog .upd-btn-secondary { background: #f0f2f5; color: #606266; }
-            #ai-update-dialog .upd-btn-skip { background: none; color: #C0C4CC; font-size: 12px; border: none; cursor: pointer; margin-top: 8px; width: 100%; text-align: center; }
+            #ai-update-dialog .upd-title { font-size: 15px; font-weight: 600; color: #1a1a1a; margin-bottom: 12px; letter-spacing: 0.3px; }
+            #ai-update-dialog .upd-body  { font-size: 13px; color: #666; margin-bottom: 24px; line-height: 1.6; }
+            .version-tag { display: inline-block; background: rgba(0,0,0,0.04); padding: 2px 6px; border-radius: 4px; font-family: "SF Mono", monospace; font-size: 12px; }
+            #ai-update-dialog .upd-btns  { display: flex; gap: 8px; margin-bottom: 12px; }
+            #ai-update-dialog .upd-btn   { flex: 1; padding: 10px 0; border: none; border-radius: 8px; font-size: 13px; font-weight: 600; cursor: pointer; transition: all 0.2s; }
+            #ai-update-dialog .upd-btn-primary { background: #1a1a1a; color: white; }
+            #ai-update-dialog .upd-btn-primary:hover { background: #333; transform: translateY(-1px); box-shadow: 0 4px 12px rgba(0,0,0,0.1); }
+            #ai-update-dialog .upd-btn-secondary { background: transparent; color: #1a1a1a; border: 1px solid rgba(0,0,0,0.1); }
+            #ai-update-dialog .upd-btn-secondary:hover { background: rgba(0,0,0,0.03); }
+            #ai-update-dialog .upd-btn-skip { background: none; color: #999; font-size: 12px; border: none; cursor: pointer; width: 100%; text-align: center; padding: 4px; transition: color 0.2s; }
+            #ai-update-dialog .upd-btn-skip:hover { color: #1a1a1a; }
         </style>
-        <div class="upd-title">🎉 发现新版本 v${remoteVersion}</div>
-        <div class="upd-body">当前版本：v${SCRIPT_CONFIG.VERSION}<br>新版本：v${remoteVersion}<br><br>点击「立即更新」一键安装最新版本。</div>
-        <div class="upd-btns">
-            <button class="upd-btn upd-btn-primary" id="upd-btn-now">🚀 立即更新</button>
-            <button class="upd-btn upd-btn-secondary" id="upd-btn-later">稍后提醒</button>
+        <div class="upd-title">发现新版本</div>
+        <div class="upd-body">
+            核心组件有性能更新可用。<br><br>
+            当前版本: <span class="version-tag">v${SCRIPT_CONFIG.VERSION}</span><br>
+            最新可用: <span class="version-tag">v${remoteVersion}</span>
         </div>
-        <button class="upd-btn-skip" id="upd-btn-skip">不再提醒此版本 (${remoteVersion})</button>
+        <div class="upd-btns">
+            <button class="upd-btn upd-btn-primary" id="upd-btn-now">立即更新</button>
+            <button class="upd-btn upd-btn-secondary" id="upd-btn-later">稍后</button>
+        </div>
+        <button class="upd-btn-skip" id="upd-btn-skip">跳过此版本</button>
     `;
     document.body.appendChild(dialog);
 
@@ -92,7 +101,7 @@ function showUpdateDialog(remoteVersion) {
  */
 function checkForUpdate() {
     // 无人值守模式：不提醒
-    if (window.aiGradingState && window.aiGradingState.unattendedMode) return;
+    if (window.aiGradingState && window.aiGradingState.gradingMode === 'unattended') return;
 
     const now = Date.now();
     const lastCheck = GM_getValue('last-update-check', 0);

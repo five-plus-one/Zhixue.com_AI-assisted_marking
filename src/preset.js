@@ -5,6 +5,7 @@ const PresetManager = {
         let saved = GM_getValue('ai-grading-presets');
         if (saved) {
             this.data = JSON.parse(saved);
+            this._migrateGradingMode();
         } else {
             let oldConfigStr = GM_getValue('ai-grading-config');
             let defaultCfg = oldConfigStr ? JSON.parse(oldConfigStr) : {
@@ -17,6 +18,21 @@ const PresetManager = {
             };
             this.save();
         }
+    },
+    _migrateGradingMode() {
+        let changed = false;
+        for (const name in this.data.list) {
+            const cfg = this.data.list[name];
+            if (cfg.unattendedMode !== undefined && cfg.gradingMode === undefined) {
+                cfg.gradingMode = cfg.unattendedMode ? 'unattended' : 'normal';
+                delete cfg.unattendedMode;
+                changed = true;
+            } else if (cfg.gradingMode === undefined) {
+                cfg.gradingMode = 'normal';
+                changed = true;
+            }
+        }
+        if (changed) this.save();
     },
     save() {
         GM_setValue('ai-grading-presets', JSON.stringify(this.data));

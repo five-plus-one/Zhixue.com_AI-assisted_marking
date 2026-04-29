@@ -25,6 +25,8 @@ const MODULE_ORDER = [
     'ui-panel.js',
     'image.js',
     'grading.js',
+    'correction.js',
+    'history.js',
     'updater.js',
     'main.js',
 ];

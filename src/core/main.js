@@ -39,38 +39,52 @@ async function startAutoGrading() {
         }
 
         const adapter = window.__AI_MARKER_ADAPTER__;
-        console.log(`🔍 使用方案【${PresetManager.data.active}】查找答卷...`);
-        const imageUrls = adapter ? await adapter.gatherAnswerImages() : [];
-        console.log(`🖼️ [诊断] 找到答题卡图片数量: ${imageUrls.length}`);
 
-        if (!imageUrls || imageUrls.length === 0) {
-            if (window.aiGradingState.gradingMode === 'unattended') {
-                stopAutoGrading();
-                safeAlert('✅ 所有试卷已批改完成！');
+        // AI 失败重试时复用已下载的图片，避免重新抓取（拦截器缓冲可能已清空）
+        const isRetry = window.aiGradingState.errorRetryCount > 0
+            && window.aiGradingState.currentBase64DataArray.length > 0;
+
+        let imageUrls, base64DataArray;
+
+        if (isRetry) {
+            imageUrls = window.aiGradingState.currentImageUrls;
+            base64DataArray = window.aiGradingState.currentBase64DataArray;
+            console.log(`♻️ [诊断] 复用已有图片数据进行重试 (${imageUrls.length} 张)`);
+        } else {
+            console.log(`🔍 使用方案【${PresetManager.data.active}】查找答卷...`);
+            imageUrls = adapter ? await adapter.gatherAnswerImages() : [];
+            console.log(`🖼️ [诊断] 找到答题卡图片数量: ${imageUrls.length}`);
+
+            if (!imageUrls || imageUrls.length === 0) {
+                if (window.aiGradingState.gradingMode === 'unattended') {
+                    stopAutoGrading();
+                    safeAlert('✅ 所有试卷已批改完成！');
+                    return;
+                }
+                safeAlert('❌ 未找到答题卡图片！');
+                window.aiGradingState.isRunning = false;
                 return;
             }
-            safeAlert('❌ 未找到答题卡图片！');
-            window.aiGradingState.isRunning = false;
-            return;
+
+            window.aiGradingState.currentImageUrls = imageUrls;
+
+            const gradeBtn = document.querySelector('.ai-grade-btn');
+            if (gradeBtn && window.aiGradingState.gradingMode !== 'unattended') {
+                gradeBtn.textContent = imageUrls.length > 1 ? `📥 下载多图(${imageUrls.length})...` : '📥 下载图片...';
+            }
+
+            console.log(`📥 [诊断] 开始下载 ${imageUrls.length} 张图片...`);
+            const fetchFn = adapter && adapter.fetchImageAsBase64 ? adapter.fetchImageAsBase64 : fetchImageAsBase64;
+            base64DataArray = await Promise.all(imageUrls.map(url => fetchFn(url)));
+            window.aiGradingState.currentBase64DataArray = base64DataArray;
+            console.log(`✅ [诊断] 图片下载完成，各图片Base64大小: ${base64DataArray.map(b => Math.round(b.length / 1024) + 'KB').join(', ')}`);
         }
-
-        window.aiGradingState.currentImageUrls = imageUrls;
-
-        const gradeBtn = document.querySelector('.ai-grade-btn');
-        if (gradeBtn && window.aiGradingState.gradingMode !== 'unattended') {
-            gradeBtn.textContent = imageUrls.length > 1 ? `📥 下载多图(${imageUrls.length})...` : '📥 下载图片...';
-        }
-
-        console.log(`📥 [诊断] 开始下载 ${imageUrls.length} 张图片...`);
-        const fetchFn = adapter && adapter.fetchImageAsBase64 ? adapter.fetchImageAsBase64 : fetchImageAsBase64;
-        const base64DataArray = await Promise.all(imageUrls.map(url => fetchFn(url)));
-        window.aiGradingState.currentBase64DataArray = base64DataArray;
-        console.log(`✅ [诊断] 图片下载完成，各图片Base64大小: ${base64DataArray.map(b => Math.round(b.length / 1024) + 'KB').join(', ')}`);
 
         if (window.aiGradingState.isPaused) throw new Error('用户暂停');
 
-        if (gradeBtn && window.aiGradingState.gradingMode !== 'unattended') {
-            gradeBtn.textContent = '⏳ AI分析中...';
+        const gradeBtnEl = document.querySelector('.ai-grade-btn');
+        if (gradeBtnEl && window.aiGradingState.gradingMode !== 'unattended') {
+            gradeBtnEl.textContent = '⏳ AI分析中...';
             showStreamPanel();
         }
 

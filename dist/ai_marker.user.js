@@ -1,12 +1,13 @@
 // ==UserScript==
 // @name         AI-Marker-Suite
 // @namespace    http://tampermonkey.net/
-// @version      1.8.6
+// @version      1.8.14
 // @description  AI自动批改助手，支持智学网、七天网络等阅卷平台。自动识别答案、智能评分、自动提交！
 // @author       5plus1
 // @match        https://www.zhixue.com/webmarking/*
 // @match        https://*.zhixue.com/webmarking/*
 // @match        *://*.7net.cc/*
+// @match        *://yj5.7net.cc/*
 // @match        *://*.qt7.net/*
 // @icon         https://www.zhixue.com/favicon.ico
 // @grant        GM_xmlhttpRequest
@@ -15,6 +16,7 @@
 // @connect      api.ai.five-plus-one.com
 // @connect      zhixue-sc.oss-cn-hangzhou.aliyuncs.com
 // @connect      yjimage.oss-cn-hangzhou.aliyuncs.com
+// @connect      static.7net.cc
 // @connect      raw.githubusercontent.com
 // @connect      *
 // @run-at       document-idle
@@ -231,7 +233,10 @@ const QitianAdapter = {
     iconUrl: '',
 
     shouldInitialize() {
-        return window.location.hostname.includes('7net.cc') || window.location.hostname.includes('qt7.net');
+        const h = window.location.hostname;
+        // yj5.7net.cc 是新 UI，由 qitian-new 适配器处理
+        if (h.includes('yj5.')) return false;
+        return h.includes('7net.cc') || h.includes('qt7.net');
     },
 
     async detectMarkingPage() {
@@ -355,13 +360,248 @@ if (QitianAdapter.shouldInitialize()) {
 }
 
 
+// ========== [Module: adapters/qitian-new/selectors.js] ==========
+// ========== 七天网络新 UI DOM 选择器常量 ==========
+// 新 UI: yj5.7net.cc — Vue SPA + Element UI + Canvas 渲染
+
+const QITIAN_NEW_SELECTORS = {
+    // 答题卡 Canvas
+    ANSWER_CANVAS: '#canvas',
+
+    // 分数输入框（ID 动态生成，前缀匹配）
+    SCORE_INPUT: 'input[id^="inputScoreRef_"]',
+
+    // 提交按钮
+    SUBMIT_BUTTON: 'button.saveScoreBtn',
+
+    // 题号标识
+    TOPIC_LABEL: 'div.TZ',
+
+    // 页面检测
+    PAGE_DETECT_CANVAS: '#canvas',
+    PAGE_DETECT_INPUT: 'input[id^="inputScoreRef_"]',
+    PAGE_DETECT_SUBMIT: 'button.saveScoreBtn',
+};
+
+
+// ========== [Module: adapters/qitian-new/adapter.js] ==========
+// ========== 七天网络新 UI 适配器 ==========
+// yj5.7net.cc — Vue SPA + Element UI + Canvas 渲染答题卡
+
+// 拦截 XMLHttpRequest 响应，从 Review/ReviewData API 提取图片 URL
+// Vue 页面加载时会发两次请求：start=0（当前学生）和 start=1（预取下一个）
+// 提交后可能只发 start=0，也可能复用预取数据不发新请求
+let _qitianApiImageUrl = null;       // 最新拦截到的 start=0 图片 URL
+let _qitianPrefetchImageUrl = null;  // 最新拦截到的 start=1 图片 URL
+let _qitianNextStudentUrl = null;    // waitForNextPaper 保存的下一张图片 URL
+const _qitianUsedImageUrls = new Set(); // 已发送给 AI 的图片 URL
+
+(function installApiInterceptor() {
+    const origOpen = XMLHttpRequest.prototype.open;
+    const origSend = XMLHttpRequest.prototype.send;
+
+    XMLHttpRequest.prototype.open = function(method, url, ...args) {
+        this._interceptUrl = url;
+        return origOpen.call(this, method, url, ...args);
+    };
+
+    XMLHttpRequest.prototype.send = function(...args) {
+        this.addEventListener('load', function() {
+            try {
+                const url = this._interceptUrl || '';
+                if (!url.includes('Review/ReviewData')) return;
+
+                const params = new URL(url, location.origin).searchParams;
+                const start = params.get('start');
+
+                const json = JSON.parse(this.responseText);
+                const imageUrl = json?.data?.list?.[0]?.image?.url;
+                if (!imageUrl) return;
+
+                if (start === '0') {
+                    _qitianApiImageUrl = imageUrl;
+                    console.log(`🎯 [API拦截] 当前学生图片: ${imageUrl.slice(0, 80)}...`);
+                } else if (start === '1') {
+                    _qitianPrefetchImageUrl = imageUrl;
+                    console.log(`📦 [API拦截] 预取学生图片: ${imageUrl.slice(0, 80)}...`);
+                }
+            } catch (e) {}
+        });
+        return origSend.call(this, ...args);
+    };
+})();
+
+const QitianNewAdapter = {
+    name: '七天网络(新UI)',
+    id: 'qitian-new',
+    urlPatterns: ['*://yj5.7net.cc/*'],
+    iconUrl: '',
+
+    shouldInitialize() {
+        return location.hostname.includes('yj5.7net.cc');
+    },
+
+    async detectMarkingPage() {
+        console.log('🔎 [诊断] 七天网络新UI — 开始检测批改页面...');
+        try {
+            const result = await Promise.race([
+                waitForElement(QITIAN_NEW_SELECTORS.PAGE_DETECT_CANVAS).then(() => 'canvas'),
+                waitForElement(QITIAN_NEW_SELECTORS.PAGE_DETECT_INPUT).then(() => 'score-input'),
+                waitForElement(QITIAN_NEW_SELECTORS.PAGE_DETECT_SUBMIT).then(() => 'submit-btn'),
+            ]).catch(() => null);
+
+            if (result) {
+                console.log(`✅ [诊断] 检测到批改页面元素: ${result}`);
+                return true;
+            }
+
+            await new Promise(resolve => setTimeout(resolve, 3000));
+            const hasCanvas = document.querySelector(QITIAN_NEW_SELECTORS.ANSWER_CANVAS);
+            const hasInput = document.querySelector(QITIAN_NEW_SELECTORS.SCORE_INPUT);
+            const hasBtn = document.querySelector(QITIAN_NEW_SELECTORS.SUBMIT_BUTTON);
+            const detected = !!(hasCanvas && hasInput && hasBtn);
+            console.log(`🔎 [诊断] 兜底检测 — Canvas: ${!!hasCanvas}, 输入框: ${!!hasInput}, 提交: ${!!hasBtn}, 最终: ${detected}`);
+            return detected;
+        } catch (error) {
+            console.error('❌ [诊断] detectMarkingPage 异常:', error);
+            return false;
+        }
+    },
+
+    getTaskIdentifier() {
+        // Vue hash 路由: #/marking?km=物理&tz=四.15&...
+        const hash = window.location.hash;
+        const queryStr = hash.split('?')[1] || '';
+        const params = new URLSearchParams(queryStr);
+        const tz = params.get('tz') || '';
+        const km = params.get('km') || '';
+        return `qitian_new_${km}_${tz}`;
+    },
+
+    async gatherAnswerImages() {
+        // 等待 Vue 更新 Canvas（可能触发新的 API 请求或图片加载）
+        await new Promise(r => setTimeout(r, 1500));
+
+        // 优先使用 waitForNextPaper 保存的下一张学生图片 URL
+        if (_qitianNextStudentUrl && !_qitianUsedImageUrls.has(_qitianNextStudentUrl)) {
+            const url = _qitianNextStudentUrl;
+            _qitianNextStudentUrl = null;
+            _qitianApiImageUrl = url;
+            console.log(`🖼️ [诊断] 使用预取保存的下一张图片 URL`);
+            _qitianUsedImageUrls.add(url);
+            return [url];
+        }
+
+        // 次选：API 拦截到的、且未使用过的图片 URL（首名学生场景）
+        if (_qitianApiImageUrl && !_qitianUsedImageUrls.has(_qitianApiImageUrl)) {
+            console.log(`🖼️ [诊断] 使用 API 拦截的图片 URL (新)`);
+            _qitianUsedImageUrls.add(_qitianApiImageUrl);
+            return [_qitianApiImageUrl];
+        }
+
+        // 兜底：performance API 中找未使用过的图片
+        const allImgUrls = performance.getEntriesByType('resource')
+            .filter(r => r.name.includes('yjimage.oss'))
+            .map(r => r.name);
+        const newUrls = [...new Set(allImgUrls)].filter(u => !_qitianUsedImageUrls.has(u));
+        console.log(`🖼️ [诊断] performance 回退: ${newUrls.length} 张新图片 (共 ${allImgUrls.length} 条记录, 已用 ${_qitianUsedImageUrls.size})`);
+        newUrls.forEach((url, i) => {
+            console.log(`  📷 新图片${i + 1}: ${url.slice(0, 100)}...`);
+            _qitianUsedImageUrls.add(url);
+        });
+        return newUrls;
+    },
+
+    async fetchImageAsBase64(url) {
+        return fetchImageAsBase64(url);
+    },
+
+    fillScore(request) {
+        const score = request.total;
+        const scoreInput = document.querySelector(QITIAN_NEW_SELECTORS.SCORE_INPUT);
+        console.log(`🔎 [诊断] 七天网络新UI fillScore — 分数: ${score}, 输入框: ${!!scoreInput}`);
+
+        if (scoreInput) {
+            // Vue + Element UI 需要通过 nativeInputValueSetter 触发响应式更新
+            const nativeSetter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set;
+            nativeSetter.call(scoreInput, score);
+            scoreInput.dispatchEvent(new Event('input', { bubbles: true }));
+            scoreInput.dispatchEvent(new Event('change', { bubbles: true }));
+            scoreInput.dispatchEvent(new Event('blur', { bubbles: true }));
+            console.log(`✅ [诊断] 分数已填入`);
+            return true;
+        }
+        console.warn('⚠️ [诊断] 未找到分数输入框');
+        return false;
+    },
+
+    submitGrade() {
+        const submitBtn = document.querySelector(QITIAN_NEW_SELECTORS.SUBMIT_BUTTON);
+        if (submitBtn) {
+            console.log(`✅ [诊断] 七天网络新UI — 点击提交按钮`);
+            submitBtn.click();
+            return true;
+        }
+        console.warn('⚠️ [诊断] 未找到提交按钮 .saveScoreBtn');
+        return false;
+    },
+
+    async waitForNextPaper() {
+        // 等待输入框被清空（Vue 表单重置信号）
+        // 在输入清空前保存预取 URL，避免被新的 start=1 响应覆盖
+        const savedPrefetchUrl = _qitianPrefetchImageUrl;
+        let checkTimes = 0;
+        return new Promise((resolve) => {
+            const timer = setInterval(() => {
+                checkTimes++;
+                const input = document.querySelector(QITIAN_NEW_SELECTORS.SCORE_INPUT);
+                const inputCleared = input && (input.value === '' || input.value === '0');
+
+                if (inputCleared && checkTimes > 3) {
+                    clearInterval(timer);
+                    // 保存下一张学生的图片 URL（来自预取响应）
+                    if (savedPrefetchUrl && !_qitianUsedImageUrls.has(savedPrefetchUrl)) {
+                        _qitianNextStudentUrl = savedPrefetchUrl;
+                    }
+                    console.log(`✅ 七天网络新UI — 新试卷已加载 (nextUrl=${!!_qitianNextStudentUrl}, usedCount=${_qitianUsedImageUrls.size})`);
+                    resolve(true);
+                } else if (checkTimes > 50) {
+                    clearInterval(timer);
+                    console.warn('⚠️ 七天网络新UI — 等待下一份试卷超时');
+                    resolve(false);
+                }
+            }, 200);
+        });
+    },
+
+    isRegradeMode() {
+        // 新 UI 暂未发现明确的回评模式标识
+        return !!window.aiGradingState?.isRegrading;
+    },
+
+    getScoreInputs() {
+        const inputs = [];
+        document.querySelectorAll(QITIAN_NEW_SELECTORS.SCORE_INPUT).forEach((el, i) => {
+            // 从 ID 提取题号: inputScoreRef_四.15 → "四.15"
+            const label = el.id.replace('inputScoreRef_', '') || `分数${i + 1}`;
+            inputs.push({ element: el, label, index: i });
+        });
+        return inputs;
+    }
+};
+
+if (QitianNewAdapter.shouldInitialize()) {
+    window.__AI_MARKER_ADAPTER__ = QitianNewAdapter;
+}
+
+
 // ========== [Module: core/config.js] ==========
 // ========== 全局配置 ==========
 // 所有常量从这里读取，构建脚本 (build.js) 也会从这里提取版本号
 
 const SCRIPT_CONFIG = {
     /** 当前脚本版本号，修改此处即可同步更新所有引用 */
-    VERSION: '1.8.6',
+    VERSION: '1.8.14',
 
     /** 远端原始脚本地址（用于检查更新） */
     UPDATE_CHECK_URL: 'https://auto-update.aimarking.five-plus-one.com/ota/ai_marker.user.js',
@@ -2938,38 +3178,52 @@ async function startAutoGrading() {
         }
 
         const adapter = window.__AI_MARKER_ADAPTER__;
-        console.log(`🔍 使用方案【${PresetManager.data.active}】查找答卷...`);
-        const imageUrls = adapter ? await adapter.gatherAnswerImages() : [];
-        console.log(`🖼️ [诊断] 找到答题卡图片数量: ${imageUrls.length}`);
 
-        if (!imageUrls || imageUrls.length === 0) {
-            if (window.aiGradingState.gradingMode === 'unattended') {
-                stopAutoGrading();
-                safeAlert('✅ 所有试卷已批改完成！');
+        // AI 失败重试时复用已下载的图片，避免重新抓取（拦截器缓冲可能已清空）
+        const isRetry = window.aiGradingState.errorRetryCount > 0
+            && window.aiGradingState.currentBase64DataArray.length > 0;
+
+        let imageUrls, base64DataArray;
+
+        if (isRetry) {
+            imageUrls = window.aiGradingState.currentImageUrls;
+            base64DataArray = window.aiGradingState.currentBase64DataArray;
+            console.log(`♻️ [诊断] 复用已有图片数据进行重试 (${imageUrls.length} 张)`);
+        } else {
+            console.log(`🔍 使用方案【${PresetManager.data.active}】查找答卷...`);
+            imageUrls = adapter ? await adapter.gatherAnswerImages() : [];
+            console.log(`🖼️ [诊断] 找到答题卡图片数量: ${imageUrls.length}`);
+
+            if (!imageUrls || imageUrls.length === 0) {
+                if (window.aiGradingState.gradingMode === 'unattended') {
+                    stopAutoGrading();
+                    safeAlert('✅ 所有试卷已批改完成！');
+                    return;
+                }
+                safeAlert('❌ 未找到答题卡图片！');
+                window.aiGradingState.isRunning = false;
                 return;
             }
-            safeAlert('❌ 未找到答题卡图片！');
-            window.aiGradingState.isRunning = false;
-            return;
+
+            window.aiGradingState.currentImageUrls = imageUrls;
+
+            const gradeBtn = document.querySelector('.ai-grade-btn');
+            if (gradeBtn && window.aiGradingState.gradingMode !== 'unattended') {
+                gradeBtn.textContent = imageUrls.length > 1 ? `📥 下载多图(${imageUrls.length})...` : '📥 下载图片...';
+            }
+
+            console.log(`📥 [诊断] 开始下载 ${imageUrls.length} 张图片...`);
+            const fetchFn = adapter && adapter.fetchImageAsBase64 ? adapter.fetchImageAsBase64 : fetchImageAsBase64;
+            base64DataArray = await Promise.all(imageUrls.map(url => fetchFn(url)));
+            window.aiGradingState.currentBase64DataArray = base64DataArray;
+            console.log(`✅ [诊断] 图片下载完成，各图片Base64大小: ${base64DataArray.map(b => Math.round(b.length / 1024) + 'KB').join(', ')}`);
         }
-
-        window.aiGradingState.currentImageUrls = imageUrls;
-
-        const gradeBtn = document.querySelector('.ai-grade-btn');
-        if (gradeBtn && window.aiGradingState.gradingMode !== 'unattended') {
-            gradeBtn.textContent = imageUrls.length > 1 ? `📥 下载多图(${imageUrls.length})...` : '📥 下载图片...';
-        }
-
-        console.log(`📥 [诊断] 开始下载 ${imageUrls.length} 张图片...`);
-        const fetchFn = adapter && adapter.fetchImageAsBase64 ? adapter.fetchImageAsBase64 : fetchImageAsBase64;
-        const base64DataArray = await Promise.all(imageUrls.map(url => fetchFn(url)));
-        window.aiGradingState.currentBase64DataArray = base64DataArray;
-        console.log(`✅ [诊断] 图片下载完成，各图片Base64大小: ${base64DataArray.map(b => Math.round(b.length / 1024) + 'KB').join(', ')}`);
 
         if (window.aiGradingState.isPaused) throw new Error('用户暂停');
 
-        if (gradeBtn && window.aiGradingState.gradingMode !== 'unattended') {
-            gradeBtn.textContent = '⏳ AI分析中...';
+        const gradeBtnEl = document.querySelector('.ai-grade-btn');
+        if (gradeBtnEl && window.aiGradingState.gradingMode !== 'unattended') {
+            gradeBtnEl.textContent = '⏳ AI分析中...';
             showStreamPanel();
         }
 

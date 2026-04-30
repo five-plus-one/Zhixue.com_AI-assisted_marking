@@ -8,7 +8,10 @@ const QitianAdapter = {
     iconUrl: '',
 
     shouldInitialize() {
-        return window.location.hostname.includes('7net.cc') || window.location.hostname.includes('qt7.net');
+        const h = window.location.hostname;
+        // yj5.7net.cc 是新 UI，由 qitian-new 适配器处理
+        if (h.includes('yj5.')) return false;
+        return h.includes('7net.cc') || h.includes('qt7.net');
     },
 
     async detectMarkingPage() {

@@ -302,6 +302,7 @@ function showHistoryPanel() {
 // ========== 历史详情模态框 ==========
 function showHistoryDetail(record) {
     if (!record) return;
+    ensureModalStyles();
     const old = document.getElementById('ai-history-detail');
     if (old) old.remove();
 

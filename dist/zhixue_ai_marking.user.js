@@ -52,7 +52,6 @@ const SCRIPT_CONFIG = {
         '1.8.0': [
             '纠错面板重新设计，支持查看 AI 分析和手动修改提示词',
             '回评模式下隐藏 AI 打分按钮，避免误操作',
-            '默认模型更新为 mimo-v2.5',
             '新增评分模式切换（普通/无人值守）',
         ],
         '1.7.0': [
@@ -2103,6 +2102,7 @@ function showHistoryPanel() {
 // ========== 历史详情模态框 ==========
 function showHistoryDetail(record) {
     if (!record) return;
+    ensureModalStyles();
     const old = document.getElementById('ai-history-detail');
     if (old) old.remove();
 

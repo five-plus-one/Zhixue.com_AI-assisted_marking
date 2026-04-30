@@ -10,6 +10,7 @@
 
 const fs = require('fs');
 const path = require('path');
+const { minify } = require('terser');
 
 // ========== 配置 ==========
 const SRC_DIR = path.join(__dirname, 'src');
@@ -116,7 +117,7 @@ function generateHeader(config, version) {
     return lines.join('\n') + '\n';
 }
 
-function build() {
+async function build() {
     const VERSION = extractVersion();
 
     console.log(`\n🔨 开始构建 AI-Marker-Suite v${VERSION}...\n`);
@@ -159,15 +160,30 @@ function build() {
         // 用 IIFE 包裹所有模块代码
         const iife = `\n(function() {\n    'use strict';\n${modulesContent}\n})();\n`;
 
-        // 最终输出 = 头部 + IIFE
+        // 压缩 IIFE 部分（保留 UserScript header 可读）
+        console.log(`  ⏳ 压缩中...`);
+        const minified = await minify(iife, {
+            compress: { passes: 2, drop_console: false },
+            mangle: { toplevel: false },
+            format: { comments: false }
+        });
+
+        if (minified.error) {
+            console.error(`  ❌ 压缩失败: ${minified.error}`);
+            process.exit(1);
+        }
+
+        // 最终输出 = 头部 + 压缩后的 IIFE
         const header = generateHeader(buildConfig, VERSION);
-        const output = header + iife;
+        const output = header + minified.code;
 
         // 写入主输出文件
         const outputFile = path.join(DIST_DIR, buildConfig.outputFile);
         fs.writeFileSync(outputFile, output, 'utf8');
-        const sizeKB = (fs.statSync(outputFile).size / 1024).toFixed(1);
-        console.log(`  ✅ 输出: dist/${buildConfig.outputFile} (${sizeKB} KB)`);
+        const rawKB = (Buffer.byteLength(iife, 'utf8') / 1024).toFixed(1);
+        const minKB = (Buffer.byteLength(minified.code, 'utf8') / 1024).toFixed(1);
+        const totalKB = (fs.statSync(outputFile).size / 1024).toFixed(1);
+        console.log(`  ✅ 输出: dist/${buildConfig.outputFile} (${totalKB} KB, 压缩前 ${rawKB} KB → 压缩后 ${minKB} KB)`);
 
         // 写入兼容文件副本（旧文件名保持可用）
         const legacyFiles = buildConfig.legacyOutputFiles || [];

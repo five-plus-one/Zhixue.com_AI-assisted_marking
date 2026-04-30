@@ -18,31 +18,11 @@ function waitForElement(selector, timeout = 15000) {
 }
 
 async function detectMarkingPage() {
-    console.log('🔎 [诊断] 开始检测批改页面元素...');
-    try {
-        const result = await Promise.race([
-            waitForElement('div[name="topicImg"]').then(() => 'topicImg'),
-            waitForElement('input[type="number"]').then(() => 'score-input'),
-            waitForElement('button:contains("提交分数")').then(() => 'submit-btn')
-        ]).catch(() => null);
-        if (result) {
-            console.log(`✅ [诊断] 检测到批改页面元素: ${result}`);
-            return true;
-        }
-
-        await new Promise(resolve => setTimeout(resolve, 3000));
-        const hasInput = document.querySelector('input[type="number"]') || document.querySelector('input[type="text"]');
-        const hasButton = Array.from(document.querySelectorAll('button')).some(btn => btn.textContent.includes('提交') || btn.textContent.includes('分数'));
-        const detected = !!(hasInput && hasButton);
-        console.log(`🔎 [诊断] 兜底检测结果 — 输入框: ${!!hasInput}, 提交按钮: ${hasButton}, 最终判断: ${detected}`);
-        if (!detected) {
-            console.warn('⚠️ [诊断] 未检测到批改页面，脚本将不会初始化。当前所有按钮文字:', Array.from(document.querySelectorAll('button')).map(b => b.textContent.trim()).filter(t => t).join(' | '));
-        }
-        return detected;
-    } catch (error) {
-        console.error('❌ [诊断] detectMarkingPage 抛出异常:', error);
-        return false;
+    const adapter = window.__AI_MARKER_ADAPTER__;
+    if (adapter && adapter.detectMarkingPage) {
+        return adapter.detectMarkingPage();
     }
+    return false;
 }
 
 // ========== 主控流程 ==========
@@ -58,11 +38,12 @@ async function startAutoGrading() {
             return;
         }
 
+        const adapter = window.__AI_MARKER_ADAPTER__;
         console.log(`🔍 使用方案【${PresetManager.data.active}】查找答卷...`);
-        const imgElements = document.querySelectorAll('div[name="topicImg"] img');
-        console.log(`🖼️ [诊断] 找到答题卡图片数量: ${imgElements.length}`);
+        const imageUrls = adapter ? await adapter.gatherAnswerImages() : [];
+        console.log(`🖼️ [诊断] 找到答题卡图片数量: ${imageUrls.length}`);
 
-        if (!imgElements || imgElements.length === 0) {
+        if (!imageUrls || imageUrls.length === 0) {
             if (window.aiGradingState.gradingMode === 'unattended') {
                 stopAutoGrading();
                 safeAlert('✅ 所有试卷已批改完成！');
@@ -73,7 +54,6 @@ async function startAutoGrading() {
             return;
         }
 
-        const imageUrls = Array.from(imgElements).map(img => img.src);
         window.aiGradingState.currentImageUrls = imageUrls;
 
         const gradeBtn = document.querySelector('.ai-grade-btn');
@@ -82,7 +62,8 @@ async function startAutoGrading() {
         }
 
         console.log(`📥 [诊断] 开始下载 ${imageUrls.length} 张图片...`);
-        const base64DataArray = await Promise.all(imageUrls.map(url => fetchImageAsBase64(url)));
+        const fetchFn = adapter && adapter.fetchImageAsBase64 ? adapter.fetchImageAsBase64 : fetchImageAsBase64;
+        const base64DataArray = await Promise.all(imageUrls.map(url => fetchFn(url)));
         window.aiGradingState.currentBase64DataArray = base64DataArray;
         console.log(`✅ [诊断] 图片下载完成，各图片Base64大小: ${base64DataArray.map(b => Math.round(b.length / 1024) + 'KB').join(', ')}`);
 
@@ -106,7 +87,11 @@ async function startAutoGrading() {
             window.aiGradingState.currentStudentAnswer = result.studentAnswer || '未能识别';
             window.aiGradingState.errorRetryCount = 0;
             console.log(`✏️ [诊断] 准备填入分数: ${result.score}，调用 fillScore...`);
-            fillScore(result.score, result.comment);
+            const adapter = window.__AI_MARKER_ADAPTER__;
+            if (adapter && adapter.fillScore) {
+                adapter.fillScore({ total: result.score, subScores: result.subScores });
+            }
+            showAutoSubmitDialog(result.score, result.comment, result.subScores);
         } else {
             // 分数解析失败（"未能识别"），自动重试
             window.aiGradingState.errorRetryCount++;
@@ -175,16 +160,17 @@ async function init() {
                 showToast('正在加载回评数据...');
                 setTimeout(async () => {
                     // 等待图片加载
-                    const imgElements = document.querySelectorAll('div[name="topicImg"] img');
-                    if (imgElements.length === 0) {
+                    const adapter = window.__AI_MARKER_ADAPTER__;
+                    const imageUrls = adapter ? await adapter.gatherAnswerImages() : [];
+                    if (imageUrls.length === 0) {
                         showAlertModal('未找到答题卡图片，无法回评。').then(() => {
                             sessionStorage.removeItem('ai-grading-regrade');
                             window.aiGradingState.isRegrading = false;
                         });
                         return;
                     }
-                    const imageUrls = Array.from(imgElements).map(img => img.src);
-                    const base64DataArray = await Promise.all(imageUrls.map(url => fetchImageAsBase64(url)));
+                    const fetchFn = adapter && adapter.fetchImageAsBase64 ? adapter.fetchImageAsBase64 : fetchImageAsBase64;
+                    const base64DataArray = await Promise.all(imageUrls.map(url => fetchFn(url)));
                     window.aiGradingState.currentBase64DataArray = base64DataArray;
 
                     showCorrectionPanel({
@@ -216,8 +202,9 @@ async function init() {
     }
 }
 
-console.log('🚀 智学网AI打分助手加载中...');
-console.log(`📌 [诊断] 脚本版本: ${SCRIPT_CONFIG.VERSION} | 浏览器: ${navigator.userAgent.match(/(Chrome|Firefox|Edge)\/[\d.]+/)?.[0] || '未知'} | 时间: ${new Date().toLocaleString()}`);
+const adapter = window.__AI_MARKER_ADAPTER__;
+console.log(`🚀 ${adapter ? adapter.name : 'AI-Marker-Suite'} 打分助手加载中...`);
+console.log(`📌 [诊断] 脚本版本: ${SCRIPT_CONFIG.VERSION} | 平台: ${adapter ? adapter.name : '未知'} | 浏览器: ${navigator.userAgent.match(/(Chrome|Firefox|Edge)\/[\d.]+/)?.[0] || '未知'} | 时间: ${new Date().toLocaleString()}`);
 
 if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', init);
@@ -232,7 +219,8 @@ setInterval(() => {
     if (currentUrlId !== lastUrlId) {
         lastUrlId = currentUrlId;
 
-        if (window.aiGradingState.isRegrading) return;
+        const adapter = window.__AI_MARKER_ADAPTER__;
+        if (adapter && adapter.isRegradeMode ? adapter.isRegradeMode() : window.aiGradingState.isRegrading) return;
 
         if (!window.aiGradingState.isRunning) {
             const boundPreset = PresetManager.data.bindings[currentUrlId];

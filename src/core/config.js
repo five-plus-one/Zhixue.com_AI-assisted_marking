@@ -3,10 +3,10 @@
 
 const SCRIPT_CONFIG = {
     /** 当前脚本版本号，修改此处即可同步更新所有引用 */
-    VERSION: '1.8.3',
+    VERSION: '1.8.5',
 
     /** 远端原始脚本地址（用于检查更新） */
-    UPDATE_CHECK_URL: 'https://auto-update.aimarking.five-plus-one.com/zhixue/zhixue_ai_marking.user.js',
+    UPDATE_CHECK_URL: 'https://auto-update.aimarking.five-plus-one.com/ota/ai_marker.user.js',
 
     /** 更新检查间隔（毫秒），默认 24 小时 */
     UPDATE_CHECK_INTERVAL_MS: 24 * 60 * 60 * 1000,
@@ -19,6 +19,15 @@ const SCRIPT_CONFIG = {
 
     /** 版本更新日志（用于更新提示弹窗），键为版本号，值为更新内容数组 */
     CHANGELOG: {
+        '1.8.5': [
+            '新增七天网络阅卷平台适配，一个脚本同时支持智学网和七天网络',
+            '统一构建输出，自动检测当前平台并加载对应适配器',
+            '更新自动检查和一键安装地址',
+        ],
+        '1.8.4': [
+            '适配器注册改为按平台条件判断，支持多平台共存',
+            '合并构建配置为单一脚本输出',
+        ],
         '1.8.3': [
             '纠错流程精简为两步，确认后直接使用教师分数，不再重新批改',
             '新增独立浮动历史按钮，快速查看评阅记录',

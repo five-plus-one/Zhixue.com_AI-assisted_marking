@@ -54,20 +54,11 @@ const PresetManager = {
         return this.data.list[this.data.active] || {};
     },
     getTaskIdentifier() {
-        const baseUrl = window.location.pathname + window.location.hash.split('&_t=')[0];
-        let questionIdentifier = '';
-        try {
-            const exactElement = document.querySelector('#currentTopicIndex');
-            if (exactElement && exactElement.textContent) {
-                questionIdentifier = exactElement.textContent.trim();
-            } else {
-                const titleElement = document.querySelector('.topic-title');
-                if (titleElement) {
-                    questionIdentifier = titleElement.getAttribute('title') || titleElement.textContent.trim();
-                }
-            }
-        } catch (e) {}
-        return baseUrl + (questionIdentifier ? '___' + questionIdentifier : '');
+        const adapter = window.__AI_MARKER_ADAPTER__;
+        if (adapter && adapter.getTaskIdentifier) {
+            return adapter.getTaskIdentifier();
+        }
+        return window.location.pathname + window.location.hash;
     }
 };
 PresetManager.init();

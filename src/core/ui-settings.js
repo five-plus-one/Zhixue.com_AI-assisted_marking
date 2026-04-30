@@ -1,26 +1,3 @@
-// ========== 服务商管理器 ==========
-const ProviderManager = {
-    data: null,
-    init() {
-        let saved = GM_getValue('ai-grading-providers');
-        if (saved) {
-            this.data = JSON.parse(saved);
-        } else {
-            this.data = {
-                list: {
-                    "5plus1官方": { endpoint: SCRIPT_CONFIG.DEFAULT_ENDPOINT, model: SCRIPT_CONFIG.DEFAULT_MODEL, apiKey: '' },
-                    "OpenAI兼容": { endpoint: 'https://api.openai.com/v1/chat/completions', model: 'gpt-4o', apiKey: '' }
-                },
-                active: "5plus1官方"
-            };
-            this.save();
-        }
-    },
-    save() { GM_setValue('ai-grading-providers', JSON.stringify(this.data)); },
-    getCurrent() { return this.data.list[this.data.active] || {}; }
-};
-ProviderManager.init();
-
 // ========== 创建配置面板 ==========
 function createSettingsPanel() {
     if (document.getElementById('ai-grading-settings')) return;
@@ -175,6 +152,17 @@ function createSettingsPanel() {
                 <div class="form-group"><label>采分标准</label><textarea id="grading-rubric"></textarea></div>
             </div>
             <div class="form-section">
+                <h4>分小题评分</h4>
+                <div class="checkbox-group">
+                    <input type="checkbox" id="enable-sub-questions">
+                    <label for="enable-sub-questions">启用分小题评分</label>
+                </div>
+                <div id="sub-questions-container" style="display:none;">
+                    <div id="sub-questions-list"></div>
+                    <button class="preset-btn" id="btn-add-sub-question" style="width:100%;margin-top:8px;padding:8px;">+ 添加小题</button>
+                </div>
+            </div>
+            <div class="form-section">
                 <h4>AI 模型与算力</h4>
                 <div class="form-group">
                     <label>服务提供商</label>
@@ -235,6 +223,15 @@ function createSettingsPanel() {
         input.addEventListener('input', markUnsavedChanges);
         input.addEventListener('change', markUnsavedChanges);
     });
+
+    // 分小题评分交互
+    const subToggle = panel.querySelector('#enable-sub-questions');
+    const subContainer = panel.querySelector('#sub-questions-container');
+    subToggle.addEventListener('change', () => {
+        subContainer.style.display = subToggle.checked ? 'block' : 'none';
+        markUnsavedChanges();
+    });
+    panel.querySelector('#btn-add-sub-question').onclick = () => addSubQuestionItem();
 
     makeDraggable(panel);
     loadSettings();
@@ -321,8 +318,71 @@ function fillFormFromActivePreset() {
 
     document.getElementById('bind-url-checkbox').checked = (PresetManager.data.bindings[currentUrlId] === PresetManager.data.active);
 
+    // 加载分小题配置
+    const subToggle = document.getElementById('enable-sub-questions');
+    const subContainer = document.getElementById('sub-questions-container');
+    const subList = document.getElementById('sub-questions-list');
+    subList.innerHTML = '';
+    const subQuestions = config.subQuestions || [];
+    if (subQuestions.length > 0) {
+        subToggle.checked = true;
+        subContainer.style.display = 'block';
+        subQuestions.forEach(sq => addSubQuestionItem(sq));
+    } else {
+        subToggle.checked = false;
+        subContainer.style.display = 'none';
+    }
+
     updateUIVisibility();
     clearUnsavedChanges();
+}
+
+function addSubQuestionItem(data) {
+    const list = document.getElementById('sub-questions-list');
+    const index = list.children.length;
+    const item = document.createElement('div');
+    item.className = 'sub-question-item';
+    item.style.cssText = 'padding:12px;margin-bottom:8px;background:rgba(0,0,0,0.02);border:1px solid rgba(0,0,0,0.06);border-radius:8px;';
+    item.innerHTML = `
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
+            <input type="text" class="sq-label" placeholder="标签 (如: 第1题(a))" value="${data?.label || ''}" style="flex:1;padding:6px 8px;border:1px solid rgba(0,0,0,0.08);border-radius:6px;font-size:12px;">
+            <button class="preset-btn danger sq-del-btn" style="margin-left:8px;padding:4px 8px;font-size:11px;">删除</button>
+        </div>
+        <div style="display:flex;gap:8px;margin-bottom:8px;">
+            <div style="flex:1;"><label style="font-size:11px;color:#86868b;display:block;margin-bottom:4px;">满分</label><input type="number" class="sq-max-score" placeholder="分" value="${data?.maxScore || ''}" style="width:100%;padding:6px 8px;border:1px solid rgba(0,0,0,0.08);border-radius:6px;font-size:12px;box-sizing:border-box;"></div>
+        </div>
+        <div style="margin-bottom:8px;"><label style="font-size:11px;color:#86868b;display:block;margin-bottom:4px;">参考答案</label><textarea class="sq-answer" placeholder="该小题的参考答案" style="width:100%;padding:6px 8px;border:1px solid rgba(0,0,0,0.08);border-radius:6px;font-size:12px;min-height:50px;resize:vertical;box-sizing:border-box;font-family:inherit;">${data?.answer || ''}</textarea></div>
+        <div><label style="font-size:11px;color:#86868b;display:block;margin-bottom:4px;">评分标准</label><textarea class="sq-rubric" placeholder="该小题的评分标准" style="width:100%;padding:6px 8px;border:1px solid rgba(0,0,0,0.08);border-radius:6px;font-size:12px;min-height:50px;resize:vertical;box-sizing:border-box;font-family:inherit;">${data?.rubric || ''}</textarea></div>
+    `;
+    item.querySelector('.sq-del-btn').onclick = () => { item.remove(); markUnsavedChanges(); };
+    item.querySelectorAll('input, textarea').forEach(el => {
+        el.addEventListener('input', markUnsavedChanges);
+        el.addEventListener('change', markUnsavedChanges);
+    });
+    list.appendChild(item);
+}
+
+function getSubQuestionsFromForm() {
+    const enabled = document.getElementById('enable-sub-questions')?.checked;
+    if (!enabled) return [];
+    const items = document.querySelectorAll('#sub-questions-list .sub-question-item');
+    const subQuestions = [];
+    items.forEach((item, i) => {
+        const label = item.querySelector('.sq-label')?.value?.trim();
+        const maxScore = parseFloat(item.querySelector('.sq-max-score')?.value);
+        const answer = item.querySelector('.sq-answer')?.value?.trim();
+        const rubric = item.querySelector('.sq-rubric')?.value?.trim();
+        if (label) {
+            subQuestions.push({
+                id: String.fromCharCode(97 + i),
+                label,
+                answer: answer || '',
+                rubric: rubric || '',
+                maxScore: isNaN(maxScore) ? 0 : maxScore
+            });
+        }
+    });
+    return subQuestions;
 }
 
 function updateUIVisibility() {
@@ -436,6 +496,7 @@ function saveAISettings() {
     const gradingMode = checkedMode ? checkedMode.value : 'normal';
 
     const providerName = document.getElementById('ai-provider').value;
+    const subQuestions = getSubQuestionsFromForm();
     const config = {
         question: document.getElementById('question-content').value,
         answer: document.getElementById('standard-answer').value,
@@ -444,7 +505,8 @@ function saveAISettings() {
         endpoint: document.getElementById('api-endpoint').value,
         apiKey: document.getElementById('api-key').value,
         model: document.getElementById('model-name').value,
-        gradingMode
+        gradingMode,
+        subQuestions: subQuestions.length > 0 ? subQuestions : undefined
     };
 
     // 同步更新服务商配置

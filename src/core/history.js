@@ -78,7 +78,7 @@ const HistoryManager = {
         if (urlsToFetch.length > 0) {
             showToast(`正在加载 ${urlsToFetch.length} 张图片...`);
             await Promise.all(urlsToFetch.map(async url => {
-                try { imageCache[url] = await fetchImageAsBase64(url); } catch (e) { console.warn('图片加载失败:', url); }
+                try { const fetchFn = (window.__AI_MARKER_ADAPTER__ && window.__AI_MARKER_ADAPTER__.fetchImageAsBase64) ? window.__AI_MARKER_ADAPTER__.fetchImageAsBase64 : fetchImageAsBase64; imageCache[url] = await fetchFn(url); } catch (e) { console.warn('图片加载失败:', url); }
             }));
         }
 
@@ -302,6 +302,7 @@ function showHistoryPanel() {
 // ========== 历史详情模态框 ==========
 function showHistoryDetail(record) {
     if (!record) return;
+    ensureModalStyles();
     const old = document.getElementById('ai-history-detail');
     if (old) old.remove();
 
@@ -327,6 +328,19 @@ function showHistoryDetail(record) {
                     <div><div style="font-size:11px;color:#86868b;text-transform:uppercase;font-weight:600;margin-bottom:4px;">AI评分</div><div style="font-size:28px;font-weight:700;">${record.aiScore}</div></div>
                     <div><div style="font-size:11px;color:#86868b;text-transform:uppercase;font-weight:600;margin-bottom:4px;">最终分数</div><div style="font-size:28px;font-weight:700;color:${record.isCorrected ? '#0052FF' : '#1d1d1f'};">${record.finalScore}${record.isCorrected ? ' ✓' : ''}</div></div>
                 </div>
+                ${record.subScores && record.subScores.length > 0 ? `
+                <div style="margin-bottom:16px;">
+                    <div style="font-size:11px;color:#86868b;text-transform:uppercase;font-weight:600;margin-bottom:8px;">各小题得分</div>
+                    <div style="display:flex;flex-direction:column;gap:6px;">
+                        ${record.subScores.map(sq => `
+                        <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 12px;background:rgba(0,0,0,0.02);border-radius:8px;border:1px solid rgba(0,0,0,0.04);">
+                            <span style="font-size:13px;color:#1d1d1f;font-weight:500;">${sq.label}</span>
+                            <span style="font-size:14px;font-weight:600;">${sq.score !== null ? sq.score : '—'}<span style="font-size:11px;color:#86868b;font-weight:normal;">/${sq.maxScore}</span></span>
+                        </div>
+                        ${sq.comment ? `<div style="font-size:12px;color:#666;padding:0 12px 2px;">${sq.comment}</div>` : ''}
+                        `).join('')}
+                    </div>
+                </div>` : ''}
                 ${record.isCorrected ? `<div style="background:rgba(0,82,255,0.04);border-left:3px solid #0052FF;padding:10px 14px;border-radius:0 6px 6px 0;font-size:12px;color:#0052FF;margin-bottom:16px;">${record.correctionReason || '已纠错'}</div>` : ''}
                 <div style="margin-bottom:16px;"><div style="font-size:11px;color:#86868b;text-transform:uppercase;font-weight:600;margin-bottom:6px;">识别答案</div><div style="font-size:13px;line-height:1.6;font-family:'SF Mono',monospace;background:rgba(0,0,0,0.02);padding:12px;border-radius:8px;white-space:pre-wrap;">${record.studentAnswer || '未能识别'}</div></div>
                 <div style="margin-bottom:16px;"><div style="font-size:11px;color:#86868b;text-transform:uppercase;font-weight:600;margin-bottom:6px;">AI评语</div><div style="font-size:13px;line-height:1.6;font-family:'SF Mono',monospace;background:rgba(0,0,0,0.02);padding:12px;border-radius:8px;white-space:pre-wrap;">${record.aiComment || '无'}</div></div>

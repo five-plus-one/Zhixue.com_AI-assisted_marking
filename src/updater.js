@@ -28,11 +28,30 @@ function extractRemoteVersion(scriptText) {
 }
 
 /**
+ * 收集从当前版本到远端版本之间的更新日志条目。
+ * 返回 HTML 字符串，若无日志则返回空字符串。
+ */
+function collectChangelogHTML(remoteVersion) {
+    const changelog = SCRIPT_CONFIG.CHANGELOG;
+    if (!changelog) return '';
+    const versions = Object.keys(changelog)
+        .filter(v => compareVersions(v, SCRIPT_CONFIG.VERSION) > 0 && compareVersions(v, remoteVersion) <= 0)
+        .sort((a, b) => compareVersions(b, a)); // 降序
+    if (!versions.length) return '';
+    return versions.map(v => {
+        const items = changelog[v].map(item => `<li>${item}</li>`).join('');
+        return `<div style="margin-bottom:8px;"><span class="version-tag">v${v}</span><ul style="margin:4px 0 0 16px;padding:0;font-size:12px;color:#666;line-height:1.8;">${items}</ul></div>`;
+    }).join('');
+}
+
+/**
  * 显示更新提示对话框（非 alert，样式与项目风格一致）。
  */
 function showUpdateDialog(remoteVersion) {
     const oldDialog = document.getElementById('ai-update-dialog');
     if (oldDialog) return; // 已经在显示了，不重复
+
+    const changelogHTML = collectChangelogHTML(remoteVersion);
 
     const dialog = document.createElement('div');
     dialog.id = 'ai-update-dialog';
@@ -43,7 +62,7 @@ function showUpdateDialog(remoteVersion) {
                 background: rgba(255, 255, 255, 0.95); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
                 border: 1px solid rgba(0,0,0,0.06); border-radius: 12px;
                 box-shadow: 0 16px 40px rgba(0,0,0,0.1), 0 4px 12px rgba(0,0,0,0.04);
-                padding: 24px; width: 320px;
+                padding: 24px; width: 320px; max-height: 70vh; overflow-y: auto;
                 font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Inter", sans-serif;
                 animation: slide-in-update 0.4s cubic-bezier(0.16, 1, 0.3, 1);
             }
@@ -52,8 +71,9 @@ function showUpdateDialog(remoteVersion) {
                 to   { opacity: 1; transform: translateY(0); }
             }
             #ai-update-dialog .upd-title { font-size: 15px; font-weight: 600; color: #1a1a1a; margin-bottom: 12px; letter-spacing: 0.3px; }
-            #ai-update-dialog .upd-body  { font-size: 13px; color: #666; margin-bottom: 24px; line-height: 1.6; }
+            #ai-update-dialog .upd-body  { font-size: 13px; color: #666; margin-bottom: 16px; line-height: 1.6; }
             .version-tag { display: inline-block; background: rgba(0,0,0,0.04); padding: 2px 6px; border-radius: 4px; font-family: "SF Mono", monospace; font-size: 12px; }
+            #ai-update-dialog .upd-changelog { margin-bottom: 16px; max-height: 200px; overflow-y: auto; }
             #ai-update-dialog .upd-btns  { display: flex; gap: 8px; margin-bottom: 12px; }
             #ai-update-dialog .upd-btn   { flex: 1; padding: 10px 0; border: none; border-radius: 8px; font-size: 13px; font-weight: 600; cursor: pointer; transition: all 0.2s; }
             #ai-update-dialog .upd-btn-primary { background: #1a1a1a; color: white; }
@@ -65,10 +85,11 @@ function showUpdateDialog(remoteVersion) {
         </style>
         <div class="upd-title">发现新版本</div>
         <div class="upd-body">
-            核心组件有性能更新可用。<br><br>
-            当前版本: <span class="version-tag">v${SCRIPT_CONFIG.VERSION}</span><br>
-            最新可用: <span class="version-tag">v${remoteVersion}</span>
+            当前版本: <span class="version-tag">v${SCRIPT_CONFIG.VERSION}</span>
+            &nbsp;→&nbsp;
+            最新版本: <span class="version-tag">v${remoteVersion}</span>
         </div>
+        ${changelogHTML ? `<div class="upd-changelog">${changelogHTML}</div>` : ''}
         <div class="upd-btns">
             <button class="upd-btn upd-btn-primary" id="upd-btn-now">立即更新</button>
             <button class="upd-btn upd-btn-secondary" id="upd-btn-later">稍后</button>

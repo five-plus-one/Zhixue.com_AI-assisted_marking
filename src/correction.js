@@ -233,6 +233,7 @@ function showCorrectionPanel(context) {
                     e.stopPropagation();
                     const newAnswer = document.getElementById('cor-new-answer')?.value;
                     const newRubric = document.getElementById('cor-new-rubric')?.value;
+                    console.log(`📝 [纠错] 确认提交 — 教师分数: ${feedback.teacherScore}, 新答案长度: ${(newAnswer||'').length}, 新标准长度: ${(newRubric||'').length}`);
                     const correctionInfo = {
                         isCorrected: true,
                         correctionReason: `教师纠正：AI${context.score}分→正确${feedback.teacherScore}分。${feedback.teacherReason}`,

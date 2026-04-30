@@ -564,11 +564,23 @@ function showAutoSubmitDialog(score, comment) {
                     });
                     // 将纠错后的提示词写回配置
                     if (correctionInfo.newAnswer || correctionInfo.newRubric) {
-                        const cfg = PresetManager.getCurrentConfig();
-                        if (correctionInfo.newAnswer) cfg.answer = correctionInfo.newAnswer;
-                        if (correctionInfo.newRubric) cfg.rubric = correctionInfo.newRubric;
-                        PresetManager.save();
-                        showToast('提示词已更新');
+                        const activeName = PresetManager.data.active;
+                        const cfg = PresetManager.data.list[activeName];
+                        if (cfg) {
+                            if (correctionInfo.newAnswer) cfg.answer = correctionInfo.newAnswer;
+                            if (correctionInfo.newRubric) cfg.rubric = correctionInfo.newRubric;
+                            PresetManager.save();
+                            console.log(`✅ [纠错] 提示词已更新 — 方案: ${activeName}`, {
+                                newAnswer: correctionInfo.newAnswer?.slice(0, 50),
+                                newRubric: correctionInfo.newRubric?.slice(0, 50)
+                            });
+                            showToast('提示词已更新');
+                            // 同步更新设置面板表单
+                            const answerEl = document.getElementById('standard-answer');
+                            const rubricEl = document.getElementById('grading-rubric');
+                            if (answerEl) answerEl.value = cfg.answer;
+                            if (rubricEl) rubricEl.value = cfg.rubric;
+                        }
                     }
                     fillScore(finalScore, comment);
                 },

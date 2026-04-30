@@ -2,7 +2,7 @@
 
 > 让AI帮你批改试卷，解放双手，提高效率！
 
-[![版本](https://img.shields.io/badge/version-1.7.0-blue.svg)](https://github.com/five-plus-one/Zhixue.com_AI-assisted_marking)
+[![版本](https://img.shields.io/badge/version-1.8.2-blue.svg)](https://github.com/five-plus-one/Zhixue.com_AI-assisted_marking)
 [![许可证](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 
 ## ⚠️ 反馈
@@ -55,14 +55,34 @@
 - 可绑定题目URL，下次打开自动切换对应方案
 - 未保存检测：修改配置后未保存时会阻止意外启动
 
-### 5. 无人值守模式
+### 5. 自动更新检查
+- 每 24 小时自动检查新版本
+- 发现新版本时显示更新日志，支持一键更新
+- 设置面板支持手动检查更新
+
+### 6. 无人值守模式
 - 🌙 **夜间挂机**：适合批改大量试卷
 - 🔄 **自动重试**：遇到错误自动刷新重试（最多3次）
 - 🤫 **静默运行**：所有提示仅在控制台输出，不弹窗打扰
 - ⚡ **快速提交**：1秒自动提交，无需等待
 - 🛑 **自动停止**：完成所有批改后自动停止
 
-### 6. 智能容错
+### 6. 分数纠错
+- 发现AI评分有误时，可输入正确分数和理由
+- AI自动分析差异原因，建议修改参考答案和评分标准
+- 修改内容自动回写到配置，持续优化评分准确性
+
+### 7. 多服务商管理
+- 支持多个AI服务商配置（5+1官方、OpenAI兼容等）
+- 可新建/删除/切换自定义服务商
+- 切换服务商自动填充端点、密钥和模型信息
+
+### 8. 评阅历史
+- 独立浮动历史按钮，一键查看评阅记录
+- 支持导出 HTML 报告（含答题卡图片）
+- 评阅数据本地持久化存储
+
+### 9. 智能容错
 - 403错误自动刷新页面
 - 网络异常自动重试
 - 支持手动暂停/继续
@@ -85,7 +105,7 @@
 
 确保已安装 Tampermonkey，点击以下链接，Tampermonkey 会自动提示安装：
 
-**👉 [一键安装脚本](https://raw.githubusercontent.com/five-plus-one/Zhixue.com_AI-assisted_marking/main/dist/zhixue_ai_marking.user.js)**
+**👉 [一键安装脚本](https://auto-update.aimarking.five-plus-one.com/zhixue/zhixue_ai_marking.user.js)**
 
 #### 方式二：手动安装
 
@@ -141,7 +161,7 @@
 ### 方案一：5+1 AI（推荐）
 - **获取密钥**：[https://api.ai.five-plus-one.com/console/token](https://api.ai.five-plus-one.com/console/token)
 - **API端点**：`https://api.ai.five-plus-one.com/v1/chat/completions`
-- **默认模型**：`doubao-seed-1-8-251228`
+- **默认模型**：`mimo-v2.5`
 
 ### 方案二：其他 OpenAI 兼容接口
 - 支持任何符合 OpenAI API 格式的服务（如火山引擎、DeepSeek、硅基流动等）
@@ -224,6 +244,20 @@
 ---
 
 ## 📝 更新日志
+
+### v1.8.2 (2026-04-30)
+- ✨ 纠错流程精简为两步，确认后直接使用教师分数，不再触发重新批改
+- ✨ 新增独立浮动历史按钮，快速查看评阅记录
+- ✨ 新增多服务商管理系统（支持新建/删除/切换自定义服务商）
+- ✨ 设置面板新增手动检查更新按钮
+- ✨ 自动更新和手动更新弹窗显示版本更新日志
+- 🐛 修复纠错后提示词未更新到配置的问题
+- 🐛 修复 HTML 导出图片缺失问题，评阅时存储 base64 数据
+
+### v1.8.0 (2026-04-20)
+- ✨ 纠错面板重新设计，支持查看 AI 分析和手动修改提示词
+- ✨ 回评模式下隐藏 AI 打分按钮，避免误操作
+- ✨ 新增评分模式切换（普通/无人值守）
 
 ### v1.7.0 (2026-04-10)
 - ✨ 新增自动检查更新功能，每 24 小时检查一次，发现新版本时弹出非打扰式提示卡片

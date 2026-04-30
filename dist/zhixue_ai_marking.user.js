@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         智学网AI自动打分助手
 // @namespace    http://tampermonkey.net/
-// @version      1.8.2
+// @version      1.8.3
 // @description  智学网AI自动批改助手，支持多套试卷方案管理、自动绑定切换、自动检查更新、精准题号识别、未保存拦截、流式评分！
 // @author       5plus1
 // @match        https://www.zhixue.com/webmarking/*
@@ -26,10 +26,10 @@
 
 const SCRIPT_CONFIG = {
     /** 当前脚本版本号，修改此处即可同步更新所有引用 */
-    VERSION: '1.8.2',
+    VERSION: '1.8.3',
 
     /** 远端原始脚本地址（用于检查更新） */
-    UPDATE_CHECK_URL: 'https://raw.githubusercontent.com/five-plus-one/Zhixue.com_AI-assisted_marking/main/dist/zhixue_ai_marking.user.js',
+    UPDATE_CHECK_URL: 'https://auto-update.aimarking.five-plus-one.com/zhixue/zhixue_ai_marking.user.js',
 
     /** 更新检查间隔（毫秒），默认 24 小时 */
     UPDATE_CHECK_INTERVAL_MS: 24 * 60 * 60 * 1000,
@@ -39,6 +39,27 @@ const SCRIPT_CONFIG = {
 
     /** 默认模型 */
     DEFAULT_MODEL: 'mimo-v2.5',
+
+    /** 版本更新日志（用于更新提示弹窗），键为版本号，值为更新内容数组 */
+    CHANGELOG: {
+        '1.8.3': [
+            '纠错流程精简为两步，确认后直接使用教师分数，不再重新批改',
+            '新增独立浮动历史按钮，快速查看评阅记录',
+            '新增多服务商管理系统（支持新建/删除/切换自定义服务商）',
+            '设置面板新增手动检查更新按钮',
+            '修复 HTML 导出图片缺失问题，评阅时存储 base64 数据',
+        ],
+        '1.8.0': [
+            '纠错面板重新设计，支持查看 AI 分析和手动修改提示词',
+            '回评模式下隐藏 AI 打分按钮，避免误操作',
+            '默认模型更新为 mimo-v2.5',
+            '新增评分模式切换（普通/无人值守）',
+        ],
+        '1.7.0': [
+            '新增自动检查更新功能，每 24 小时检查一次',
+            '重构代码结构：拆分为 src/ 模块，通过 build.js 构建',
+        ],
+    },
 };
 
 
@@ -685,11 +706,23 @@ function showAutoSubmitDialog(score, comment) {
                     });
                     // 将纠错后的提示词写回配置
                     if (correctionInfo.newAnswer || correctionInfo.newRubric) {
-                        const cfg = PresetManager.getCurrentConfig();
-                        if (correctionInfo.newAnswer) cfg.answer = correctionInfo.newAnswer;
-                        if (correctionInfo.newRubric) cfg.rubric = correctionInfo.newRubric;
-                        PresetManager.save();
-                        showToast('提示词已更新');
+                        const activeName = PresetManager.data.active;
+                        const cfg = PresetManager.data.list[activeName];
+                        if (cfg) {
+                            if (correctionInfo.newAnswer) cfg.answer = correctionInfo.newAnswer;
+                            if (correctionInfo.newRubric) cfg.rubric = correctionInfo.newRubric;
+                            PresetManager.save();
+                            console.log(`✅ [纠错] 提示词已更新 — 方案: ${activeName}`, {
+                                newAnswer: correctionInfo.newAnswer?.slice(0, 50),
+                                newRubric: correctionInfo.newRubric?.slice(0, 50)
+                            });
+                            showToast('提示词已更新');
+                            // 同步更新设置面板表单
+                            const answerEl = document.getElementById('standard-answer');
+                            const rubricEl = document.getElementById('grading-rubric');
+                            if (answerEl) answerEl.value = cfg.answer;
+                            if (rubricEl) rubricEl.value = cfg.rubric;
+                        }
                     }
                     fillScore(finalScore, comment);
                 },
@@ -1710,6 +1743,7 @@ function showCorrectionPanel(context) {
                     e.stopPropagation();
                     const newAnswer = document.getElementById('cor-new-answer')?.value;
                     const newRubric = document.getElementById('cor-new-rubric')?.value;
+                    console.log(`📝 [纠错] 确认提交 — 教师分数: ${feedback.teacherScore}, 新答案长度: ${(newAnswer||'').length}, 新标准长度: ${(newRubric||'').length}`);
                     const correctionInfo = {
                         isCorrected: true,
                         correctionReason: `教师纠正：AI${context.score}分→正确${feedback.teacherScore}分。${feedback.teacherReason}`,
@@ -2139,11 +2173,30 @@ function extractRemoteVersion(scriptText) {
 }
 
 /**
+ * 收集从当前版本到远端版本之间的更新日志条目。
+ * 返回 HTML 字符串，若无日志则返回空字符串。
+ */
+function collectChangelogHTML(remoteVersion) {
+    const changelog = SCRIPT_CONFIG.CHANGELOG;
+    if (!changelog) return '';
+    const versions = Object.keys(changelog)
+        .filter(v => compareVersions(v, SCRIPT_CONFIG.VERSION) > 0 && compareVersions(v, remoteVersion) <= 0)
+        .sort((a, b) => compareVersions(b, a)); // 降序
+    if (!versions.length) return '';
+    return versions.map(v => {
+        const items = changelog[v].map(item => `<li>${item}</li>`).join('');
+        return `<div style="margin-bottom:8px;"><span class="version-tag">v${v}</span><ul style="margin:4px 0 0 16px;padding:0;font-size:12px;color:#666;line-height:1.8;">${items}</ul></div>`;
+    }).join('');
+}
+
+/**
  * 显示更新提示对话框（非 alert，样式与项目风格一致）。
  */
 function showUpdateDialog(remoteVersion) {
     const oldDialog = document.getElementById('ai-update-dialog');
     if (oldDialog) return; // 已经在显示了，不重复
+
+    const changelogHTML = collectChangelogHTML(remoteVersion);
 
     const dialog = document.createElement('div');
     dialog.id = 'ai-update-dialog';
@@ -2154,7 +2207,7 @@ function showUpdateDialog(remoteVersion) {
                 background: rgba(255, 255, 255, 0.95); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
                 border: 1px solid rgba(0,0,0,0.06); border-radius: 12px;
                 box-shadow: 0 16px 40px rgba(0,0,0,0.1), 0 4px 12px rgba(0,0,0,0.04);
-                padding: 24px; width: 320px;
+                padding: 24px; width: 320px; max-height: 70vh; overflow-y: auto;
                 font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Inter", sans-serif;
                 animation: slide-in-update 0.4s cubic-bezier(0.16, 1, 0.3, 1);
             }
@@ -2163,8 +2216,9 @@ function showUpdateDialog(remoteVersion) {
                 to   { opacity: 1; transform: translateY(0); }
             }
             #ai-update-dialog .upd-title { font-size: 15px; font-weight: 600; color: #1a1a1a; margin-bottom: 12px; letter-spacing: 0.3px; }
-            #ai-update-dialog .upd-body  { font-size: 13px; color: #666; margin-bottom: 24px; line-height: 1.6; }
+            #ai-update-dialog .upd-body  { font-size: 13px; color: #666; margin-bottom: 16px; line-height: 1.6; }
             .version-tag { display: inline-block; background: rgba(0,0,0,0.04); padding: 2px 6px; border-radius: 4px; font-family: "SF Mono", monospace; font-size: 12px; }
+            #ai-update-dialog .upd-changelog { margin-bottom: 16px; max-height: 200px; overflow-y: auto; }
             #ai-update-dialog .upd-btns  { display: flex; gap: 8px; margin-bottom: 12px; }
             #ai-update-dialog .upd-btn   { flex: 1; padding: 10px 0; border: none; border-radius: 8px; font-size: 13px; font-weight: 600; cursor: pointer; transition: all 0.2s; }
             #ai-update-dialog .upd-btn-primary { background: #1a1a1a; color: white; }
@@ -2176,10 +2230,11 @@ function showUpdateDialog(remoteVersion) {
         </style>
         <div class="upd-title">发现新版本</div>
         <div class="upd-body">
-            核心组件有性能更新可用。<br><br>
-            当前版本: <span class="version-tag">v${SCRIPT_CONFIG.VERSION}</span><br>
-            最新可用: <span class="version-tag">v${remoteVersion}</span>
+            当前版本: <span class="version-tag">v${SCRIPT_CONFIG.VERSION}</span>
+            &nbsp;→&nbsp;
+            最新版本: <span class="version-tag">v${remoteVersion}</span>
         </div>
+        ${changelogHTML ? `<div class="upd-changelog">${changelogHTML}</div>` : ''}
         <div class="upd-btns">
             <button class="upd-btn upd-btn-primary" id="upd-btn-now">立即更新</button>
             <button class="upd-btn upd-btn-secondary" id="upd-btn-later">稍后</button>

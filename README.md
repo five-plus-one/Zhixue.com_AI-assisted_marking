@@ -1,6 +1,6 @@
 # AI-Marker-Suite — AI 批改助手
 
-> **一份试卷批改 3 秒搞定，晚上挂机睡觉，早上起来全改完。**
+> **晚上挂机睡觉，早上起来全改完。**
 
 [![版本](https://img.shields.io/badge/version-1.8.5-blue.svg)](https://github.com/five-plus-one/Zhixue.com_AI-assisted_marking)
 [![许可证](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
@@ -11,15 +11,15 @@
 
 | 痛点 | AI 批改助手 |
 |------|------------|
-| 一份主观题看 2~3 分钟 | **3 秒出结果**，含分数 + 评语 |
+| 一份主观题看 2~3 分钟 | *AI 自动评分**，含分数 + 评语 |
 | 改到半夜眼睛酸 | **无人值守模式**，挂机自动改，睡觉就行 |
 | 评分标准难统一 | **自定义评分标准**，AI 按同一把尺子打分 |
 | 每道题都要手动输分、点提交 | **全自动**：识别 → 打分 → 填入 → 提交 → 下一份 |
 | 改完想回头看某份试卷 | **评阅历史**，一键回看，支持导出报告 |
 
-**支持平台：智学网、七天网络**（一个脚本自动识别）
+**支持平台：智学网、七天网络**  如果您有适配需求，请联系我。
 
-![](https://img.assets.five-plus-one.com/2026/02/a457a722e32879a416b7e8c88bf178eb.png)
+![](./img/1.png)
 
 ---
 
@@ -124,11 +124,11 @@
 
 ## 反馈与支持
 
-- **问题反馈**：[GitHub Issues](https://github.com/five-plus-one/Zhixue.com_AI-assisted_marking/issues)
+- **问题反馈**：[GitHub Issues](https://github.com/five-plus-one/AI-Marker-Suite/issues)
 - **联系方式**：[https://r-l.ink/contact](https://r-l.ink/contact)
 - **请作者喝咖啡**：[支持页面](http://r-l.ink/support)
 
-> 如果你愿意提供测试账号（智学网/七天网络），请联系作者，非常感谢！
+> 如果你愿意提供测试账号（智学网/七天网络/或其他您希望支持的平台），请联系作者，非常感谢！
 
 ---
 
@@ -178,7 +178,7 @@ MIT License - 详见 [LICENSE](LICENSE)
 
 <div align="center">
 
-**觉得有用？[给个 Star](https://github.com/five-plus-one/Zhixue.com_AI-assisted_marking) 支持一下！**
+**觉得有用？[给个 Star](https://github.com/five-plus-one/AI-Marker-Suite) 支持一下！**
 
 Made by [5plus1](https://five-plus-one.com/)
 

@@ -68,9 +68,31 @@ function createMainButton() {
             pointer-events: none; opacity: 0;
         }
         .toast-notification.show { opacity: 1; transform: translate(-50%, 0); }
+        .ai-history-btn {
+            position: fixed; bottom: 95px; right: 40px; z-index: 99999;
+            width: 44px; height: 44px; border-radius: 50%;
+            background: rgba(255,255,255,0.9); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
+            border: 1px solid rgba(0,0,0,0.08);
+            box-shadow: 0 4px 16px rgba(0,0,0,0.08);
+            cursor: pointer; font-size: 18px;
+            display: flex; align-items: center; justify-content: center;
+            transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+        }
+        .ai-history-btn:hover {
+            transform: translateY(-2px) scale(1.05);
+            box-shadow: 0 8px 24px rgba(0,0,0,0.12);
+            background: rgba(255,255,255,1);
+        }
     `;
     document.head.appendChild(style);
     document.body.appendChild(btn);
+
+    const histBtn = document.createElement('button');
+    histBtn.className = 'ai-history-btn';
+    histBtn.innerHTML = '📋';
+    histBtn.title = '评阅历史';
+    histBtn.onclick = () => showHistoryPanel();
+    document.body.appendChild(histBtn);
 }
 
 function showToast(msg) {
@@ -537,7 +559,8 @@ function showAutoSubmitDialog(score, comment) {
                         imageUrls, studentAnswer,
                         aiScore: score, aiComment: comment,
                         finalScore, isCorrected: correctionInfo.isCorrected,
-                        correctionReason: correctionInfo.correctionReason
+                        correctionReason: correctionInfo.correctionReason,
+                        imageBase64s: window.aiGradingState.currentBase64DataArray || []
                     });
                     // 将纠错后的提示词写回配置
                     if (correctionInfo.newAnswer || correctionInfo.newRubric) {
@@ -582,7 +605,8 @@ function showAutoSubmitDialog(score, comment) {
             gradingMode: mode,
             imageUrls, studentAnswer,
             aiScore: score, aiComment: comment,
-            finalScore: score, isCorrected: false, correctionReason: ''
+            finalScore: score, isCorrected: false, correctionReason: '',
+            imageBase64s: window.aiGradingState.currentBase64DataArray || []
         });
 
         const allBtns = Array.from(document.querySelectorAll('button'));

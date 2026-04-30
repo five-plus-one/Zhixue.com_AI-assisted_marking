@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         智学网AI自动打分助手
 // @namespace    http://tampermonkey.net/
-// @version      1.8.1
+// @version      1.8.2
 // @description  智学网AI自动批改助手，支持多套试卷方案管理、自动绑定切换、自动检查更新、精准题号识别、未保存拦截、流式评分！
 // @author       5plus1
 // @match        https://www.zhixue.com/webmarking/*
@@ -26,7 +26,7 @@
 
 const SCRIPT_CONFIG = {
     /** 当前脚本版本号，修改此处即可同步更新所有引用 */
-    VERSION: '1.8.1',
+    VERSION: '1.8.2',
 
     /** 远端原始脚本地址（用于检查更新） */
     UPDATE_CHECK_URL: 'https://raw.githubusercontent.com/five-plus-one/Zhixue.com_AI-assisted_marking/main/dist/zhixue_ai_marking.user.js',
@@ -51,6 +51,7 @@ const PresetManager = {
         if (saved) {
             this.data = JSON.parse(saved);
             this._migrateGradingMode();
+            this._migrateProvider();
         } else {
             let oldConfigStr = GM_getValue('ai-grading-config');
             let defaultCfg = oldConfigStr ? JSON.parse(oldConfigStr) : {
@@ -74,6 +75,18 @@ const PresetManager = {
                 changed = true;
             } else if (cfg.gradingMode === undefined) {
                 cfg.gradingMode = 'normal';
+                changed = true;
+            }
+        }
+        if (changed) this.save();
+    },
+    _migrateProvider() {
+        const migration = { '5plus1': '5plus1官方', 'openai': 'OpenAI兼容' };
+        let changed = false;
+        for (const name in this.data.list) {
+            const cfg = this.data.list[name];
+            if (cfg.provider && migration[cfg.provider]) {
+                cfg.provider = migration[cfg.provider];
                 changed = true;
             }
         }
@@ -176,9 +189,31 @@ function createMainButton() {
             pointer-events: none; opacity: 0;
         }
         .toast-notification.show { opacity: 1; transform: translate(-50%, 0); }
+        .ai-history-btn {
+            position: fixed; bottom: 95px; right: 40px; z-index: 99999;
+            width: 44px; height: 44px; border-radius: 50%;
+            background: rgba(255,255,255,0.9); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
+            border: 1px solid rgba(0,0,0,0.08);
+            box-shadow: 0 4px 16px rgba(0,0,0,0.08);
+            cursor: pointer; font-size: 18px;
+            display: flex; align-items: center; justify-content: center;
+            transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+        }
+        .ai-history-btn:hover {
+            transform: translateY(-2px) scale(1.05);
+            box-shadow: 0 8px 24px rgba(0,0,0,0.12);
+            background: rgba(255,255,255,1);
+        }
     `;
     document.head.appendChild(style);
     document.body.appendChild(btn);
+
+    const histBtn = document.createElement('button');
+    histBtn.className = 'ai-history-btn';
+    histBtn.innerHTML = '📋';
+    histBtn.title = '评阅历史';
+    histBtn.onclick = () => showHistoryPanel();
+    document.body.appendChild(histBtn);
 }
 
 function showToast(msg) {
@@ -645,7 +680,8 @@ function showAutoSubmitDialog(score, comment) {
                         imageUrls, studentAnswer,
                         aiScore: score, aiComment: comment,
                         finalScore, isCorrected: correctionInfo.isCorrected,
-                        correctionReason: correctionInfo.correctionReason
+                        correctionReason: correctionInfo.correctionReason,
+                        imageBase64s: window.aiGradingState.currentBase64DataArray || []
                     });
                     // 将纠错后的提示词写回配置
                     if (correctionInfo.newAnswer || correctionInfo.newRubric) {
@@ -690,7 +726,8 @@ function showAutoSubmitDialog(score, comment) {
             gradingMode: mode,
             imageUrls, studentAnswer,
             aiScore: score, aiComment: comment,
-            finalScore: score, isCorrected: false, correctionReason: ''
+            finalScore: score, isCorrected: false, correctionReason: '',
+            imageBase64s: window.aiGradingState.currentBase64DataArray || []
         });
 
         const allBtns = Array.from(document.querySelectorAll('button'));
@@ -747,6 +784,29 @@ function showAutoSubmitDialog(score, comment) {
 
 
 // ========== [Module: ui-panel.js] ==========
+// ========== 服务商管理器 ==========
+const ProviderManager = {
+    data: null,
+    init() {
+        let saved = GM_getValue('ai-grading-providers');
+        if (saved) {
+            this.data = JSON.parse(saved);
+        } else {
+            this.data = {
+                list: {
+                    "5plus1官方": { endpoint: SCRIPT_CONFIG.DEFAULT_ENDPOINT, model: SCRIPT_CONFIG.DEFAULT_MODEL, apiKey: '' },
+                    "OpenAI兼容": { endpoint: 'https://api.openai.com/v1/chat/completions', model: 'gpt-4o', apiKey: '' }
+                },
+                active: "5plus1官方"
+            };
+            this.save();
+        }
+    },
+    save() { GM_setValue('ai-grading-providers', JSON.stringify(this.data)); },
+    getCurrent() { return this.data.list[this.data.active] || {}; }
+};
+ProviderManager.init();
+
 // ========== 创建配置面板 ==========
 function createSettingsPanel() {
     if (document.getElementById('ai-grading-settings')) return;
@@ -904,10 +964,11 @@ function createSettingsPanel() {
                 <h4>AI 模型与算力</h4>
                 <div class="form-group">
                     <label>服务提供商</label>
-                    <select id="ai-provider">
-                        <option value="5plus1">5+1 官方节点 (推荐)</option>
-                        <option value="openai">自定义代理</option>
-                    </select>
+                    <div class="preset-controls">
+                        <select id="ai-provider"></select>
+                        <button class="preset-btn" id="btn-new-provider">新建</button>
+                        <button class="preset-btn danger" id="btn-del-provider">删除</button>
+                    </div>
                     <div id="api-key-link-container" style="display:none;"><a href="https://api.ai.five-plus-one.com/console/token" target="_blank" class="api-key-link">获取访问凭证</a></div>
                 </div>
                 <div class="form-group"><label>服务网关 URL</label><input type="text" id="api-endpoint"></div>
@@ -915,7 +976,10 @@ function createSettingsPanel() {
                 <div class="form-group"><label>调用模型 ID</label><input type="text" id="model-name"></div>
             </div>
             <div class="form-section" style="padding-bottom:20px;">
-                <button class="history-btn" id="btn-history">评阅历史</button>
+                <div style="display:flex;gap:8px;">
+                    <button class="history-btn" id="btn-history" style="flex:1;">评阅历史</button>
+                    <button class="history-btn" id="btn-check-update" style="flex:1;">检查更新</button>
+                </div>
             </div>
         </div>
     `;
@@ -932,6 +996,10 @@ function createSettingsPanel() {
     panel.querySelector('#preset-select').onchange = handlePresetChange;
     panel.querySelector('#save-config-btn').onclick = saveAISettings;
     panel.querySelector('#btn-history').onclick = () => showHistoryPanel();
+    panel.querySelector('#btn-check-update').onclick = () => checkForUpdate(true);
+    panel.querySelector('#btn-new-provider').onclick = handleNewProvider;
+    panel.querySelector('#btn-del-provider').onclick = handleDeleteProvider;
+    panel.querySelector('#ai-provider').onchange = handleProviderChange;
 
     const modeDescs = {
         normal: '每批改一份，5秒自动提交或手动确认。支持分数纠错。',
@@ -1011,7 +1079,16 @@ function fillFormFromActivePreset() {
     document.getElementById('question-content').value = config.question || '';
     document.getElementById('standard-answer').value = config.answer || '';
     document.getElementById('grading-rubric').value = config.rubric || '';
-    document.getElementById('ai-provider').value = config.provider || '5plus1';
+
+    // 同步服务商下拉（兼容旧格式）
+    renderProviderDropdown();
+    const providerMigration = { '5plus1': '5plus1官方', 'openai': 'OpenAI兼容' };
+    const providerName = providerMigration[config.provider] || config.provider || '5plus1官方';
+    if (ProviderManager.data.list[providerName]) {
+        ProviderManager.data.active = providerName;
+        ProviderManager.save();
+        document.getElementById('ai-provider').value = providerName;
+    }
     document.getElementById('api-endpoint').value = config.endpoint || SCRIPT_CONFIG.DEFAULT_ENDPOINT;
     document.getElementById('api-key').value = config.apiKey || '';
     document.getElementById('model-name').value = config.model || SCRIPT_CONFIG.DEFAULT_MODEL;
@@ -1036,7 +1113,7 @@ function fillFormFromActivePreset() {
 
 function updateUIVisibility() {
     const provider = document.getElementById('ai-provider').value;
-    document.getElementById('api-key-link-container').style.display = provider === '5plus1' ? 'block' : 'none';
+    document.getElementById('api-key-link-container').style.display = provider === '5plus1官方' ? 'block' : 'none';
 }
 
 // ========== 方案操作功能 ==========
@@ -1080,20 +1157,90 @@ async function handleDeletePreset() {
     }
 }
 
+function renderProviderDropdown() {
+    const select = document.getElementById('ai-provider');
+    if (!select) return;
+    select.innerHTML = '';
+    for (const name in ProviderManager.data.list) {
+        const option = document.createElement('option');
+        option.value = name;
+        option.textContent = name;
+        select.appendChild(option);
+    }
+    select.value = ProviderManager.data.active;
+}
+
+function handleProviderChange() {
+    const name = document.getElementById('ai-provider').value;
+    ProviderManager.data.active = name;
+    ProviderManager.save();
+    const provider = ProviderManager.getCurrent();
+    if (provider.endpoint) document.getElementById('api-endpoint').value = provider.endpoint;
+    if (provider.model) document.getElementById('model-name').value = provider.model;
+    if (provider.apiKey !== undefined) document.getElementById('api-key').value = provider.apiKey;
+    document.getElementById('api-key-link-container').style.display = name === '5plus1官方' ? 'block' : 'none';
+    markUnsavedChanges();
+}
+
+async function handleNewProvider() {
+    const name = await showPromptModal("请输入新的服务商名称 (例如: 我的代理)：");
+    if (!name || !name.trim()) return;
+    if (ProviderManager.data.list[name]) {
+        showAlertModal("该服务商名称已存在！");
+        return;
+    }
+    ProviderManager.data.list[name] = {
+        endpoint: document.getElementById('api-endpoint').value,
+        model: document.getElementById('model-name').value,
+        apiKey: document.getElementById('api-key').value
+    };
+    ProviderManager.data.active = name;
+    ProviderManager.save();
+    renderProviderDropdown();
+    document.getElementById('api-key-link-container').style.display = 'none';
+    showToast(`服务商「${name}」创建成功`);
+}
+
+async function handleDeleteProvider() {
+    const name = ProviderManager.data.active;
+    if (Object.keys(ProviderManager.data.list).length <= 1) {
+        showAlertModal("必须至少保留一个服务商！");
+        return;
+    }
+    if (await showConfirmModal(`确定要删除服务商【${name}】吗？`)) {
+        delete ProviderManager.data.list[name];
+        ProviderManager.data.active = Object.keys(ProviderManager.data.list)[0];
+        ProviderManager.save();
+        renderProviderDropdown();
+        handleProviderChange();
+        showToast(`服务商「${name}」已删除`);
+    }
+}
+
 function saveAISettings() {
     const checkedMode = document.querySelector('input[name="grading-mode"]:checked');
     const gradingMode = checkedMode ? checkedMode.value : 'normal';
 
+    const providerName = document.getElementById('ai-provider').value;
     const config = {
         question: document.getElementById('question-content').value,
         answer: document.getElementById('standard-answer').value,
         rubric: document.getElementById('grading-rubric').value,
-        provider: document.getElementById('ai-provider').value,
+        provider: providerName,
         endpoint: document.getElementById('api-endpoint').value,
         apiKey: document.getElementById('api-key').value,
         model: document.getElementById('model-name').value,
         gradingMode
     };
+
+    // 同步更新服务商配置
+    if (ProviderManager.data.list[providerName]) {
+        ProviderManager.data.list[providerName].endpoint = config.endpoint;
+        ProviderManager.data.list[providerName].model = config.model;
+        ProviderManager.data.list[providerName].apiKey = config.apiKey;
+        ProviderManager.data.active = providerName;
+        ProviderManager.save();
+    }
 
     const activeName = PresetManager.data.active;
     PresetManager.data.list[activeName] = config;
@@ -1120,23 +1267,6 @@ function saveAISettings() {
         if (minimizeBtn) minimizeBtn.textContent = '+';
     }
 }
-
-// 监听 api-provider 下拉框变化，自动填充端点和模型
-document.addEventListener('change', function(e) {
-    if (e.target && e.target.id === 'ai-provider') {
-        updateUIVisibility();
-        const presets = {
-            '5plus1': { endpoint: SCRIPT_CONFIG.DEFAULT_ENDPOINT, model: SCRIPT_CONFIG.DEFAULT_MODEL },
-            'openai': { endpoint: 'https://api.openai.com/v1/chat/completions', model: 'gpt-4o' }
-        };
-        const preset = presets[e.target.value];
-        if (preset) {
-            document.getElementById('api-endpoint').value = preset.endpoint;
-            document.getElementById('model-name').value = preset.model;
-            markUnsavedChanges();
-        }
-    }
-});
 
 
 // ========== [Module: image.js] ==========
@@ -1442,12 +1572,6 @@ function showCorrectionPanel(context) {
                 background: rgba(0,0,0,0.02); padding: 14px; border-radius: 10px;
                 border: 1px solid rgba(0,0,0,0.06);
             }
-            .cor-big-score {
-                font-size: 52px; font-weight: 700; color: #1d1d1f; text-align: center;
-                margin-bottom: 20px; letter-spacing: -1px;
-            }
-            .cor-result-row { font-size: 13px; color: #666; margin-bottom: 8px; text-align: left; }
-            .cor-result-row strong { color: #1d1d1f; }
             @keyframes cor-slidein {
                 from { opacity: 0; transform: translateX(12px); }
                 to { opacity: 1; transform: translateX(0); }
@@ -1477,7 +1601,6 @@ function showCorrectionPanel(context) {
     let currentStep = 1;
     let feedback = null;
     let analysisResult = null;
-    let newResult = null;
 
     function render() {
         const body = document.getElementById('cor-step-body');
@@ -1487,7 +1610,6 @@ function showCorrectionPanel(context) {
         body.className = 'cor-body cor-step-enter';
         if (currentStep === 1) renderStep1(title, body, footer);
         else if (currentStep === 2) renderStep2(title, body, footer);
-        else if (currentStep === 3) renderStep3(title, body, footer);
     }
 
     // ===== 步骤1：教师反馈 =====
@@ -1552,7 +1674,7 @@ function showCorrectionPanel(context) {
         `;
         footer.innerHTML = `
             <button class="ai-modal-btn-cancel" id="cor-cancel2">取消</button>
-            <button class="ai-modal-btn-confirm" id="cor-regrade" style="display:none;">应用建议并重新批改</button>
+            <button class="ai-modal-btn-confirm" id="cor-confirm-score" style="display:none;">应用修改并确认得分</button>
         `;
         footer.className = 'cor-footer';
 
@@ -1581,85 +1703,24 @@ function showCorrectionPanel(context) {
             const rubricEl = document.getElementById('cor-new-rubric');
             if (rubricEl) rubricEl.value = analysisResult.rubric !== '不变' ? analysisResult.rubric : (context.config.rubric || '');
 
-            const regradeBtn = document.getElementById('cor-regrade');
-            if (regradeBtn) {
-                regradeBtn.style.display = '';
-                regradeBtn.onclick = e => {
+            const confirmBtn = document.getElementById('cor-confirm-score');
+            if (confirmBtn) {
+                confirmBtn.style.display = '';
+                confirmBtn.onclick = e => {
                     e.stopPropagation();
-                    currentStep = 3;
-                    render();
-                    startRegrading();
+                    const newAnswer = document.getElementById('cor-new-answer')?.value;
+                    const newRubric = document.getElementById('cor-new-rubric')?.value;
+                    const correctionInfo = {
+                        isCorrected: true,
+                        correctionReason: `教师纠正：AI${context.score}分→正确${feedback.teacherScore}分。${feedback.teacherReason}`,
+                        newAnswer, newRubric
+                    };
+                    cleanup();
+                    if (context.onAccept) context.onAccept(feedback.teacherScore, correctionInfo);
                 };
             }
         } catch (err) {
             if (streamEl) streamEl.textContent = '分析失败：' + err.message;
-        }
-    }
-
-    // ===== 步骤3：重新批改结果 =====
-    function renderStep3(title, body, footer) {
-        title.textContent = '纠错结果';
-        body.innerHTML = `
-            <div id="cor-regrade-stream" class="cor-stream-box" style="margin-bottom:20px;">重新批改中...</div>
-            <div id="cor-result-area" style="display:none;">
-                <div class="cor-big-score" id="cor-new-score"></div>
-                <div class="cor-result-row"><strong>识别答案：</strong><span id="cor-new-answer-text"></span></div>
-                <div class="cor-result-row"><strong>评语：</strong><span id="cor-new-comment"></span></div>
-            </div>
-        `;
-        footer.innerHTML = `
-            <button class="ai-modal-btn-cancel" id="cor-abandon" style="display:none;">放弃纠错</button>
-            <div style="display:flex;gap:12px;">
-                <button class="ai-modal-btn-cancel" id="cor-continue" style="display:none;">继续纠错</button>
-                <button class="ai-modal-btn-confirm" id="cor-accept" style="display:none;">确认提交</button>
-            </div>
-        `;
-        footer.className = 'cor-footer cor-footer-between';
-    }
-
-    async function startRegrading() {
-        const streamEl = document.getElementById('cor-regrade-stream');
-        try {
-            const newAnswer = document.getElementById('cor-new-answer')?.value || context.config.answer;
-            const newRubric = document.getElementById('cor-new-rubric')?.value || context.config.rubric;
-            const modifiedConfig = { ...context.config, answer: newAnswer, rubric: newRubric };
-
-            const result = await callAIGrading(context.base64DataArray, modifiedConfig, text => {
-                if (streamEl) streamEl.textContent = text;
-            });
-            newResult = result;
-
-            if (streamEl) streamEl.style.display = 'none';
-            const resultArea = document.getElementById('cor-result-area');
-            if (resultArea) resultArea.style.display = 'block';
-            const scoreEl = document.getElementById('cor-new-score');
-            if (scoreEl) scoreEl.textContent = result.score ?? '解析失败';
-            const ansEl = document.getElementById('cor-new-answer-text');
-            if (ansEl) ansEl.textContent = result.studentAnswer || '未能识别';
-            const cmtEl = document.getElementById('cor-new-comment');
-            if (cmtEl) cmtEl.textContent = result.comment || '';
-
-            ['cor-abandon', 'cor-continue', 'cor-accept'].forEach(id => {
-                const el = document.getElementById(id);
-                if (el) el.style.display = '';
-            });
-            document.getElementById('cor-abandon').onclick = e => { e.stopPropagation(); cleanup(); if (context.onCancel) context.onCancel(); };
-            document.getElementById('cor-continue').onclick = e => { e.stopPropagation(); currentStep = 1; render(); };
-            document.getElementById('cor-accept').onclick = e => {
-                e.stopPropagation();
-                const correctionInfo = {
-                    isCorrected: true,
-                    correctionReason: `教师纠正：AI${context.score}分→正确${feedback.teacherScore}分。${feedback.teacherReason}`,
-                    newAnswer: document.getElementById('cor-new-answer')?.value,
-                    newRubric: document.getElementById('cor-new-rubric')?.value
-                };
-                cleanup();
-                if (context.onAccept) context.onAccept(newResult.score, correctionInfo);
-            };
-        } catch (err) {
-            if (streamEl) streamEl.textContent = '重新批改失败：' + err.message;
-            const abandonBtn = document.getElementById('cor-abandon');
-            if (abandonBtn) { abandonBtn.style.display = ''; abandonBtn.onclick = () => { cleanup(); if (context.onCancel) context.onCancel(); }; }
         }
     }
 
@@ -1726,6 +1787,19 @@ const HistoryManager = {
         record.isCorrected = record.isCorrected || false;
         record.pageUrl = window.location.pathname + window.location.hash;
         record.taskIdentifier = PresetManager.getTaskIdentifier();
+
+        // 限制 imageBase64s 存储大小，避免超出 GM_setValue 限制
+        if (record.imageBase64s && record.imageBase64s.length > 0) {
+            const maxImages = 3;
+            let totalSize = record.imageBase64s.reduce((sum, b64) => sum + (b64?.length || 0), 0);
+            if (totalSize > 1024 * 1024) {
+                // 超过 1MB，只保留第一张
+                record.imageBase64s = [record.imageBase64s[0]];
+            } else if (record.imageBase64s.length > maxImages) {
+                record.imageBase64s = record.imageBase64s.slice(0, maxImages);
+            }
+        }
+
         this.records.unshift(record);
         this.save();
         console.log(`📝 [历史] 已记录评阅: ${record.studentAnswer?.slice(0, 20)}... → ${record.finalScore}分`);
@@ -1762,13 +1836,18 @@ const HistoryManager = {
     async exportHTML() {
         const modeLabel = { normal: '普通', unattended: '无人', trial: '试改' };
 
-        // 预加载所有图片为 base64
+        // 预加载缺少 imageBase64s 的记录的图片
         const imageCache = {};
-        const allUrls = [...new Set(this.records.flatMap(r => r.imageUrls || []))];
-        showToast(`正在加载 ${allUrls.length} 张图片...`);
-        await Promise.all(allUrls.map(async url => {
-            try { imageCache[url] = await fetchImageAsBase64(url); } catch (e) { console.warn('图片加载失败:', url); }
-        }));
+        const urlsToFetch = [...new Set(
+            this.records.filter(r => !r.imageBase64s || r.imageBase64s.length === 0)
+                .flatMap(r => r.imageUrls || [])
+        )];
+        if (urlsToFetch.length > 0) {
+            showToast(`正在加载 ${urlsToFetch.length} 张图片...`);
+            await Promise.all(urlsToFetch.map(async url => {
+                try { imageCache[url] = await fetchImageAsBase64(url); } catch (e) { console.warn('图片加载失败:', url); }
+            }));
+        }
 
         const rows = this.records.map(r => {
             const time = new Date(r.timestamp).toLocaleString('zh-CN');
@@ -1776,8 +1855,8 @@ const HistoryManager = {
             const scoreText = r.isCorrected ? `${r.aiScore} → ${r.finalScore} ✓` : `${r.finalScore}`;
             const correctedRow = r.isCorrected ? `<div style="color:#0052FF;font-size:12px;margin-top:4px;">纠错理由：${r.correctionReason || '无'}</div>` : '';
             const markedRow = r.status === 'marked' ? `<span style="color:#D93025;font-size:11px;margin-left:8px;">⚠ 待回评</span>` : '';
-            const images = (r.imageUrls || []).map(url => {
-                const b64 = imageCache[url];
+            const images = (r.imageUrls || []).map((url, j) => {
+                const b64 = r.imageBase64s?.[j] || imageCache[url];
                 return b64 ? `<img src="data:image/png;base64,${b64}" style="max-width:100%;border-radius:6px;margin-top:8px;">` : '';
             }).join('');
             return `
@@ -2131,18 +2210,21 @@ function showUpdateDialog(remoteVersion) {
  * - 无人值守模式下完全跳过，不打扰批改流程
  * - 如果远端版本 > 当前版本且用户未选择跳过该版本，则弹出提示卡片
  */
-function checkForUpdate() {
+function checkForUpdate(force = false) {
     // 无人值守模式：不提醒
     if (window.aiGradingState && window.aiGradingState.gradingMode === 'unattended') return;
 
-    const now = Date.now();
-    const lastCheck = GM_getValue('last-update-check', 0);
-    if (now - lastCheck < SCRIPT_CONFIG.UPDATE_CHECK_INTERVAL_MS) {
-        console.log(`[更新检查] 距上次检查不足 24 小时，跳过。`);
-        return;
+    if (!force) {
+        const now = Date.now();
+        const lastCheck = GM_getValue('last-update-check', 0);
+        if (now - lastCheck < SCRIPT_CONFIG.UPDATE_CHECK_INTERVAL_MS) {
+            console.log(`[更新检查] 距上次检查不足 24 小时，跳过。`);
+            return;
+        }
+        GM_setValue('last-update-check', now);
     }
 
-    GM_setValue('last-update-check', now);
+    const now = Date.now();
     console.log('[更新检查] 开始检查新版本...');
 
     GM_xmlhttpRequest({
@@ -2152,17 +2234,19 @@ function checkForUpdate() {
         onload: function(res) {
             if (res.status < 200 || res.status >= 300) {
                 console.warn(`[更新检查] 请求失败，状态码: ${res.status}`);
+                if (force) showToast('检查更新失败，服务器返回错误');
                 return;
             }
             const remoteVersion = extractRemoteVersion(res.responseText);
             if (!remoteVersion) {
                 console.warn('[更新检查] 无法从远端文件解析版本号');
+                if (force) showToast('检查更新失败，无法解析版本信息');
                 return;
             }
             console.log(`[更新检查] 远端版本: ${remoteVersion}, 本地版本: ${SCRIPT_CONFIG.VERSION}`);
 
             const skippedVersion = GM_getValue('skip-update-version', '');
-            if (skippedVersion === remoteVersion) {
+            if (skippedVersion === remoteVersion && !force) {
                 console.log(`[更新检查] 用户已选择跳过版本 ${remoteVersion}`);
                 return;
             }
@@ -2172,13 +2256,16 @@ function checkForUpdate() {
                 showUpdateDialog(remoteVersion);
             } else {
                 console.log('[更新检查] 当前已是最新版本');
+                if (force) showToast('当前已是最新版本');
             }
         },
         onerror: function() {
             console.warn('[更新检查] 网络请求失败，可能是跨域限制或网络问题');
+            if (force) showToast('检查更新失败，请检查网络');
         },
         ontimeout: function() {
             console.warn('[更新检查] 请求超时');
+            if (force) showToast('检查更新超时，请检查网络');
         }
     });
 }

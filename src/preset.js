@@ -6,6 +6,7 @@ const PresetManager = {
         if (saved) {
             this.data = JSON.parse(saved);
             this._migrateGradingMode();
+            this._migrateProvider();
         } else {
             let oldConfigStr = GM_getValue('ai-grading-config');
             let defaultCfg = oldConfigStr ? JSON.parse(oldConfigStr) : {
@@ -29,6 +30,18 @@ const PresetManager = {
                 changed = true;
             } else if (cfg.gradingMode === undefined) {
                 cfg.gradingMode = 'normal';
+                changed = true;
+            }
+        }
+        if (changed) this.save();
+    },
+    _migrateProvider() {
+        const migration = { '5plus1': '5plus1官方', 'openai': 'OpenAI兼容' };
+        let changed = false;
+        for (const name in this.data.list) {
+            const cfg = this.data.list[name];
+            if (cfg.provider && migration[cfg.provider]) {
+                cfg.provider = migration[cfg.provider];
                 changed = true;
             }
         }

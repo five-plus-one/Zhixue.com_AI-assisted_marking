@@ -99,18 +99,21 @@ function showUpdateDialog(remoteVersion) {
  * - 无人值守模式下完全跳过，不打扰批改流程
  * - 如果远端版本 > 当前版本且用户未选择跳过该版本，则弹出提示卡片
  */
-function checkForUpdate() {
+function checkForUpdate(force = false) {
     // 无人值守模式：不提醒
     if (window.aiGradingState && window.aiGradingState.gradingMode === 'unattended') return;
 
-    const now = Date.now();
-    const lastCheck = GM_getValue('last-update-check', 0);
-    if (now - lastCheck < SCRIPT_CONFIG.UPDATE_CHECK_INTERVAL_MS) {
-        console.log(`[更新检查] 距上次检查不足 24 小时，跳过。`);
-        return;
+    if (!force) {
+        const now = Date.now();
+        const lastCheck = GM_getValue('last-update-check', 0);
+        if (now - lastCheck < SCRIPT_CONFIG.UPDATE_CHECK_INTERVAL_MS) {
+            console.log(`[更新检查] 距上次检查不足 24 小时，跳过。`);
+            return;
+        }
+        GM_setValue('last-update-check', now);
     }
 
-    GM_setValue('last-update-check', now);
+    const now = Date.now();
     console.log('[更新检查] 开始检查新版本...');
 
     GM_xmlhttpRequest({
@@ -120,17 +123,19 @@ function checkForUpdate() {
         onload: function(res) {
             if (res.status < 200 || res.status >= 300) {
                 console.warn(`[更新检查] 请求失败，状态码: ${res.status}`);
+                if (force) showToast('检查更新失败，服务器返回错误');
                 return;
             }
             const remoteVersion = extractRemoteVersion(res.responseText);
             if (!remoteVersion) {
                 console.warn('[更新检查] 无法从远端文件解析版本号');
+                if (force) showToast('检查更新失败，无法解析版本信息');
                 return;
             }
             console.log(`[更新检查] 远端版本: ${remoteVersion}, 本地版本: ${SCRIPT_CONFIG.VERSION}`);
 
             const skippedVersion = GM_getValue('skip-update-version', '');
-            if (skippedVersion === remoteVersion) {
+            if (skippedVersion === remoteVersion && !force) {
                 console.log(`[更新检查] 用户已选择跳过版本 ${remoteVersion}`);
                 return;
             }
@@ -140,13 +145,16 @@ function checkForUpdate() {
                 showUpdateDialog(remoteVersion);
             } else {
                 console.log('[更新检查] 当前已是最新版本');
+                if (force) showToast('当前已是最新版本');
             }
         },
         onerror: function() {
             console.warn('[更新检查] 网络请求失败，可能是跨域限制或网络问题');
+            if (force) showToast('检查更新失败，请检查网络');
         },
         ontimeout: function() {
             console.warn('[更新检查] 请求超时');
+            if (force) showToast('检查更新超时，请检查网络');
         }
     });
 }

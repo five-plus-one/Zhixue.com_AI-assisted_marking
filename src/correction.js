@@ -95,12 +95,6 @@ function showCorrectionPanel(context) {
                 background: rgba(0,0,0,0.02); padding: 14px; border-radius: 10px;
                 border: 1px solid rgba(0,0,0,0.06);
             }
-            .cor-big-score {
-                font-size: 52px; font-weight: 700; color: #1d1d1f; text-align: center;
-                margin-bottom: 20px; letter-spacing: -1px;
-            }
-            .cor-result-row { font-size: 13px; color: #666; margin-bottom: 8px; text-align: left; }
-            .cor-result-row strong { color: #1d1d1f; }
             @keyframes cor-slidein {
                 from { opacity: 0; transform: translateX(12px); }
                 to { opacity: 1; transform: translateX(0); }
@@ -130,7 +124,6 @@ function showCorrectionPanel(context) {
     let currentStep = 1;
     let feedback = null;
     let analysisResult = null;
-    let newResult = null;
 
     function render() {
         const body = document.getElementById('cor-step-body');
@@ -140,7 +133,6 @@ function showCorrectionPanel(context) {
         body.className = 'cor-body cor-step-enter';
         if (currentStep === 1) renderStep1(title, body, footer);
         else if (currentStep === 2) renderStep2(title, body, footer);
-        else if (currentStep === 3) renderStep3(title, body, footer);
     }
 
     // ===== 步骤1：教师反馈 =====
@@ -205,7 +197,7 @@ function showCorrectionPanel(context) {
         `;
         footer.innerHTML = `
             <button class="ai-modal-btn-cancel" id="cor-cancel2">取消</button>
-            <button class="ai-modal-btn-confirm" id="cor-regrade" style="display:none;">应用建议并重新批改</button>
+            <button class="ai-modal-btn-confirm" id="cor-confirm-score" style="display:none;">应用修改并确认得分</button>
         `;
         footer.className = 'cor-footer';
 
@@ -234,85 +226,24 @@ function showCorrectionPanel(context) {
             const rubricEl = document.getElementById('cor-new-rubric');
             if (rubricEl) rubricEl.value = analysisResult.rubric !== '不变' ? analysisResult.rubric : (context.config.rubric || '');
 
-            const regradeBtn = document.getElementById('cor-regrade');
-            if (regradeBtn) {
-                regradeBtn.style.display = '';
-                regradeBtn.onclick = e => {
+            const confirmBtn = document.getElementById('cor-confirm-score');
+            if (confirmBtn) {
+                confirmBtn.style.display = '';
+                confirmBtn.onclick = e => {
                     e.stopPropagation();
-                    currentStep = 3;
-                    render();
-                    startRegrading();
+                    const newAnswer = document.getElementById('cor-new-answer')?.value;
+                    const newRubric = document.getElementById('cor-new-rubric')?.value;
+                    const correctionInfo = {
+                        isCorrected: true,
+                        correctionReason: `教师纠正：AI${context.score}分→正确${feedback.teacherScore}分。${feedback.teacherReason}`,
+                        newAnswer, newRubric
+                    };
+                    cleanup();
+                    if (context.onAccept) context.onAccept(feedback.teacherScore, correctionInfo);
                 };
             }
         } catch (err) {
             if (streamEl) streamEl.textContent = '分析失败：' + err.message;
-        }
-    }
-
-    // ===== 步骤3：重新批改结果 =====
-    function renderStep3(title, body, footer) {
-        title.textContent = '纠错结果';
-        body.innerHTML = `
-            <div id="cor-regrade-stream" class="cor-stream-box" style="margin-bottom:20px;">重新批改中...</div>
-            <div id="cor-result-area" style="display:none;">
-                <div class="cor-big-score" id="cor-new-score"></div>
-                <div class="cor-result-row"><strong>识别答案：</strong><span id="cor-new-answer-text"></span></div>
-                <div class="cor-result-row"><strong>评语：</strong><span id="cor-new-comment"></span></div>
-            </div>
-        `;
-        footer.innerHTML = `
-            <button class="ai-modal-btn-cancel" id="cor-abandon" style="display:none;">放弃纠错</button>
-            <div style="display:flex;gap:12px;">
-                <button class="ai-modal-btn-cancel" id="cor-continue" style="display:none;">继续纠错</button>
-                <button class="ai-modal-btn-confirm" id="cor-accept" style="display:none;">确认提交</button>
-            </div>
-        `;
-        footer.className = 'cor-footer cor-footer-between';
-    }
-
-    async function startRegrading() {
-        const streamEl = document.getElementById('cor-regrade-stream');
-        try {
-            const newAnswer = document.getElementById('cor-new-answer')?.value || context.config.answer;
-            const newRubric = document.getElementById('cor-new-rubric')?.value || context.config.rubric;
-            const modifiedConfig = { ...context.config, answer: newAnswer, rubric: newRubric };
-
-            const result = await callAIGrading(context.base64DataArray, modifiedConfig, text => {
-                if (streamEl) streamEl.textContent = text;
-            });
-            newResult = result;
-
-            if (streamEl) streamEl.style.display = 'none';
-            const resultArea = document.getElementById('cor-result-area');
-            if (resultArea) resultArea.style.display = 'block';
-            const scoreEl = document.getElementById('cor-new-score');
-            if (scoreEl) scoreEl.textContent = result.score ?? '解析失败';
-            const ansEl = document.getElementById('cor-new-answer-text');
-            if (ansEl) ansEl.textContent = result.studentAnswer || '未能识别';
-            const cmtEl = document.getElementById('cor-new-comment');
-            if (cmtEl) cmtEl.textContent = result.comment || '';
-
-            ['cor-abandon', 'cor-continue', 'cor-accept'].forEach(id => {
-                const el = document.getElementById(id);
-                if (el) el.style.display = '';
-            });
-            document.getElementById('cor-abandon').onclick = e => { e.stopPropagation(); cleanup(); if (context.onCancel) context.onCancel(); };
-            document.getElementById('cor-continue').onclick = e => { e.stopPropagation(); currentStep = 1; render(); };
-            document.getElementById('cor-accept').onclick = e => {
-                e.stopPropagation();
-                const correctionInfo = {
-                    isCorrected: true,
-                    correctionReason: `教师纠正：AI${context.score}分→正确${feedback.teacherScore}分。${feedback.teacherReason}`,
-                    newAnswer: document.getElementById('cor-new-answer')?.value,
-                    newRubric: document.getElementById('cor-new-rubric')?.value
-                };
-                cleanup();
-                if (context.onAccept) context.onAccept(newResult.score, correctionInfo);
-            };
-        } catch (err) {
-            if (streamEl) streamEl.textContent = '重新批改失败：' + err.message;
-            const abandonBtn = document.getElementById('cor-abandon');
-            if (abandonBtn) { abandonBtn.style.display = ''; abandonBtn.onclick = () => { cleanup(); if (context.onCancel) context.onCancel(); }; }
         }
     }
 

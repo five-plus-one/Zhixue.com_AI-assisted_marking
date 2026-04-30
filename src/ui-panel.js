@@ -1,3 +1,26 @@
+// ========== 服务商管理器 ==========
+const ProviderManager = {
+    data: null,
+    init() {
+        let saved = GM_getValue('ai-grading-providers');
+        if (saved) {
+            this.data = JSON.parse(saved);
+        } else {
+            this.data = {
+                list: {
+                    "5plus1官方": { endpoint: SCRIPT_CONFIG.DEFAULT_ENDPOINT, model: SCRIPT_CONFIG.DEFAULT_MODEL, apiKey: '' },
+                    "OpenAI兼容": { endpoint: 'https://api.openai.com/v1/chat/completions', model: 'gpt-4o', apiKey: '' }
+                },
+                active: "5plus1官方"
+            };
+            this.save();
+        }
+    },
+    save() { GM_setValue('ai-grading-providers', JSON.stringify(this.data)); },
+    getCurrent() { return this.data.list[this.data.active] || {}; }
+};
+ProviderManager.init();
+
 // ========== 创建配置面板 ==========
 function createSettingsPanel() {
     if (document.getElementById('ai-grading-settings')) return;
@@ -155,10 +178,11 @@ function createSettingsPanel() {
                 <h4>AI 模型与算力</h4>
                 <div class="form-group">
                     <label>服务提供商</label>
-                    <select id="ai-provider">
-                        <option value="5plus1">5+1 官方节点 (推荐)</option>
-                        <option value="openai">自定义代理</option>
-                    </select>
+                    <div class="preset-controls">
+                        <select id="ai-provider"></select>
+                        <button class="preset-btn" id="btn-new-provider">新建</button>
+                        <button class="preset-btn danger" id="btn-del-provider">删除</button>
+                    </div>
                     <div id="api-key-link-container" style="display:none;"><a href="https://api.ai.five-plus-one.com/console/token" target="_blank" class="api-key-link">获取访问凭证</a></div>
                 </div>
                 <div class="form-group"><label>服务网关 URL</label><input type="text" id="api-endpoint"></div>
@@ -166,7 +190,10 @@ function createSettingsPanel() {
                 <div class="form-group"><label>调用模型 ID</label><input type="text" id="model-name"></div>
             </div>
             <div class="form-section" style="padding-bottom:20px;">
-                <button class="history-btn" id="btn-history">评阅历史</button>
+                <div style="display:flex;gap:8px;">
+                    <button class="history-btn" id="btn-history" style="flex:1;">评阅历史</button>
+                    <button class="history-btn" id="btn-check-update" style="flex:1;">检查更新</button>
+                </div>
             </div>
         </div>
     `;
@@ -183,6 +210,10 @@ function createSettingsPanel() {
     panel.querySelector('#preset-select').onchange = handlePresetChange;
     panel.querySelector('#save-config-btn').onclick = saveAISettings;
     panel.querySelector('#btn-history').onclick = () => showHistoryPanel();
+    panel.querySelector('#btn-check-update').onclick = () => checkForUpdate(true);
+    panel.querySelector('#btn-new-provider').onclick = handleNewProvider;
+    panel.querySelector('#btn-del-provider').onclick = handleDeleteProvider;
+    panel.querySelector('#ai-provider').onchange = handleProviderChange;
 
     const modeDescs = {
         normal: '每批改一份，5秒自动提交或手动确认。支持分数纠错。',
@@ -262,7 +293,16 @@ function fillFormFromActivePreset() {
     document.getElementById('question-content').value = config.question || '';
     document.getElementById('standard-answer').value = config.answer || '';
     document.getElementById('grading-rubric').value = config.rubric || '';
-    document.getElementById('ai-provider').value = config.provider || '5plus1';
+
+    // 同步服务商下拉（兼容旧格式）
+    renderProviderDropdown();
+    const providerMigration = { '5plus1': '5plus1官方', 'openai': 'OpenAI兼容' };
+    const providerName = providerMigration[config.provider] || config.provider || '5plus1官方';
+    if (ProviderManager.data.list[providerName]) {
+        ProviderManager.data.active = providerName;
+        ProviderManager.save();
+        document.getElementById('ai-provider').value = providerName;
+    }
     document.getElementById('api-endpoint').value = config.endpoint || SCRIPT_CONFIG.DEFAULT_ENDPOINT;
     document.getElementById('api-key').value = config.apiKey || '';
     document.getElementById('model-name').value = config.model || SCRIPT_CONFIG.DEFAULT_MODEL;
@@ -287,7 +327,7 @@ function fillFormFromActivePreset() {
 
 function updateUIVisibility() {
     const provider = document.getElementById('ai-provider').value;
-    document.getElementById('api-key-link-container').style.display = provider === '5plus1' ? 'block' : 'none';
+    document.getElementById('api-key-link-container').style.display = provider === '5plus1官方' ? 'block' : 'none';
 }
 
 // ========== 方案操作功能 ==========
@@ -331,20 +371,90 @@ async function handleDeletePreset() {
     }
 }
 
+function renderProviderDropdown() {
+    const select = document.getElementById('ai-provider');
+    if (!select) return;
+    select.innerHTML = '';
+    for (const name in ProviderManager.data.list) {
+        const option = document.createElement('option');
+        option.value = name;
+        option.textContent = name;
+        select.appendChild(option);
+    }
+    select.value = ProviderManager.data.active;
+}
+
+function handleProviderChange() {
+    const name = document.getElementById('ai-provider').value;
+    ProviderManager.data.active = name;
+    ProviderManager.save();
+    const provider = ProviderManager.getCurrent();
+    if (provider.endpoint) document.getElementById('api-endpoint').value = provider.endpoint;
+    if (provider.model) document.getElementById('model-name').value = provider.model;
+    if (provider.apiKey !== undefined) document.getElementById('api-key').value = provider.apiKey;
+    document.getElementById('api-key-link-container').style.display = name === '5plus1官方' ? 'block' : 'none';
+    markUnsavedChanges();
+}
+
+async function handleNewProvider() {
+    const name = await showPromptModal("请输入新的服务商名称 (例如: 我的代理)：");
+    if (!name || !name.trim()) return;
+    if (ProviderManager.data.list[name]) {
+        showAlertModal("该服务商名称已存在！");
+        return;
+    }
+    ProviderManager.data.list[name] = {
+        endpoint: document.getElementById('api-endpoint').value,
+        model: document.getElementById('model-name').value,
+        apiKey: document.getElementById('api-key').value
+    };
+    ProviderManager.data.active = name;
+    ProviderManager.save();
+    renderProviderDropdown();
+    document.getElementById('api-key-link-container').style.display = 'none';
+    showToast(`服务商「${name}」创建成功`);
+}
+
+async function handleDeleteProvider() {
+    const name = ProviderManager.data.active;
+    if (Object.keys(ProviderManager.data.list).length <= 1) {
+        showAlertModal("必须至少保留一个服务商！");
+        return;
+    }
+    if (await showConfirmModal(`确定要删除服务商【${name}】吗？`)) {
+        delete ProviderManager.data.list[name];
+        ProviderManager.data.active = Object.keys(ProviderManager.data.list)[0];
+        ProviderManager.save();
+        renderProviderDropdown();
+        handleProviderChange();
+        showToast(`服务商「${name}」已删除`);
+    }
+}
+
 function saveAISettings() {
     const checkedMode = document.querySelector('input[name="grading-mode"]:checked');
     const gradingMode = checkedMode ? checkedMode.value : 'normal';
 
+    const providerName = document.getElementById('ai-provider').value;
     const config = {
         question: document.getElementById('question-content').value,
         answer: document.getElementById('standard-answer').value,
         rubric: document.getElementById('grading-rubric').value,
-        provider: document.getElementById('ai-provider').value,
+        provider: providerName,
         endpoint: document.getElementById('api-endpoint').value,
         apiKey: document.getElementById('api-key').value,
         model: document.getElementById('model-name').value,
         gradingMode
     };
+
+    // 同步更新服务商配置
+    if (ProviderManager.data.list[providerName]) {
+        ProviderManager.data.list[providerName].endpoint = config.endpoint;
+        ProviderManager.data.list[providerName].model = config.model;
+        ProviderManager.data.list[providerName].apiKey = config.apiKey;
+        ProviderManager.data.active = providerName;
+        ProviderManager.save();
+    }
 
     const activeName = PresetManager.data.active;
     PresetManager.data.list[activeName] = config;
@@ -371,20 +481,3 @@ function saveAISettings() {
         if (minimizeBtn) minimizeBtn.textContent = '+';
     }
 }
-
-// 监听 api-provider 下拉框变化，自动填充端点和模型
-document.addEventListener('change', function(e) {
-    if (e.target && e.target.id === 'ai-provider') {
-        updateUIVisibility();
-        const presets = {
-            '5plus1': { endpoint: SCRIPT_CONFIG.DEFAULT_ENDPOINT, model: SCRIPT_CONFIG.DEFAULT_MODEL },
-            'openai': { endpoint: 'https://api.openai.com/v1/chat/completions', model: 'gpt-4o' }
-        };
-        const preset = presets[e.target.value];
-        if (preset) {
-            document.getElementById('api-endpoint').value = preset.endpoint;
-            document.getElementById('model-name').value = preset.model;
-            markUnsavedChanges();
-        }
-    }
-});

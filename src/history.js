@@ -20,6 +20,19 @@ const HistoryManager = {
         record.isCorrected = record.isCorrected || false;
         record.pageUrl = window.location.pathname + window.location.hash;
         record.taskIdentifier = PresetManager.getTaskIdentifier();
+
+        // 限制 imageBase64s 存储大小，避免超出 GM_setValue 限制
+        if (record.imageBase64s && record.imageBase64s.length > 0) {
+            const maxImages = 3;
+            let totalSize = record.imageBase64s.reduce((sum, b64) => sum + (b64?.length || 0), 0);
+            if (totalSize > 1024 * 1024) {
+                // 超过 1MB，只保留第一张
+                record.imageBase64s = [record.imageBase64s[0]];
+            } else if (record.imageBase64s.length > maxImages) {
+                record.imageBase64s = record.imageBase64s.slice(0, maxImages);
+            }
+        }
+
         this.records.unshift(record);
         this.save();
         console.log(`📝 [历史] 已记录评阅: ${record.studentAnswer?.slice(0, 20)}... → ${record.finalScore}分`);
@@ -56,13 +69,18 @@ const HistoryManager = {
     async exportHTML() {
         const modeLabel = { normal: '普通', unattended: '无人', trial: '试改' };
 
-        // 预加载所有图片为 base64
+        // 预加载缺少 imageBase64s 的记录的图片
         const imageCache = {};
-        const allUrls = [...new Set(this.records.flatMap(r => r.imageUrls || []))];
-        showToast(`正在加载 ${allUrls.length} 张图片...`);
-        await Promise.all(allUrls.map(async url => {
-            try { imageCache[url] = await fetchImageAsBase64(url); } catch (e) { console.warn('图片加载失败:', url); }
-        }));
+        const urlsToFetch = [...new Set(
+            this.records.filter(r => !r.imageBase64s || r.imageBase64s.length === 0)
+                .flatMap(r => r.imageUrls || [])
+        )];
+        if (urlsToFetch.length > 0) {
+            showToast(`正在加载 ${urlsToFetch.length} 张图片...`);
+            await Promise.all(urlsToFetch.map(async url => {
+                try { imageCache[url] = await fetchImageAsBase64(url); } catch (e) { console.warn('图片加载失败:', url); }
+            }));
+        }
 
         const rows = this.records.map(r => {
             const time = new Date(r.timestamp).toLocaleString('zh-CN');
@@ -70,8 +88,8 @@ const HistoryManager = {
             const scoreText = r.isCorrected ? `${r.aiScore} → ${r.finalScore} ✓` : `${r.finalScore}`;
             const correctedRow = r.isCorrected ? `<div style="color:#0052FF;font-size:12px;margin-top:4px;">纠错理由：${r.correctionReason || '无'}</div>` : '';
             const markedRow = r.status === 'marked' ? `<span style="color:#D93025;font-size:11px;margin-left:8px;">⚠ 待回评</span>` : '';
-            const images = (r.imageUrls || []).map(url => {
-                const b64 = imageCache[url];
+            const images = (r.imageUrls || []).map((url, j) => {
+                const b64 = r.imageBase64s?.[j] || imageCache[url];
                 return b64 ? `<img src="data:image/png;base64,${b64}" style="max-width:100%;border-radius:6px;margin-top:8px;">` : '';
             }).join('');
             return `

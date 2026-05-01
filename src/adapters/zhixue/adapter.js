@@ -134,6 +134,10 @@ const ZhixueAdapter = {
             inputs.push({ element: scoreInput, label: '总分', index: 0 });
         }
         return inputs;
+    },
+
+    detectSubQuestions() {
+        return [];
     }
 };
 

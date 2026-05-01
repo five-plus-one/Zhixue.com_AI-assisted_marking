@@ -60,12 +60,34 @@ const QitianAdapter = {
     },
 
     fillScore(request) {
-        const score = request.total;
+        const { total, subScores } = request;
+
+        // 分小题填入
+        if (subScores && subScores.length > 0) {
+            const detected = this.detectSubQuestions();
+            if (detected.length > 0) {
+                for (const sq of subScores) {
+                    const target = detected.find(d =>
+                        d.label === sq.label || sq.label.includes(d.label) || d.label.includes(sq.label)
+                    );
+                    if (target && sq.score !== null) {
+                        target.element.value = sq.score;
+                        target.element.dispatchEvent(new Event('input', { bubbles: true }));
+                        target.element.dispatchEvent(new Event('change', { bubbles: true }));
+                        target.element.dispatchEvent(new Event('blur', { bubbles: true }));
+                        console.log(`✅ [诊断] 小题 ${sq.label} 分数 ${sq.score} 已填入`);
+                    }
+                }
+                return true;
+            }
+        }
+
+        // 回退：填总分到 #tbs1
         const scoreInput = document.querySelector(QITIAN_SELECTORS.SCORE_INPUT);
-        console.log(`🔎 [诊断] 七天网络 fillScore — 分数: ${score}, 输入框: ${!!scoreInput}`);
+        console.log(`🔎 [诊断] 七天网络 fillScore — 分数: ${total}, 输入框: ${!!scoreInput}`);
 
         if (scoreInput) {
-            scoreInput.value = score;
+            scoreInput.value = total;
             scoreInput.focus();
             scoreInput.dispatchEvent(new Event('input', { bubbles: true }));
             scoreInput.dispatchEvent(new Event('change', { bubbles: true }));
@@ -127,6 +149,20 @@ const QitianAdapter = {
             inputs.push({ element: scoreInput, label: '总分', index: 0 });
         }
         return inputs;
+    },
+
+    detectSubQuestions() {
+        const subs = [];
+        document.querySelectorAll('.timuArea .timuScore').forEach((el, i) => {
+            const text = el.querySelector('td p')?.textContent?.trim() || '';
+            const match = text.match(/第(.+?)题/);
+            const label = match ? match[1] : `题${i + 1}`;
+            const input = el.querySelector('input[id^="tbs"]');
+            if (input) {
+                subs.push({ label, element: input, index: i });
+            }
+        });
+        return subs;
     }
 };
 

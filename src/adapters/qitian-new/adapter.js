@@ -130,14 +130,36 @@ const QitianNewAdapter = {
     },
 
     fillScore(request) {
-        const score = request.total;
+        const { total, subScores } = request;
+
+        // 分小题填入
+        if (subScores && subScores.length > 0) {
+            const detected = this.detectSubQuestions();
+            if (detected.length > 0) {
+                const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set;
+                for (const sq of subScores) {
+                    const target = detected.find(d =>
+                        d.label === sq.label || sq.label.includes(d.label) || d.label.includes(sq.label)
+                    );
+                    if (target && sq.score !== null) {
+                        setter.call(target.element, sq.score);
+                        target.element.dispatchEvent(new Event('input', { bubbles: true }));
+                        target.element.dispatchEvent(new Event('change', { bubbles: true }));
+                        console.log(`✅ [诊断] 小题 ${sq.label} 分数 ${sq.score} 已填入`);
+                    }
+                }
+                return true;
+            }
+        }
+
+        // 回退：填总分到第一个输入框
         const scoreInput = document.querySelector(QITIAN_NEW_SELECTORS.SCORE_INPUT);
-        console.log(`🔎 [诊断] 七天网络新UI fillScore — 分数: ${score}, 输入框: ${!!scoreInput}`);
+        console.log(`🔎 [诊断] 七天网络新UI fillScore — 分数: ${total}, 输入框: ${!!scoreInput}`);
 
         if (scoreInput) {
             // Vue + Element UI 需要通过 nativeInputValueSetter 触发响应式更新
             const nativeSetter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set;
-            nativeSetter.call(scoreInput, score);
+            nativeSetter.call(scoreInput, total);
             scoreInput.dispatchEvent(new Event('input', { bubbles: true }));
             scoreInput.dispatchEvent(new Event('change', { bubbles: true }));
             scoreInput.dispatchEvent(new Event('blur', { bubbles: true }));
@@ -200,6 +222,18 @@ const QitianNewAdapter = {
             inputs.push({ element: el, label, index: i });
         });
         return inputs;
+    },
+
+    detectSubQuestions() {
+        const subs = [];
+        document.querySelectorAll('.scoreTitlesContainer .scoreContainer').forEach((el, i) => {
+            const label = el.querySelector('.title-info')?.textContent?.trim();
+            const input = el.querySelector('input[id^="inputScoreRef_"]');
+            if (label && input) {
+                subs.push({ label, element: input, index: i });
+            }
+        });
+        return subs;
     }
 };
 

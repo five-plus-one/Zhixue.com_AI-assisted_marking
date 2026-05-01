@@ -227,8 +227,29 @@ function createSettingsPanel() {
     // 分小题评分交互
     const subToggle = panel.querySelector('#enable-sub-questions');
     const subContainer = panel.querySelector('#sub-questions-container');
+    const subList = panel.querySelector('#sub-questions-list');
     subToggle.addEventListener('change', () => {
-        subContainer.style.display = subToggle.checked ? 'block' : 'none';
+        if (subToggle.checked) {
+            const adapter = window.__AI_MARKER_ADAPTER__;
+            if (adapter && typeof adapter.detectSubQuestions === 'function') {
+                const detected = adapter.detectSubQuestions();
+                if (detected.length > 0) {
+                    subContainer.style.display = 'block';
+                    subList.innerHTML = '';
+                    detected.forEach(sq => {
+                        addSubQuestionItem({ label: sq.label, maxScore: '', answer: '', rubric: '' });
+                    });
+                    showToast(`已自动识别 ${detected.length} 个小题`);
+                    markUnsavedChanges();
+                    return;
+                }
+            }
+            // 不支持的平台：提示并取消勾选
+            subToggle.checked = false;
+            showToast('当前平台暂不支持分小题给分');
+            return;
+        }
+        subContainer.style.display = 'none';
         markUnsavedChanges();
     });
     panel.querySelector('#btn-add-sub-question').onclick = () => addSubQuestionItem();
@@ -325,12 +346,27 @@ function fillFormFromActivePreset() {
     subList.innerHTML = '';
     const subQuestions = config.subQuestions || [];
     if (subQuestions.length > 0) {
+        // 已有保存的小题配置，直接恢复
         subToggle.checked = true;
         subContainer.style.display = 'block';
         subQuestions.forEach(sq => addSubQuestionItem(sq));
     } else {
-        subToggle.checked = false;
-        subContainer.style.display = 'none';
+        // 无保存配置，尝试从 DOM 自动检测
+        const adapter = window.__AI_MARKER_ADAPTER__;
+        if (adapter && typeof adapter.detectSubQuestions === 'function') {
+            const detected = adapter.detectSubQuestions();
+            if (detected.length > 0) {
+                subToggle.checked = true;
+                subContainer.style.display = 'block';
+                detected.forEach(sq => addSubQuestionItem({ label: sq.label, maxScore: '', answer: '', rubric: '' }));
+            } else {
+                subToggle.checked = false;
+                subContainer.style.display = 'none';
+            }
+        } else {
+            subToggle.checked = false;
+            subContainer.style.display = 'none';
+        }
     }
 
     updateUIVisibility();

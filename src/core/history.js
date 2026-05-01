@@ -269,7 +269,7 @@ function showHistoryPanel() {
                 box-shadow: 0 40px 80px rgba(0,0,0,0.12), inset 0 1px 0 rgba(255,255,255,0.4);
                 font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Inter", sans-serif;
                 display: flex; flex-direction: column; overflow: hidden;
-                animation: ai-modal-scalein 0.3s cubic-bezier(0.16,1,0.3,1);
+                animation: hist-panel-in 0.3s cubic-bezier(0.16,1,0.3,1);
             }
             .hist-header { padding:20px 28px 16px; border-bottom:1px solid rgba(0,0,0,0.06); display:flex; justify-content:space-between; align-items:center; }
             .hist-header h3 { margin:0; font-size:16px; font-weight:600; color:#1d1d1f; }
@@ -307,6 +307,7 @@ function showHistoryPanel() {
             .hist-item-actions button.primary { color:#0052FF; border-color:rgba(0,82,255,0.2); }
             .hist-item-actions button.primary:hover { background:rgba(0,82,255,0.04); }
             .hist-empty { text-align:center; padding:60px 20px; color:#aaa; font-size:14px; }
+            @keyframes hist-panel-in { from { transform: translate(-50%, -50%) scale(0.95); opacity: 0; } to { transform: translate(-50%, -50%) scale(1); opacity: 1; } }
         </style>
         <div id="ai-history-panel-inner">
             <div class="hist-header">

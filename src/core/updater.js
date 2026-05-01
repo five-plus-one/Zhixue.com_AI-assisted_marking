@@ -120,7 +120,27 @@ function showUpdateDialog(remoteVersion, remoteChangelog) {
 
     dialog.querySelector('#upd-btn-now').addEventListener('click', () => {
         window.open(SCRIPT_CONFIG.UPDATE_CHECK_URL, '_blank');
-        dialog.remove();
+        let dotCount = 0, cancelled = false, seconds = 0;
+        const bodyEl = dialog.querySelector('.upd-body');
+        bodyEl.innerHTML = `<span style="color:#1a1a1a;font-weight:500;">请在新标签页中确认安装更新</span><br><span style="font-size:12px;color:#999;margin-top:4px;display:inline-block;">安装完成后页面将自动刷新</span><div style="margin-top:10px;display:flex;align-items:center;gap:8px;"><span class="upd-spinner" style="width:14px;height:14px;border-width:2px;"></span><span id="upd-poll-status" style="font-size:12px;color:#666;">等待安装中</span></div>`;
+        dialog.querySelector('.upd-changelog') && (dialog.querySelector('.upd-changelog').style.display = 'none');
+        dialog.querySelector('.upd-btns').innerHTML = '<button class="upd-btn upd-btn-secondary" id="upd-btn-cancel" style="flex:1;">取消更新</button>';
+        dialog.querySelector('#upd-btn-skip').style.display = 'none';
+        const statusEl = dialog.querySelector('#upd-poll-status');
+        const dotTimer = setInterval(() => { if (!cancelled && statusEl) { dotCount = (dotCount + 1) % 4; statusEl.textContent = '等待安装中' + '.'.repeat(dotCount); } }, 500);
+        const reloadTimer = setInterval(() => {
+            if (cancelled) return;
+            seconds += 1;
+            if (seconds >= 15) {
+                clearInterval(reloadTimer); clearInterval(dotTimer);
+                if (statusEl) statusEl.textContent = '正在刷新页面…';
+                sessionStorage.setItem('ai-update-reloaded', 'true');
+                setTimeout(() => location.reload(), 500);
+            }
+        }, 1000);
+        dialog.querySelector('#upd-btn-cancel').addEventListener('click', () => {
+            cancelled = true; clearInterval(dotTimer); clearInterval(reloadTimer); dialog.remove();
+        });
     });
 
     dialog.querySelector('#upd-btn-later').addEventListener('click', () => {
@@ -140,7 +160,7 @@ function showUpdateDialog(remoteVersion, remoteChangelog) {
  * - 无人值守模式下完全跳过，不打扰批改流程
  * - 如果远端版本 > 当前版本且用户未选择跳过该版本，则弹出提示卡片
  */
-function checkForUpdate(force = false) {
+function checkForUpdate(force = false, btn) {
     // 无人值守模式：不提醒
     if (window.aiGradingState && window.aiGradingState.gradingMode === 'unattended') return;
 
@@ -157,11 +177,25 @@ function checkForUpdate(force = false) {
     const now = Date.now();
     console.log('[更新检查] 开始检查新版本...');
 
+    if (btn) {
+        btn._origText = btn.textContent;
+        btn.disabled = true;
+        btn.innerHTML = '<span class="upd-spinner"></span> 检查中…';
+        if (!document.getElementById('upd-spinner-style')) {
+            const s = document.createElement('style');
+            s.id = 'upd-spinner-style';
+            s.textContent = '.upd-spinner{display:inline-block;width:12px;height:12px;border:2px solid rgba(0,0,0,0.15);border-top-color:#1a1a1a;border-radius:50%;animation:upd-spin .6s linear infinite;vertical-align:middle;margin-right:4px}@keyframes upd-spin{to{transform:rotate(360deg)}}';
+            document.head.appendChild(s);
+        }
+    }
+    const restoreBtn = () => { if (btn) { btn.disabled = false; btn.textContent = btn._origText || '检查更新'; } };
+
     GM_xmlhttpRequest({
         method: 'GET',
         url: SCRIPT_CONFIG.UPDATE_CHECK_URL + '?_t=' + now, // 加时间戳避免缓存
         timeout: 15000,
         onload: function(res) {
+            restoreBtn();
             if (res.status < 200 || res.status >= 300) {
                 console.warn(`[更新检查] 请求失败，状态码: ${res.status}`);
                 if (force) showToast('检查更新失败，服务器返回错误');
@@ -191,10 +225,12 @@ function checkForUpdate(force = false) {
             }
         },
         onerror: function() {
+            restoreBtn();
             console.warn('[更新检查] 网络请求失败，可能是跨域限制或网络问题');
             if (force) showToast('检查更新失败，请检查网络');
         },
         ontimeout: function() {
+            restoreBtn();
             console.warn('[更新检查] 请求超时');
             if (force) showToast('检查更新超时，请检查网络');
         }

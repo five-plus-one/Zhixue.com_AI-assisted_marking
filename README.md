@@ -2,7 +2,7 @@
 
 > **晚上挂机睡觉，早上起来全改完。**
 
-[![版本](https://img.shields.io/badge/version-1.10.0-blue.svg)](https://github.com/five-plus-one/Zhixue.com_AI-assisted_marking)
+[![版本](https://img.shields.io/badge/version-1.10.4-blue.svg)](https://github.com/five-plus-one/Zhixue.com_AI-assisted_marking)
 [![许可证](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 
 ---
@@ -133,6 +133,20 @@
 ---
 
 ## 更新日志
+
+### v1.10.4 (2026-05-01)
+- 修复配置导入功能中错误的函数名引用（showConfirmDialog、refreshPresetSelect）
+
+### v1.10.3 (2026-05-01)
+- 修复配置导入功能报错 showConfirmDialog is not defined
+
+### v1.10.2 (2026-05-01)
+- 修复历史记录面板清空确认弹窗被遮挡的 z-index 层级问题
+- 修复更新检查时 changelog 不显示的问题（从远端脚本提取 CHANGELOG）
+- 修复历史记录弹窗动画开始时位置不居中的问题
+- 更新后自动刷新页面，无需手动重载
+- 检查更新按钮增加加载动画
+- 新增配置导出/导入功能，支持 JSON 文件备份和恢复
 
 ### v1.10.0 (2026-05-01)
 - 新增分小题评分适配：七天网络新UI和旧版支持分小题独立给分

@@ -177,6 +177,14 @@ function createSettingsPanel() {
                 <div class="form-group"><label>通信密钥 (Token) *</label><input type="password" id="api-key"></div>
                 <div class="form-group"><label>调用模型 ID</label><input type="text" id="model-name"></div>
             </div>
+            <div class="form-section">
+                <h4>配置管理</h4>
+                <div style="display:flex;gap:8px;">
+                    <button class="history-btn" id="btn-export-config" style="flex:1;">导出配置</button>
+                    <button class="history-btn" id="btn-import-config" style="flex:1;">导入配置</button>
+                </div>
+                <input type="file" id="import-config-file" accept=".json" style="display:none;">
+            </div>
             <div class="form-section" style="padding-bottom:20px;">
                 <div style="display:flex;gap:8px;">
                     <button class="history-btn" id="btn-history" style="flex:1;">评阅历史</button>
@@ -198,10 +206,54 @@ function createSettingsPanel() {
     panel.querySelector('#preset-select').onchange = handlePresetChange;
     panel.querySelector('#save-config-btn').onclick = saveAISettings;
     panel.querySelector('#btn-history').onclick = () => showHistoryPanel();
-    panel.querySelector('#btn-check-update').onclick = () => checkForUpdate(true);
+    panel.querySelector('#btn-check-update').onclick = function() { checkForUpdate(true, this); };
     panel.querySelector('#btn-new-provider').onclick = handleNewProvider;
     panel.querySelector('#btn-del-provider').onclick = handleDeleteProvider;
     panel.querySelector('#ai-provider').onchange = handleProviderChange;
+
+    // 配置导出
+    panel.querySelector('#btn-export-config').onclick = () => {
+        const exportData = {
+            version: SCRIPT_CONFIG.VERSION,
+            timestamp: new Date().toISOString(),
+            presets: PresetManager.data,
+            providers: ProviderManager.data,
+        };
+        const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        const ts = new Date().toISOString().slice(0, 10);
+        a.download = `ai-marker-config_${ts}.json`;
+        a.click();
+        URL.revokeObjectURL(url);
+        showToast('配置已导出');
+    };
+    // 配置导入
+    const fileInput = panel.querySelector('#import-config-file');
+    panel.querySelector('#btn-import-config').onclick = () => fileInput.click();
+    fileInput.onchange = async (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+        try {
+            const text = await file.text();
+            const data = JSON.parse(text);
+            if (!data.presets || !data.presets.list) throw new Error('无效的配置文件');
+            await showConfirmModal(`确定要导入配置吗？\n文件：${file.name}\n将覆盖当前所有方案和服务商设置。`);
+            PresetManager.data = data.presets;
+            PresetManager.save();
+            if (data.providers) {
+                ProviderManager.data = data.providers;
+                ProviderManager.save();
+            }
+            renderPresetDropdown();
+            fillFormFromActivePreset();
+            showToast('配置导入成功');
+        } catch (err) {
+            if (err) showToast('导入失败：' + (err.message || '文件格式错误'));
+        }
+        fileInput.value = '';
+    };
 
     const modeDescs = {
         normal: '每批改一份，5秒自动提交或手动确认。支持分数纠错。',

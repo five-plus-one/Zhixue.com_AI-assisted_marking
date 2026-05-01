@@ -156,6 +156,12 @@ async function init() {
     // 检查更新（延迟 5 秒，避免影响页面主要功能加载）
     setTimeout(() => checkForUpdate(), 5000);
 
+    // 更新后刷新提示
+    if (sessionStorage.getItem('ai-update-reloaded') === 'true') {
+        sessionStorage.removeItem('ai-update-reloaded');
+        showToast('脚本已更新至最新版本 v' + SCRIPT_CONFIG.VERSION);
+    }
+
     if (sessionStorage.getItem('ai-grading-auto-resume') === 'true') {
         sessionStorage.removeItem('ai-grading-auto-resume');
         window.aiGradingState.errorRetryCount = parseInt(sessionStorage.getItem('ai-grading-retry-count') || '0');

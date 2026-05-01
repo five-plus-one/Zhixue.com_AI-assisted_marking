@@ -3,7 +3,7 @@
 
 const SCRIPT_CONFIG = {
     /** 当前脚本版本号，修改此处即可同步更新所有引用 */
-    VERSION: '1.10.0',
+    VERSION: '1.10.4',
 
     /** 远端原始脚本地址（用于检查更新） */
     UPDATE_CHECK_URL: 'https://auto-update.aimarking.five-plus-one.com/ota/ai_marker.user.js',
@@ -19,6 +19,20 @@ const SCRIPT_CONFIG = {
 
     /** 版本更新日志（用于更新提示弹窗），键为版本号，值为更新内容数组 */
     CHANGELOG: {
+        '1.10.4': [
+            '修复配置导入功能中错误的函数名引用（showConfirmDialog、refreshPresetSelect）',
+        ],
+        '1.10.3': [
+            '修复配置导入功能报错 showConfirmDialog is not defined',
+        ],
+        '1.10.2': [
+            '修复历史记录面板清空确认弹窗被遮挡的 z-index 层级问题',
+            '修复更新检查时 changelog 不显示的问题（从远端脚本提取 CHANGELOG）',
+            '修复历史记录弹窗动画开始时位置不居中的问题',
+            '更新后自动刷新页面，无需手动重载',
+            '检查更新按钮增加加载动画',
+            '新增配置导出/导入功能，支持 JSON 文件备份和恢复',
+        ],
         '1.10.0': [
             '新增分小题评分适配：七天网络新UI和旧版支持分小题独立给分',
             'detectSubQuestions() 纳入标准适配器协议，平台自动检测小题列表',

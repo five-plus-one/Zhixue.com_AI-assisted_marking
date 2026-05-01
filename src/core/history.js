@@ -1,3 +1,66 @@
+// ========== IndexedDB 图片存储 ==========
+const ImageStore = {
+    DB_NAME: 'ai-marker-images',
+    STORE_NAME: 'images',
+    DB_VERSION: 1,
+    _db: null,
+
+    async getDB() {
+        if (this._db) return this._db;
+        return new Promise((resolve, reject) => {
+            const req = indexedDB.open(this.DB_NAME, this.DB_VERSION);
+            req.onupgradeneeded = (e) => {
+                const db = e.target.result;
+                if (!db.objectStoreNames.contains(this.STORE_NAME)) {
+                    db.createObjectStore(this.STORE_NAME);
+                }
+            };
+            req.onsuccess = (e) => { this._db = e.target.result; resolve(this._db); };
+            req.onerror = (e) => reject(e.target.error);
+        });
+    },
+
+    async save(recordId, base64Array) {
+        const db = await this.getDB();
+        return new Promise((resolve, reject) => {
+            const tx = db.transaction(this.STORE_NAME, 'readwrite');
+            tx.objectStore(this.STORE_NAME).put(base64Array, recordId);
+            tx.oncomplete = () => resolve();
+            tx.onerror = (e) => reject(e.target.error);
+        });
+    },
+
+    async get(recordId) {
+        const db = await this.getDB();
+        return new Promise((resolve, reject) => {
+            const tx = db.transaction(this.STORE_NAME, 'readonly');
+            const req = tx.objectStore(this.STORE_NAME).get(recordId);
+            req.onsuccess = () => resolve(req.result || null);
+            req.onerror = (e) => reject(e.target.error);
+        });
+    },
+
+    async delete(recordId) {
+        const db = await this.getDB();
+        return new Promise((resolve, reject) => {
+            const tx = db.transaction(this.STORE_NAME, 'readwrite');
+            tx.objectStore(this.STORE_NAME).delete(recordId);
+            tx.oncomplete = () => resolve();
+            tx.onerror = (e) => reject(e.target.error);
+        });
+    },
+
+    async clear() {
+        const db = await this.getDB();
+        return new Promise((resolve, reject) => {
+            const tx = db.transaction(this.STORE_NAME, 'readwrite');
+            tx.objectStore(this.STORE_NAME).clear();
+            tx.oncomplete = () => resolve();
+            tx.onerror = (e) => reject(e.target.error);
+        });
+    }
+};
+
 // ========== 评阅历史模块 ==========
 const HistoryManager = {
     records: [],
@@ -6,6 +69,17 @@ const HistoryManager = {
     init() {
         const saved = GM_getValue('ai-grading-history');
         this.records = saved ? JSON.parse(saved) : [];
+
+        // 迁移旧记录：将 GM_setValue 中的 imageBase64s 迁移到 IndexedDB
+        const toMigrate = this.records.filter(r => r.imageBase64s && r.imageBase64s.length > 0);
+        if (toMigrate.length > 0) {
+            console.log(`[历史] 迁移 ${toMigrate.length} 条旧记录的图片到 IndexedDB...`);
+            toMigrate.forEach(r => {
+                ImageStore.save(r.id, r.imageBase64s).catch(() => {});
+                delete r.imageBase64s;
+            });
+            this.save(); // 写回不含 base64 的元数据
+        }
     },
 
     save() {
@@ -21,20 +95,20 @@ const HistoryManager = {
         record.pageUrl = window.location.pathname + window.location.hash;
         record.taskIdentifier = PresetManager.getTaskIdentifier();
 
-        // 限制 imageBase64s 存储大小，避免超出 GM_setValue 限制
-        if (record.imageBase64s && record.imageBase64s.length > 0) {
-            const maxImages = 3;
-            let totalSize = record.imageBase64s.reduce((sum, b64) => sum + (b64?.length || 0), 0);
-            if (totalSize > 1024 * 1024) {
-                // 超过 1MB，只保留第一张
-                record.imageBase64s = [record.imageBase64s[0]];
-            } else if (record.imageBase64s.length > maxImages) {
-                record.imageBase64s = record.imageBase64s.slice(0, maxImages);
-            }
-        }
+        // 图片存 IndexedDB，不存入 GM_setValue
+        const imageBase64s = record.imageBase64s;
+        delete record.imageBase64s;
 
         this.records.unshift(record);
         this.save();
+
+        // 异步存图片，不阻塞主流程
+        if (imageBase64s && imageBase64s.length > 0) {
+            ImageStore.save(record.id, imageBase64s).catch(e =>
+                console.warn('[历史] 图片存入 IndexedDB 失败:', e)
+            );
+        }
+
         console.log(`📝 [历史] 已记录评阅: ${record.studentAnswer?.slice(0, 20)}... → ${record.finalScore}分`);
     },
 
@@ -49,6 +123,12 @@ const HistoryManager = {
 
     markIncorrect(id) {
         this.update(id, { status: 'marked' });
+    },
+
+    delete(id) {
+        this.records = this.records.filter(r => r.id !== id);
+        this.save();
+        ImageStore.delete(id).catch(() => {});
     },
 
     exportCSV(records) {
@@ -73,17 +153,13 @@ const HistoryManager = {
         const modeLabel = { normal: '普通', unattended: '无人', trial: '试改' };
 
         // 预加载缺少 imageBase64s 的记录的图片
-        const imageCache = {};
-        const urlsToFetch = [...new Set(
-            records.filter(r => !r.imageBase64s || r.imageBase64s.length === 0)
-                .flatMap(r => r.imageUrls || [])
-        )];
-        if (urlsToFetch.length > 0) {
-            showToast(`正在加载 ${urlsToFetch.length} 张图片...`);
-            await Promise.all(urlsToFetch.map(async url => {
-                try { const fetchFn = (window.__AI_MARKER_ADAPTER__ && window.__AI_MARKER_ADAPTER__.fetchImageAsBase64) ? window.__AI_MARKER_ADAPTER__.fetchImageAsBase64 : fetchImageAsBase64; imageCache[url] = await fetchFn(url); } catch (e) { console.warn('图片加载失败:', url); }
-            }));
-        }
+        const imageMap = {};
+        await Promise.all(records.map(async r => {
+            try {
+                const base64s = await ImageStore.get(r.id);
+                if (base64s) imageMap[r.id] = base64s;
+            } catch (e) { console.warn('IndexedDB 图片加载失败:', r.id); }
+        }));
 
         const rows = records.map(r => {
             const time = new Date(r.timestamp).toLocaleString('zh-CN');
@@ -91,8 +167,9 @@ const HistoryManager = {
             const scoreText = r.isCorrected ? `${r.aiScore} → ${r.finalScore} ✓` : `${r.finalScore}`;
             const correctedRow = r.isCorrected ? `<div style="color:#0052FF;font-size:12px;margin-top:4px;">纠错理由：${r.correctionReason || '无'}</div>` : '';
             const markedRow = r.status === 'marked' ? `<span style="color:#D93025;font-size:11px;margin-left:8px;">⚠ 待回评</span>` : '';
+            const base64s = imageMap[r.id] || [];
             const images = (r.imageUrls || []).map((url, j) => {
-                const b64 = r.imageBase64s?.[j] || imageCache[url];
+                const b64 = base64s[j];
                 return b64 ? `<img src="data:image/png;base64,${b64}" style="max-width:100%;border-radius:6px;margin-top:8px;">` : '';
             }).join('');
             return `
@@ -318,6 +395,7 @@ function showHistoryPanel() {
         if (await showConfirmModal('确定要清空所有评阅历史吗？此操作不可撤销。')) {
             HistoryManager.records = [];
             HistoryManager.save();
+            await ImageStore.clear().catch(() => {});
             renderList([]);
         }
     };
@@ -383,7 +461,6 @@ function showHistoryDetail(record) {
 
     const time = new Date(record.timestamp).toLocaleString('zh-CN');
     const modeLabel = { normal: '普通', unattended: '无人', trial: '试改' }[record.gradingMode] || record.gradingMode;
-    const imagesHtml = (record.imageUrls || []).map(url => `<img src="${url}" style="max-width:100%;border-radius:8px;margin-bottom:8px;">`).join('');
 
     overlay.innerHTML = `
         <div class="ai-modal-card" style="max-width:700px;max-height:85vh;overflow:hidden;">
@@ -414,7 +491,7 @@ function showHistoryDetail(record) {
                 ${record.isCorrected ? `<div style="background:rgba(0,82,255,0.04);border-left:3px solid #0052FF;padding:10px 14px;border-radius:0 6px 6px 0;font-size:12px;color:#0052FF;margin-bottom:16px;">${record.correctionReason || '已纠错'}</div>` : ''}
                 <div style="margin-bottom:16px;"><div style="font-size:11px;color:#86868b;text-transform:uppercase;font-weight:600;margin-bottom:6px;">识别答案</div><div style="font-size:13px;line-height:1.6;font-family:'SF Mono',monospace;background:rgba(0,0,0,0.02);padding:12px;border-radius:8px;white-space:pre-wrap;">${record.studentAnswer || '未能识别'}</div></div>
                 <div style="margin-bottom:16px;"><div style="font-size:11px;color:#86868b;text-transform:uppercase;font-weight:600;margin-bottom:6px;">AI评语</div><div style="font-size:13px;line-height:1.6;font-family:'SF Mono',monospace;background:rgba(0,0,0,0.02);padding:12px;border-radius:8px;white-space:pre-wrap;">${record.aiComment || '无'}</div></div>
-                ${imagesHtml ? `<div><div style="font-size:11px;color:#86868b;text-transform:uppercase;font-weight:600;margin-bottom:6px;">答题卡图片</div>${imagesHtml}</div>` : ''}
+                <div id="detail-images-container"><div style="color:#aaa;font-size:12px;">加载图片中...</div></div>
             </div>
         </div>
     `;
@@ -422,4 +499,17 @@ function showHistoryDetail(record) {
     const closeDetail = () => overlay.remove();
     overlay.querySelector('#detail-close').onclick = closeDetail;
     overlay.onclick = e => { if (e.target === overlay) closeDetail(); };
+
+    // 从 IndexedDB 异步加载图片
+    const imgContainer = overlay.querySelector('#detail-images-container');
+    ImageStore.get(record.id).then(base64s => {
+        if (base64s && base64s.length > 0) {
+            imgContainer.innerHTML = `<div style="font-size:11px;color:#86868b;text-transform:uppercase;font-weight:600;margin-bottom:6px;">答题卡图片</div>` +
+                base64s.map(b64 => `<img src="data:image/png;base64,${b64}" style="max-width:100%;border-radius:8px;margin-bottom:8px;">`).join('');
+        } else {
+            imgContainer.innerHTML = '<div style="color:#aaa;font-size:12px;">无图片数据</div>';
+        }
+    }).catch(() => {
+        imgContainer.innerHTML = '<div style="color:#aaa;font-size:12px;">图片加载失败</div>';
+    });
 }

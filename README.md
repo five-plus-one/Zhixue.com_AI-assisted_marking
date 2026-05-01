@@ -2,7 +2,7 @@
 
 > **晚上挂机睡觉，早上起来全改完。**
 
-[![版本](https://img.shields.io/badge/version-1.9.0-blue.svg)](https://github.com/five-plus-one/Zhixue.com_AI-assisted_marking)
+[![版本](https://img.shields.io/badge/version-1.10.0-blue.svg)](https://github.com/five-plus-one/Zhixue.com_AI-assisted_marking)
 [![许可证](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 
 ---
@@ -133,6 +133,13 @@
 ---
 
 ## 更新日志
+
+### v1.10.0 (2026-05-01)
+- 新增分小题评分适配：七天网络新UI和旧版支持分小题独立给分
+- `detectSubQuestions()` 纳入标准适配器协议，平台自动检测小题列表
+- 设置面板自动识别平台小题，无需手动配置分小题信息
+- 历史记录图片存储改为 IndexedDB，修复长时间批改后脚本崩溃（64MiB 限制）
+- 旧记录图片数据自动迁移到 IndexedDB，升级无感
 
 ### v1.9.0 (2026-04-30)
 - 新增七天网络新 UI (yj5.7net.cc) 适配，支持 Vue SPA + Canvas 渲染答题卡

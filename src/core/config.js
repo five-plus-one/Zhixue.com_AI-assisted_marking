@@ -3,7 +3,7 @@
 
 const SCRIPT_CONFIG = {
     /** 当前脚本版本号，修改此处即可同步更新所有引用 */
-    VERSION: '1.9.0',
+    VERSION: '1.10.0',
 
     /** 远端原始脚本地址（用于检查更新） */
     UPDATE_CHECK_URL: 'https://auto-update.aimarking.five-plus-one.com/ota/ai_marker.user.js',
@@ -19,6 +19,13 @@ const SCRIPT_CONFIG = {
 
     /** 版本更新日志（用于更新提示弹窗），键为版本号，值为更新内容数组 */
     CHANGELOG: {
+        '1.10.0': [
+            '新增分小题评分适配：七天网络新UI和旧版支持分小题独立给分',
+            'detectSubQuestions() 纳入标准适配器协议，平台自动检测小题列表',
+            '设置面板自动识别平台小题，无需手动配置分小题信息',
+            '历史记录图片存储改为 IndexedDB，修复长时间批改后脚本崩溃（64MiB 限制）',
+            '旧记录图片数据自动迁移到 IndexedDB，升级无感',
+        ],
         '1.9.0': [
             '新增七天网络新 UI (yj5.7net.cc) 适配，支持 Vue SPA + Canvas 渲染答题卡',
             '通过 XMLHttpRequest 拦截 API 响应精确获取当前学生图片，解决预取图片干扰问题',

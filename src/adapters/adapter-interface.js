@@ -18,6 +18,13 @@
  */
 
 /**
+ * @typedef {Object} SubQuestionInfo
+ * @property {string} label - 小题标签（如 "3(1)"、"a"）
+ * @property {HTMLInputElement} element - 该小题对应的分数输入框 DOM 元素
+ * @property {number} index - 小题序号
+ */
+
+/**
  * @typedef {Object} PlatformAdapter
  *
  * === 基本信息 ===
@@ -66,6 +73,11 @@
  * @property {() => ScoreInputInfo[]} getScoreInputs
  *   返回当前页面上所有分数输入框的信息数组。
  *   单题模式返回一个元素，分小题模式返回多个。
+ *
+ * @property {() => SubQuestionInfo[]} detectSubQuestions
+ *   从 DOM 自动检测当前题目的小题列表。
+ *   返回空数组表示当前平台不支持分小题评分或小题未加载。
+ *   核心层据此自动填充设置面板的小题列表。
  *
  * === 可选钩子 ===
  * @property {() => void} [onPageLoad] - init() 完成后的平台特定页面设置

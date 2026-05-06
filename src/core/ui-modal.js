@@ -7,24 +7,25 @@ function ensureModalStyles() {
     style.textContent = `
         .ai-modal-overlay {
             position: fixed; top: 0; left: 0; right: 0; bottom: 0;
-            background: rgba(0,0,0,0.3); backdrop-filter: blur(8px);
-            z-index: 999998; animation: ai-modal-fadein 0.3s ease-out;
+            background: rgba(0,0,0,0.25); backdrop-filter: blur(6px);
+            z-index: 1000010;
             display: flex; justify-content: center; align-items: center;
+            animation: ai-modal-fadein 0.25s ease-out;
         }
         @keyframes ai-modal-fadein { from { opacity: 0; } to { opacity: 1; } }
         .ai-modal-card {
-            background: rgba(255, 255, 255, 0.95);
+            background: rgba(255, 255, 255, 0.96);
             backdrop-filter: blur(32px) saturate(180%);
             -webkit-backdrop-filter: blur(32px) saturate(180%);
             border: 1px solid rgba(255, 255, 255, 0.6);
             border-radius: 20px;
             box-shadow: 0 40px 80px rgba(0,0,0,0.12), inset 0 1px 0 rgba(255,255,255,0.4);
-            min-width: 360px; max-width: 480px; width: 90vw;
+            min-width: 340px; max-width: 460px; width: 90vw;
             font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Inter", sans-serif;
             animation: ai-modal-scalein 0.3s cubic-bezier(0.16, 1, 0.3, 1);
             overflow: hidden;
         }
-        @keyframes ai-modal-scalein { from { transform: scale(0.95); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+        @keyframes ai-modal-scalein { from { transform: scale(0.96) translateY(8px); opacity: 0; } to { transform: scale(1) translateY(0); opacity: 1; } }
         .ai-modal-header {
             padding: 24px 28px 0;
             font-size: 16px; font-weight: 600; color: #1d1d1f;
@@ -36,22 +37,22 @@ function ensureModalStyles() {
         .ai-modal-body .ai-modal-input {
             width: 100%; padding: 10px 12px; margin-top: 12px;
             background: rgba(0,0,0,0.02);
-            border: 1px solid rgba(0,0,0,0.1); border-radius: 8px;
+            border: 1px solid rgba(0,0,0,0.1); border-radius: 10px;
             font-family: inherit; font-size: 14px; color: #1a1a1a;
             box-sizing: border-box; transition: all 0.2s;
         }
         .ai-modal-body .ai-modal-input:focus {
             outline: none; border-color: #0052FF; background: #fff;
-            box-shadow: 0 0 0 3px rgba(0, 82, 255, 0.1);
+            box-shadow: 0 0 0 3px rgba(0, 82, 255, 0.08);
         }
         .ai-modal-footer {
             padding: 0 28px 24px;
-            display: flex; justify-content: flex-end; gap: 12px;
+            display: flex; justify-content: flex-end; gap: 10px;
         }
         .ai-modal-footer button {
-            padding: 10px 24px; border: none; border-radius: 10px;
-            font-size: 14px; font-weight: 500; cursor: pointer;
-            transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+            padding: 10px 22px; border: none; border-radius: 10px;
+            font-size: 13px; font-weight: 500; cursor: pointer;
+            transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
         }
         .ai-modal-btn-cancel {
             background: rgba(0,0,0,0.05); color: #1d1d1f;
@@ -59,11 +60,11 @@ function ensureModalStyles() {
         .ai-modal-btn-cancel:hover { background: rgba(0,0,0,0.09); }
         .ai-modal-btn-confirm {
             background: #1d1d1f; color: white;
-            box-shadow: 0 8px 20px rgba(0,0,0,0.15);
+            box-shadow: 0 6px 16px rgba(0,0,0,0.12);
         }
         .ai-modal-btn-confirm:hover {
             background: #000; transform: translateY(-1px);
-            box-shadow: 0 12px 28px rgba(0,0,0,0.22);
+            box-shadow: 0 10px 24px rgba(0,0,0,0.18);
         }
     `;
     document.head.appendChild(style);
@@ -87,6 +88,7 @@ function showAlertModal(message) {
         const close = () => { if (closed) return; closed = true; overlay.remove(); resolve(); };
         overlay.querySelector('.ai-modal-btn-confirm').onclick = e => { e.stopPropagation(); close(); };
         overlay.onclick = e => { if (e.target === overlay) close(); };
+        overlay.querySelector('.ai-modal-btn-confirm').focus();
     });
 }
 
@@ -110,6 +112,7 @@ function showConfirmModal(message) {
         overlay.querySelector('.ai-modal-btn-cancel').onclick = e => { e.stopPropagation(); close(false); };
         overlay.querySelector('.ai-modal-btn-confirm').onclick = e => { e.stopPropagation(); close(true); };
         overlay.onclick = e => { if (e.target === overlay) close(false); };
+        overlay.querySelector('.ai-modal-btn-confirm').focus();
     });
 }
 

@@ -1,118 +1,171 @@
-// ========== 创建配置面板 ==========
+// ========== 创建配置面板（侧边栏） ==========
 function createSettingsPanel() {
     if (document.getElementById('ai-grading-settings')) return;
+    if (document.getElementById('ai-settings-overlay')) return;
+
+    // 遮罩层
+    const overlay = document.createElement('div');
+    overlay.id = 'ai-settings-overlay';
+    overlay.style.cssText = `
+        position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+        background: rgba(0,0,0,0.25); backdrop-filter: blur(4px);
+        z-index: 9999; opacity: 0; pointer-events: none;
+        transition: opacity 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+    `;
+    document.body.appendChild(overlay);
+
     const panel = document.createElement('div');
     panel.id = 'ai-grading-settings';
     panel.innerHTML = `
         <style>
-            #ai-grading-settings { 
-                position: fixed; top: 20px; right: 20px; width: 420px; max-height: 90vh; overflow-y: auto; 
-                background: rgba(255, 255, 255, 0.95); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px);
-                border: 1px solid rgba(0, 0, 0, 0.08); border-radius: 16px; 
-                box-shadow: 0 16px 40px rgba(0,0,0,0.1), 0 4px 12px rgba(0,0,0,0.04); 
-                z-index: 10000; font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Inter", sans-serif;
-                transition: height 0.3s cubic-bezier(0.16, 1, 0.3, 1), transform 0.3s;
+            #ai-grading-settings {
+                position: fixed; top: 0; right: 0; height: 100vh; width: 440px;
+                background: rgba(255, 255, 255, 0.96);
+                backdrop-filter: blur(24px) saturate(180%); -webkit-backdrop-filter: blur(24px) saturate(180%);
+                border-left: 1px solid rgba(0,0,0,0.08);
+                box-shadow: -8px 0 40px rgba(0,0,0,0.08);
+                z-index: 10000;
+                font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Inter", sans-serif;
+                display: flex; flex-direction: column;
+                transform: translateX(100%);
+                transition: transform 0.35s cubic-bezier(0.16, 1, 0.3, 1);
             }
+            #ai-grading-settings.open { transform: translateX(0); }
             #ai-grading-settings.minimized .settings-body { display: none; }
-            #ai-grading-settings.minimized { width: 420px; box-shadow: 0 8px 24px rgba(0,0,0,0.08); }
-            .settings-header { 
-                background: transparent; color: #1a1a1a; padding: 20px 24px 16px; 
-                display: flex; justify-content: space-between; align-items: center; cursor: move;
+            #ai-grading-settings.minimized .sidebar-footer { display: none; }
+
+            .sidebar-header {
+                padding: 20px 24px 16px;
+                display: flex; justify-content: space-between; align-items: center;
                 border-bottom: 1px solid rgba(0,0,0,0.06);
+                flex-shrink: 0;
             }
-            .settings-header h3 { margin: 0; font-size: 15px; font-weight: 600; letter-spacing: 0.5px; }
-            .header-buttons { display: flex; gap: 8px; }
-            .header-btn { 
-                background: transparent; border: 1px solid rgba(0,0,0,0.1); color: #666; 
-                width: 26px; height: 26px; border-radius: 6px; cursor: pointer; transition: all 0.2s;
-                display: flex; justify-content: center; align-items: center; font-size: 14px;
+            .sidebar-header h3 { margin: 0; font-size: 16px; font-weight: 600; color: #1a1a1a; letter-spacing: 0.3px; }
+            .header-buttons { display: flex; gap: 6px; }
+            .header-btn {
+                background: transparent; border: 1px solid rgba(0,0,0,0.08); color: #666;
+                width: 28px; height: 28px; border-radius: 8px; cursor: pointer; transition: all 0.2s;
+                display: flex; justify-content: center; align-items: center; font-size: 15px;
             }
-            .header-btn:hover { background: rgba(0,0,0,0.04); color: #1a1a1a; }
-            .settings-body { padding: 0; position: relative; }
-            .form-section { padding: 20px 24px; border-bottom: 1px solid rgba(0,0,0,0.04); }
-            .form-section:last-child { border-bottom: none; }
-            .form-section.highlight { background: rgba(0, 82, 255, 0.02); }
-            .form-section h4 { 
-                color: #1a1a1a; font-size: 13px; font-weight: 600; margin: 0 0 16px 0; 
-                text-transform: uppercase; letter-spacing: 0.5px; 
+            .header-btn:hover { background: rgba(0,0,0,0.04); color: #1a1a1a; border-color: rgba(0,0,0,0.15); }
+
+            .settings-body {
+                flex: 1; overflow-y: auto; overflow-x: hidden;
+                scrollbar-width: thin; scrollbar-color: rgba(0,0,0,0.12) transparent;
             }
-            .form-group { margin-bottom: 16px; }
+            .settings-body::-webkit-scrollbar { width: 5px; }
+            .settings-body::-webkit-scrollbar-thumb { background: rgba(0,0,0,0.12); border-radius: 4px; }
+
+            .save-btn-container {
+                position: sticky; top: 0; z-index: 10;
+                background: rgba(255,255,255,0.92); backdrop-filter: blur(12px);
+                padding: 12px 24px; border-bottom: 1px solid rgba(0,0,0,0.05);
+            }
+            .save-btn {
+                width: 100%; padding: 11px 16px; background: #1a1a1a; color: white; border: none;
+                border-radius: 10px; font-size: 13px; font-weight: 600; cursor: pointer; transition: all 0.2s;
+                letter-spacing: 0.3px;
+            }
+            .save-btn:hover { background: #333; transform: translateY(-1px); box-shadow: 0 4px 16px rgba(0,0,0,0.12); }
+            .save-btn.highlight-save { background: #D93025; }
+            .save-btn.highlight-save:hover { background: #B3261E; }
+
+            /* 手风琴分组 */
+            .form-section {
+                border-bottom: 1px solid rgba(0,0,0,0.04);
+            }
+            .form-section.highlight .section-header { background: rgba(0, 82, 255, 0.02); }
+            .section-header {
+                padding: 14px 24px; cursor: pointer; display: flex; justify-content: space-between; align-items: center;
+                transition: background 0.15s; user-select: none;
+            }
+            .section-header:hover { background: rgba(0,0,0,0.02); }
+            .section-header h4 {
+                margin: 0; font-size: 12px; font-weight: 600; color: #86868b;
+                text-transform: uppercase; letter-spacing: 0.8px;
+            }
+            .section-arrow {
+                width: 16px; height: 16px; color: #aaa; transition: transform 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+                flex-shrink: 0;
+            }
+            .form-section.collapsed .section-arrow { transform: rotate(-90deg); }
+            .form-section.collapsed .section-body { display: none; }
+            .section-body { padding: 0 24px 16px; }
+
+            .form-group { margin-bottom: 14px; }
             .form-group:last-child { margin-bottom: 0; }
-            .form-group label { display: block; margin-bottom: 8px; color: #666; font-size: 12px; font-weight: 500; }
-            .form-group input, .form-group select, .form-group textarea { 
-                width: 100%; padding: 10px 12px; 
+            .form-group label { display: block; margin-bottom: 6px; color: #666; font-size: 12px; font-weight: 500; }
+            .form-group input, .form-group select, .form-group textarea {
+                width: 100%; padding: 9px 12px;
                 background: rgba(0,0,0,0.02);
-                border: 1px solid rgba(0,0,0,0.08); border-radius: 8px; box-sizing: border-box; 
+                border: 1px solid rgba(0,0,0,0.08); border-radius: 8px; box-sizing: border-box;
                 font-family: inherit; font-size: 13px; color: #1a1a1a; transition: all 0.2s;
             }
             .form-group input:focus, .form-group select:focus, .form-group textarea:focus {
-                outline: none; border-color: #0052FF; background: #fff; box-shadow: 0 0 0 3px rgba(0, 82, 255, 0.1);
+                outline: none; border-color: #0052FF; background: #fff; box-shadow: 0 0 0 3px rgba(0, 82, 255, 0.08);
             }
-            .form-group textarea { min-height: 80px; resize: vertical; }
+            .form-group textarea { min-height: 72px; resize: vertical; line-height: 1.5; }
+
             .checkbox-group { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; }
-            .checkbox-group input[type="checkbox"] { accent-color: #0052FF; width: 16px; height: 16px; }
+            .checkbox-group input[type="checkbox"] { accent-color: #0052FF; width: 15px; height: 15px; }
             .checkbox-group label { margin: 0; font-size: 13px; color: #1a1a1a; font-weight: 500; }
-            .preset-controls { display: flex; gap: 8px; margin-bottom: 16px; }
-            .preset-controls select { 
-                flex: 1; padding: 8px 12px; border-radius: 6px; border: 1px solid rgba(0,0,0,0.1); 
-                background: #fdfdfd; font-size: 13px;
+
+            .preset-controls { display: flex; gap: 6px; margin-bottom: 12px; }
+            .preset-controls select {
+                flex: 1; padding: 7px 10px; border-radius: 8px; border: 1px solid rgba(0,0,0,0.1);
+                background: rgba(0,0,0,0.02); font-size: 13px;
             }
-            .preset-btn { 
-                background: transparent; border: 1px solid rgba(0,0,0,0.1); border-radius: 6px; 
+            .preset-btn {
+                background: transparent; border: 1px solid rgba(0,0,0,0.1); border-radius: 8px;
                 padding: 0 12px; cursor: pointer; font-size: 12px; font-weight: 500; color: #444; transition: all 0.2s;
+                height: 34px; display: flex; align-items: center;
             }
             .preset-btn:hover { background: rgba(0,0,0,0.03); color: #1a1a1a; border-color: rgba(0,0,0,0.2); }
             .preset-btn.danger:hover { color: #D93025; border-color: rgba(217,48,37,0.3); background: rgba(217,48,37,0.04); }
-            .unattended-warning {
-                background: rgba(245, 108, 108, 0.05); border-left: 3px solid #F56C6C; border-radius: 0 6px 6px 0;
-                padding: 10px 14px; font-size: 12px; color: #D93025; line-height: 1.5; margin-top: 8px;
-            }
+
             .mode-segmented {
-                display: flex; gap: 0; background: rgba(0,0,0,0.04); border-radius: 10px; padding: 3px; position: relative;
+                display: flex; gap: 0; background: rgba(0,0,0,0.04); border-radius: 10px; padding: 3px;
             }
             .mode-segmented input[type="radio"] { display: none; }
             .mode-segmented label {
-                flex: 1; text-align: center; padding: 10px 0; font-size: 13px; font-weight: 500;
-                color: #666; cursor: pointer; border-radius: 8px; transition: all 0.25s; position: relative; z-index: 1;
+                flex: 1; text-align: center; padding: 9px 0; font-size: 13px; font-weight: 500;
+                color: #666; cursor: pointer; border-radius: 8px; transition: all 0.25s;
             }
             .mode-segmented input[type="radio"]:checked + label {
                 background: #1d1d1f; color: #fff; box-shadow: 0 2px 8px rgba(0,0,0,0.12);
             }
             .mode-segmented input[value="trial"]:checked + label { background: #7c3aed; }
             .mode-segmented input[value="unattended"]:checked + label { background: #D93025; }
-            .mode-desc {
-                font-size: 12px; color: #86868b; line-height: 1.5; margin-top: 10px; min-height: 36px;
-            }
+            .mode-desc { font-size: 12px; color: #86868b; line-height: 1.5; margin-top: 8px; min-height: 32px; }
             .mode-desc.trial-desc { color: #7c3aed; }
             .mode-desc.unattended-desc { color: #D93025; }
-            .history-btn {
-                width: 100%; padding: 10px; background: transparent; color: #666;
+
+            .unattended-warning {
+                background: rgba(245, 108, 108, 0.05); border-left: 3px solid #F56C6C; border-radius: 0 8px 8px 0;
+                padding: 10px 14px; font-size: 12px; color: #D93025; line-height: 1.5; margin-top: 8px;
+            }
+
+            .sidebar-footer {
+                padding: 12px 24px 16px; border-top: 1px solid rgba(0,0,0,0.06);
+                display: flex; gap: 8px; flex-shrink: 0;
+                background: rgba(255,255,255,0.92);
+            }
+            .footer-btn {
+                flex: 1; padding: 9px 12px; background: transparent; color: #666;
                 border: 1px solid rgba(0,0,0,0.1); border-radius: 8px;
-                font-size: 13px; font-weight: 500; cursor: pointer; transition: all 0.2s;
-                display: flex; align-items: center; justify-content: center; gap: 6px;
+                font-size: 12px; font-weight: 500; cursor: pointer; transition: all 0.2s;
+                display: flex; align-items: center; justify-content: center; gap: 5px;
             }
-            .history-btn:hover { background: rgba(0,0,0,0.03); color: #1a1a1a; border-color: rgba(0,0,0,0.2); }
-            .api-key-link { display: inline-block; margin-top: 8px; font-size: 12px; color: #0052FF; text-decoration: none; font-weight: 500; }
+            .footer-btn:hover { background: rgba(0,0,0,0.03); color: #1a1a1a; border-color: rgba(0,0,0,0.2); }
+
+            .api-key-link { display: inline-block; margin-top: 6px; font-size: 12px; color: #0052FF; text-decoration: none; font-weight: 500; }
             .api-key-link:hover { text-decoration: underline; }
-            .save-btn-container { 
-                position: sticky; top: 0; z-index: 10;
-                background: rgba(255,255,255,0.95); backdrop-filter: blur(10px); 
-                padding: 16px 24px; border-bottom: 1px solid rgba(0,0,0,0.06); 
-                box-shadow: 0 4px 12px rgba(0,0,0,0.02);
-            }
-            .save-btn { 
-                width: 100%; padding: 12px; background: #1a1a1a; color: white; border: none; 
-                border-radius: 8px; font-size: 14px; font-weight: 600; cursor: pointer; transition: all 0.2s;
-            }
-            .save-btn:hover { background: #333; transform: translateY(-1px); box-shadow: 0 4px 12px rgba(0,0,0,0.1); }
-            .save-btn.highlight-save { background: #D93025; color: white; }
-            .save-btn.highlight-save:hover { background: #B3261E; }
         </style>
-        <div class="settings-header">
+
+        <div class="sidebar-header">
             <h3>批改配置</h3>
             <div class="header-buttons">
-                <button class="header-btn minimize-btn" title="Toggle">−</button>
-                <button class="header-btn close-btn" title="Close">×</button>
+                <button class="header-btn close-btn" title="关闭">×</button>
             </div>
         </div>
         <div class="settings-body">
@@ -121,87 +174,157 @@ function createSettingsPanel() {
             </div>
 
             <div class="form-section highlight">
-                <h4>场景方案</h4>
-                <div class="preset-controls">
-                    <select id="preset-select"></select>
-                    <button class="preset-btn" id="btn-new-preset">新建</button>
-                    <button class="preset-btn danger" id="btn-del-preset">删除</button>
-                </div>
-                <div class="checkbox-group">
-                    <input type="checkbox" id="bind-url-checkbox">
-                    <label for="bind-url-checkbox">绑定至当前试题</label>
+                <div class="section-header"><h4>场景方案</h4><svg class="section-arrow" viewBox="0 0 16 16" fill="none"><path d="M4 6l4 4 4-4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+                <div class="section-body">
+                    <div class="preset-controls">
+                        <select id="preset-select"></select>
+                        <button class="preset-btn" id="btn-new-preset">新建</button>
+                        <button class="preset-btn danger" id="btn-del-preset">删除</button>
+                    </div>
+                    <div class="checkbox-group">
+                        <input type="checkbox" id="bind-url-checkbox">
+                        <label for="bind-url-checkbox">绑定至当前试题</label>
+                    </div>
                 </div>
             </div>
 
             <div class="form-section">
-                <h4>运行模式</h4>
-                <div class="mode-segmented">
-                    <input type="radio" name="grading-mode" value="normal" id="mode-normal">
-                    <label for="mode-normal">普通模式</label>
-                    <input type="radio" name="grading-mode" value="trial" id="mode-trial">
-                    <label for="mode-trial">试改模式</label>
-                    <input type="radio" name="grading-mode" value="unattended" id="mode-unattended">
-                    <label for="mode-unattended">无人模式</label>
-                </div>
-                <div class="mode-desc" id="mode-desc">每批改一份，等待教师确认后提交。</div>
-            </div>
-            <div class="form-section">
-                <h4>批改上下文</h4>
-                <div class="form-group"><label>题目内容</label><textarea id="question-content"></textarea></div>
-                <div class="form-group"><label>参考答案</label><textarea id="standard-answer"></textarea></div>
-                <div class="form-group"><label>采分标准</label><textarea id="grading-rubric"></textarea></div>
-            </div>
-            <div class="form-section">
-                <h4>分小题评分</h4>
-                <div class="checkbox-group">
-                    <input type="checkbox" id="enable-sub-questions">
-                    <label for="enable-sub-questions">启用分小题评分</label>
-                </div>
-                <div id="sub-questions-container" style="display:none;">
-                    <div id="sub-questions-list"></div>
-                    <button class="preset-btn" id="btn-add-sub-question" style="width:100%;margin-top:8px;padding:8px;">+ 添加小题</button>
-                </div>
-            </div>
-            <div class="form-section">
-                <h4>AI 模型与算力</h4>
-                <div class="form-group">
-                    <label>服务提供商</label>
-                    <div class="preset-controls">
-                        <select id="ai-provider"></select>
-                        <button class="preset-btn" id="btn-new-provider">新建</button>
-                        <button class="preset-btn danger" id="btn-del-provider">删除</button>
+                <div class="section-header"><h4>运行模式</h4><svg class="section-arrow" viewBox="0 0 16 16" fill="none"><path d="M4 6l4 4 4-4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+                <div class="section-body">
+                    <div class="mode-segmented">
+                        <input type="radio" name="grading-mode" value="normal" id="mode-normal">
+                        <label for="mode-normal">普通模式</label>
+                        <input type="radio" name="grading-mode" value="trial" id="mode-trial">
+                        <label for="mode-trial">试改模式</label>
+                        <input type="radio" name="grading-mode" value="unattended" id="mode-unattended">
+                        <label for="mode-unattended">无人模式</label>
                     </div>
-                    <div id="api-key-link-container" style="display:none;"><a href="https://api.ai.five-plus-one.com/console/token" target="_blank" class="api-key-link">获取访问凭证</a></div>
-                </div>
-                <div class="form-group"><label>服务网关 URL</label><input type="text" id="api-endpoint"></div>
-                <div class="form-group"><label>通信密钥 (Token) *</label><input type="password" id="api-key"></div>
-                <div class="form-group"><label>调用模型 ID</label><input type="text" id="model-name"></div>
-            </div>
-            <div class="form-section" style="padding-bottom:20px;">
-                <div style="display:flex;gap:8px;">
-                    <button class="history-btn" id="btn-history" style="flex:1;">评阅历史</button>
-                    <button class="history-btn" id="btn-check-update" style="flex:1;">检查更新</button>
+                    <div class="mode-desc" id="mode-desc">每批改一份，等待教师确认后提交。</div>
                 </div>
             </div>
+
+            <div class="form-section">
+                <div class="section-header"><h4>批改上下文</h4><svg class="section-arrow" viewBox="0 0 16 16" fill="none"><path d="M4 6l4 4 4-4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+                <div class="section-body">
+                    <div class="form-group"><label>题目内容</label><textarea id="question-content"></textarea></div>
+                    <div class="form-group"><label>参考答案</label><textarea id="standard-answer"></textarea></div>
+                    <div class="form-group"><label>采分标准</label><textarea id="grading-rubric"></textarea></div>
+                </div>
+            </div>
+
+            <div class="form-section">
+                <div class="section-header"><h4>分小题评分</h4><svg class="section-arrow" viewBox="0 0 16 16" fill="none"><path d="M4 6l4 4 4-4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+                <div class="section-body">
+                    <div class="checkbox-group">
+                        <input type="checkbox" id="enable-sub-questions">
+                        <label for="enable-sub-questions">启用分小题评分</label>
+                    </div>
+                    <div id="sub-questions-container" style="display:none;">
+                        <div id="sub-questions-list"></div>
+                        <button class="preset-btn" id="btn-add-sub-question" style="width:100%;margin-top:8px;padding:8px;">+ 添加小题</button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="form-section">
+                <div class="section-header"><h4>AI 模型与算力</h4><svg class="section-arrow" viewBox="0 0 16 16" fill="none"><path d="M4 6l4 4 4-4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+                <div class="section-body">
+                    <div class="form-group">
+                        <label>服务提供商</label>
+                        <div class="preset-controls">
+                            <select id="ai-provider"></select>
+                            <button class="preset-btn" id="btn-new-provider">新建</button>
+                            <button class="preset-btn danger" id="btn-del-provider">删除</button>
+                        </div>
+                        <div id="api-key-link-container" style="display:none;"><a href="https://api.ai.five-plus-one.com/console/token" target="_blank" class="api-key-link">获取访问凭证</a></div>
+                    </div>
+                    <div class="form-group"><label>服务网关 URL</label><input type="text" id="api-endpoint"></div>
+                    <div class="form-group"><label>通信密钥 (Token) *</label><input type="password" id="api-key"></div>
+                    <div class="form-group"><label>调用模型 ID</label><input type="text" id="model-name"></div>
+                </div>
+            </div>
+
+            <div class="form-section">
+                <div class="section-header"><h4>配置管理</h4><svg class="section-arrow" viewBox="0 0 16 16" fill="none"><path d="M4 6l4 4 4-4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+                <div class="section-body">
+                    <div style="display:flex;gap:8px;">
+                        <button class="footer-btn" id="btn-export-config" style="flex:1;">导出配置</button>
+                        <button class="footer-btn" id="btn-import-config" style="flex:1;">导入配置</button>
+                    </div>
+                    <input type="file" id="import-config-file" accept=".json" style="display:none;">
+                </div>
+            </div>
+        </div>
+
+        <div class="sidebar-footer">
+            <button class="footer-btn" id="btn-history">评阅历史</button>
+            <button class="footer-btn" id="btn-check-update">检查更新</button>
         </div>
     `;
     document.body.appendChild(panel);
 
-    panel.querySelector('.minimize-btn').onclick = function() {
-        panel.classList.toggle('minimized');
-        this.textContent = panel.classList.contains('minimized') ? '+' : '−';
-    };
-    panel.querySelector('.close-btn').onclick = () => panel.style.display = 'none';
+    // 遮罩层点击关闭
+    overlay.onclick = () => closeSettingsPanel();
+    panel.querySelector('.close-btn').onclick = () => closeSettingsPanel();
+
+    // 手风琴折叠
+    panel.querySelectorAll('.section-header').forEach(header => {
+        header.onclick = () => header.parentElement.classList.toggle('collapsed');
+    });
 
     panel.querySelector('#btn-new-preset').onclick = handleNewPreset;
     panel.querySelector('#btn-del-preset').onclick = handleDeletePreset;
     panel.querySelector('#preset-select').onchange = handlePresetChange;
     panel.querySelector('#save-config-btn').onclick = saveAISettings;
     panel.querySelector('#btn-history').onclick = () => showHistoryPanel();
-    panel.querySelector('#btn-check-update').onclick = () => checkForUpdate(true);
+    panel.querySelector('#btn-check-update').onclick = function() { checkForUpdate(true, this); };
     panel.querySelector('#btn-new-provider').onclick = handleNewProvider;
     panel.querySelector('#btn-del-provider').onclick = handleDeleteProvider;
     panel.querySelector('#ai-provider').onchange = handleProviderChange;
+
+    // 配置导出
+    panel.querySelector('#btn-export-config').onclick = () => {
+        const exportData = {
+            version: SCRIPT_CONFIG.VERSION,
+            timestamp: new Date().toISOString(),
+            presets: PresetManager.data,
+            providers: ProviderManager.data,
+        };
+        const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        const ts = new Date().toISOString().slice(0, 10);
+        a.download = `ai-marker-config_${ts}.json`;
+        a.click();
+        URL.revokeObjectURL(url);
+        showToast('配置已导出');
+    };
+    // 配置导入
+    const fileInput = panel.querySelector('#import-config-file');
+    panel.querySelector('#btn-import-config').onclick = () => fileInput.click();
+    fileInput.onchange = async (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+        try {
+            const text = await file.text();
+            const data = JSON.parse(text);
+            if (!data.presets || !data.presets.list) throw new Error('无效的配置文件');
+            await showConfirmModal(`确定要导入配置吗？\n文件：${file.name}\n将覆盖当前所有方案和服务商设置。`);
+            PresetManager.data = data.presets;
+            PresetManager.save();
+            if (data.providers) {
+                ProviderManager.data = data.providers;
+                ProviderManager.save();
+            }
+            renderPresetDropdown();
+            fillFormFromActivePreset();
+            showToast('配置导入成功');
+        } catch (err) {
+            if (err) showToast('导入失败：' + (err.message || '文件格式错误'));
+        }
+        fileInput.value = '';
+    };
 
     const modeDescs = {
         normal: '每批改一份，5秒自动提交或手动确认。支持分数纠错。',
@@ -227,32 +350,59 @@ function createSettingsPanel() {
     // 分小题评分交互
     const subToggle = panel.querySelector('#enable-sub-questions');
     const subContainer = panel.querySelector('#sub-questions-container');
+    const subList = panel.querySelector('#sub-questions-list');
     subToggle.addEventListener('change', () => {
-        subContainer.style.display = subToggle.checked ? 'block' : 'none';
+        if (subToggle.checked) {
+            const adapter = window.__AI_MARKER_ADAPTER__;
+            if (adapter && typeof adapter.detectSubQuestions === 'function') {
+                const detected = adapter.detectSubQuestions();
+                if (detected.length > 0) {
+                    subContainer.style.display = 'block';
+                    subList.innerHTML = '';
+                    detected.forEach(sq => {
+                        addSubQuestionItem({ label: sq.label, maxScore: '', answer: '', rubric: '' });
+                    });
+                    showToast(`已自动识别 ${detected.length} 个小题`);
+                    markUnsavedChanges();
+                    return;
+                }
+            }
+            subToggle.checked = false;
+            showToast('当前平台暂不支持分小题给分');
+            return;
+        }
+        subContainer.style.display = 'none';
         markUnsavedChanges();
     });
     panel.querySelector('#btn-add-sub-question').onclick = () => addSubQuestionItem();
 
-    makeDraggable(panel);
     loadSettings();
+
+    // 初始化后打开侧边栏
+    requestAnimationFrame(() => openSettingsPanel());
 }
 
-function makeDraggable(element) {
-    const header = element.querySelector('.settings-header');
-    let pos1 = 0, pos2 = 0, pos3 = 0, pos4 = 0;
-    header.onmousedown = (e) => {
-        e.preventDefault();
-        pos3 = e.clientX; pos4 = e.clientY;
-        document.onmouseup = () => { document.onmouseup = null; document.onmousemove = null; };
-        document.onmousemove = (e) => {
-            e.preventDefault();
-            pos1 = pos3 - e.clientX; pos2 = pos4 - e.clientY;
-            pos3 = e.clientX; pos4 = e.clientY;
-            element.style.top = (element.offsetTop - pos2) + "px";
-            element.style.left = (element.offsetLeft - pos1) + "px";
-            element.style.right = 'auto';
-        };
-    };
+// ========== 侧边栏开关 ==========
+function openSettingsPanel() {
+    const panel = document.getElementById('ai-grading-settings');
+    const overlay = document.getElementById('ai-settings-overlay');
+    if (panel) {
+        panel.style.display = 'flex';
+        requestAnimationFrame(() => panel.classList.add('open'));
+    }
+    if (overlay) {
+        overlay.style.pointerEvents = 'auto';
+        overlay.style.opacity = '1';
+    }
+}
+
+function closeSettingsPanel() {
+    const panel = document.getElementById('ai-grading-settings');
+    const overlay = document.getElementById('ai-settings-overlay');
+    if (panel) panel.classList.remove('open');
+    if (overlay) { overlay.style.opacity = '0'; overlay.style.pointerEvents = 'none'; }
+    // 等动画结束后隐藏
+    setTimeout(() => { if (panel && !panel.classList.contains('open')) panel.style.display = 'none'; }, 350);
 }
 
 // ========== 加载与切换方案 ==========
@@ -291,7 +441,6 @@ function fillFormFromActivePreset() {
     document.getElementById('standard-answer').value = config.answer || '';
     document.getElementById('grading-rubric').value = config.rubric || '';
 
-    // 同步服务商下拉（兼容旧格式）
     renderProviderDropdown();
     const providerMigration = { '5plus1': '5plus1官方', 'openai': 'OpenAI兼容' };
     const providerName = providerMigration[config.provider] || config.provider || '5plus1官方';
@@ -318,7 +467,6 @@ function fillFormFromActivePreset() {
 
     document.getElementById('bind-url-checkbox').checked = (PresetManager.data.bindings[currentUrlId] === PresetManager.data.active);
 
-    // 加载分小题配置
     const subToggle = document.getElementById('enable-sub-questions');
     const subContainer = document.getElementById('sub-questions-container');
     const subList = document.getElementById('sub-questions-list');
@@ -329,8 +477,21 @@ function fillFormFromActivePreset() {
         subContainer.style.display = 'block';
         subQuestions.forEach(sq => addSubQuestionItem(sq));
     } else {
-        subToggle.checked = false;
-        subContainer.style.display = 'none';
+        const adapter = window.__AI_MARKER_ADAPTER__;
+        if (adapter && typeof adapter.detectSubQuestions === 'function') {
+            const detected = adapter.detectSubQuestions();
+            if (detected.length > 0) {
+                subToggle.checked = true;
+                subContainer.style.display = 'block';
+                detected.forEach(sq => addSubQuestionItem({ label: sq.label, maxScore: '', answer: '', rubric: '' }));
+            } else {
+                subToggle.checked = false;
+                subContainer.style.display = 'none';
+            }
+        } else {
+            subToggle.checked = false;
+            subContainer.style.display = 'none';
+        }
     }
 
     updateUIVisibility();
@@ -339,7 +500,6 @@ function fillFormFromActivePreset() {
 
 function addSubQuestionItem(data) {
     const list = document.getElementById('sub-questions-list');
-    const index = list.children.length;
     const item = document.createElement('div');
     item.className = 'sub-question-item';
     item.style.cssText = 'padding:12px;margin-bottom:8px;background:rgba(0,0,0,0.02);border:1px solid rgba(0,0,0,0.06);border-radius:8px;';
@@ -509,7 +669,6 @@ function saveAISettings() {
         subQuestions: subQuestions.length > 0 ? subQuestions : undefined
     };
 
-    // 同步更新服务商配置
     if (ProviderManager.data.list[providerName]) {
         ProviderManager.data.list[providerName].endpoint = config.endpoint;
         ProviderManager.data.list[providerName].model = config.model;
@@ -536,10 +695,6 @@ function saveAISettings() {
     const modeLabel = { normal: '普通模式', trial: '试改模式', unattended: '无人模式' }[gradingMode];
     safeAlert(`「${activeName}」已保存 — ${modeLabel}`);
 
-    const panel = document.getElementById('ai-grading-settings');
-    if (panel) {
-        panel.classList.add('minimized');
-        const minimizeBtn = panel.querySelector('.minimize-btn');
-        if (minimizeBtn) minimizeBtn.textContent = '+';
-    }
+    // 保存后自动关闭侧边栏
+    closeSettingsPanel();
 }

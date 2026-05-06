@@ -28,11 +28,31 @@ function extractRemoteVersion(scriptText) {
 }
 
 /**
+ * 从远端脚本文本中提取 CHANGELOG 对象。
+ * 通过正则匹配 CHANGELOG: { ... } 块，然后用 Function 构造器安全解析。
+ */
+function extractRemoteChangelog(scriptText) {
+    try {
+        // 匹配 CHANGELOG: { ... } 内容（支持多行，到下一个 }; 或 } 结尾）
+        const match = scriptText.match(/CHANGELOG\s*:\s*(\{[\s\S]*?\})\s*[,}]/);
+        if (!match) return null;
+        // 用 Function 安全求值，避免 eval
+        const fn = new Function('return ' + match[1]);
+        const obj = fn();
+        return (obj && typeof obj === 'object') ? obj : null;
+    } catch {
+        return null;
+    }
+}
+
+/**
  * 收集从当前版本到远端版本之间的更新日志条目。
  * 返回 HTML 字符串，若无日志则返回空字符串。
+ * @param {string} remoteVersion - 远端版本号
+ * @param {Object|null} remoteChangelog - 远端脚本中的 CHANGELOG 对象（优先使用），为空时回退到本地
  */
-function collectChangelogHTML(remoteVersion) {
-    const changelog = SCRIPT_CONFIG.CHANGELOG;
+function collectChangelogHTML(remoteVersion, remoteChangelog) {
+    const changelog = remoteChangelog || SCRIPT_CONFIG.CHANGELOG;
     if (!changelog) return '';
     const versions = Object.keys(changelog)
         .filter(v => compareVersions(v, SCRIPT_CONFIG.VERSION) > 0 && compareVersions(v, remoteVersion) <= 0)
@@ -47,18 +67,18 @@ function collectChangelogHTML(remoteVersion) {
 /**
  * 显示更新提示对话框（非 alert，样式与项目风格一致）。
  */
-function showUpdateDialog(remoteVersion) {
+function showUpdateDialog(remoteVersion, remoteChangelog) {
     const oldDialog = document.getElementById('ai-update-dialog');
     if (oldDialog) return; // 已经在显示了，不重复
 
-    const changelogHTML = collectChangelogHTML(remoteVersion);
+    const changelogHTML = collectChangelogHTML(remoteVersion, remoteChangelog);
 
     const dialog = document.createElement('div');
     dialog.id = 'ai-update-dialog';
     dialog.innerHTML = `
         <style>
             #ai-update-dialog {
-                position: fixed; bottom: 30px; left: 30px; z-index: 1000000;
+                position: fixed; bottom: 30px; left: 30px; z-index: 1000020;
                 background: rgba(255, 255, 255, 0.95); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
                 border: 1px solid rgba(0,0,0,0.06); border-radius: 12px;
                 box-shadow: 0 16px 40px rgba(0,0,0,0.1), 0 4px 12px rgba(0,0,0,0.04);
@@ -100,7 +120,27 @@ function showUpdateDialog(remoteVersion) {
 
     dialog.querySelector('#upd-btn-now').addEventListener('click', () => {
         window.open(SCRIPT_CONFIG.UPDATE_CHECK_URL, '_blank');
-        dialog.remove();
+        let dotCount = 0, cancelled = false, seconds = 0;
+        const bodyEl = dialog.querySelector('.upd-body');
+        bodyEl.innerHTML = `<span style="color:#1a1a1a;font-weight:500;">请在新标签页中确认安装更新</span><br><span style="font-size:12px;color:#999;margin-top:4px;display:inline-block;">安装完成后页面将自动刷新</span><div style="margin-top:10px;display:flex;align-items:center;gap:8px;"><span class="upd-spinner" style="width:14px;height:14px;border-width:2px;"></span><span id="upd-poll-status" style="font-size:12px;color:#666;">等待安装中</span></div>`;
+        dialog.querySelector('.upd-changelog') && (dialog.querySelector('.upd-changelog').style.display = 'none');
+        dialog.querySelector('.upd-btns').innerHTML = '<button class="upd-btn upd-btn-secondary" id="upd-btn-cancel" style="flex:1;">取消更新</button>';
+        dialog.querySelector('#upd-btn-skip').style.display = 'none';
+        const statusEl = dialog.querySelector('#upd-poll-status');
+        const dotTimer = setInterval(() => { if (!cancelled && statusEl) { dotCount = (dotCount + 1) % 4; statusEl.textContent = '等待安装中' + '.'.repeat(dotCount); } }, 500);
+        const reloadTimer = setInterval(() => {
+            if (cancelled) return;
+            seconds += 1;
+            if (seconds >= 15) {
+                clearInterval(reloadTimer); clearInterval(dotTimer);
+                if (statusEl) statusEl.textContent = '正在刷新页面…';
+                sessionStorage.setItem('ai-update-reloaded', 'true');
+                setTimeout(() => location.reload(), 500);
+            }
+        }, 1000);
+        dialog.querySelector('#upd-btn-cancel').addEventListener('click', () => {
+            cancelled = true; clearInterval(dotTimer); clearInterval(reloadTimer); dialog.remove();
+        });
     });
 
     dialog.querySelector('#upd-btn-later').addEventListener('click', () => {
@@ -120,7 +160,7 @@ function showUpdateDialog(remoteVersion) {
  * - 无人值守模式下完全跳过，不打扰批改流程
  * - 如果远端版本 > 当前版本且用户未选择跳过该版本，则弹出提示卡片
  */
-function checkForUpdate(force = false) {
+function checkForUpdate(force = false, btn) {
     // 无人值守模式：不提醒
     if (window.aiGradingState && window.aiGradingState.gradingMode === 'unattended') return;
 
@@ -137,11 +177,25 @@ function checkForUpdate(force = false) {
     const now = Date.now();
     console.log('[更新检查] 开始检查新版本...');
 
+    if (btn) {
+        btn._origText = btn.textContent;
+        btn.disabled = true;
+        btn.innerHTML = '<span class="upd-spinner"></span> 检查中…';
+        if (!document.getElementById('upd-spinner-style')) {
+            const s = document.createElement('style');
+            s.id = 'upd-spinner-style';
+            s.textContent = '.upd-spinner{display:inline-block;width:12px;height:12px;border:2px solid rgba(0,0,0,0.15);border-top-color:#1a1a1a;border-radius:50%;animation:upd-spin .6s linear infinite;vertical-align:middle;margin-right:4px}@keyframes upd-spin{to{transform:rotate(360deg)}}';
+            document.head.appendChild(s);
+        }
+    }
+    const restoreBtn = () => { if (btn) { btn.disabled = false; btn.textContent = btn._origText || '检查更新'; } };
+
     GM_xmlhttpRequest({
         method: 'GET',
         url: SCRIPT_CONFIG.UPDATE_CHECK_URL + '?_t=' + now, // 加时间戳避免缓存
         timeout: 15000,
         onload: function(res) {
+            restoreBtn();
             if (res.status < 200 || res.status >= 300) {
                 console.warn(`[更新检查] 请求失败，状态码: ${res.status}`);
                 if (force) showToast('检查更新失败，服务器返回错误');
@@ -162,18 +216,21 @@ function checkForUpdate(force = false) {
             }
 
             if (compareVersions(remoteVersion, SCRIPT_CONFIG.VERSION) > 0) {
+                const remoteChangelog = extractRemoteChangelog(res.responseText);
                 console.log(`[更新检查] 发现新版本 ${remoteVersion}，弹出提示`);
-                showUpdateDialog(remoteVersion);
+                showUpdateDialog(remoteVersion, remoteChangelog);
             } else {
                 console.log('[更新检查] 当前已是最新版本');
                 if (force) showToast('当前已是最新版本');
             }
         },
         onerror: function() {
+            restoreBtn();
             console.warn('[更新检查] 网络请求失败，可能是跨域限制或网络问题');
             if (force) showToast('检查更新失败，请检查网络');
         },
         ontimeout: function() {
+            restoreBtn();
             console.warn('[更新检查] 请求超时');
             if (force) showToast('检查更新超时，请检查网络');
         }

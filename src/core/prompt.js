@@ -21,16 +21,37 @@ function parseAIResponseText(text) {
 }
 
 function parsePromptModification(text) {
-    const reasonMatch = text.match(/修改理由[：:]\s*(.+?)(?=\n新|$)/s);
-    const questionMatch = text.match(/新题目内容[：:]\s*(.+?)(?=\n新|$)/s);
-    const answerMatch = text.match(/新参考答案[：:]\s*(.+?)(?=\n新|$)/s);
-    const rubricMatch = text.match(/新评分标准[：:]\s*(.+)/s);
-    return {
-        reason: reasonMatch ? reasonMatch[1].trim() : '',
-        question: questionMatch ? questionMatch[1].trim() : '不变',
-        answer: answerMatch ? answerMatch[1].trim() : '不变',
-        rubric: rubricMatch ? rubricMatch[1].trim() : '不变'
-    };
+    // 去除 markdown 加粗标记，防止 AI 输出 **新参考答案：** 导致匹配失败
+    const clean = text.replace(/\*\*/g, '');
+
+    // 提取各字段：匹配 "字段名：" 后的内容，直到下一个已知字段名或文本结尾
+    function extract(fieldNames) {
+        for (const name of fieldNames) {
+            // 匹配 "字段名：内容" 直到下一个字段标签或结尾
+            const pattern = new RegExp(name + '[：:]\\s*([\\s\\S]+?)(?=\\n[^\\S\\n]*(?:修改理由|新题目内容|新参考答案|新评分标准)[：:]|$)', 'i');
+            const m = clean.match(pattern);
+            if (m && m[1].trim()) {
+                let val = m[1].trim();
+                // "不变" 后面如果跟了括号注释或额外内容，只保留"不变"
+                if (/^不变/.test(val)) return '不变';
+                return val;
+            }
+        }
+        return null;
+    }
+
+    const reason = extract(['修改理由']) || '';
+    const question = extract(['新题目内容']) || '不变';
+    const answer = extract(['新参考答案', '新答案']) || '不变';
+    const rubric = extract(['新评分标准', '评分标准']) || '不变';
+
+    // 诊断日志
+    if (answer === '不变' && rubric === '不变') {
+        console.warn('[纠错] ⚠️ AI 响应中参考答案和评分标准均为"不变"，原文如下：\n' + text.slice(0, 500));
+    }
+    console.log(`[纠错] 解析结果 — 理由: ${reason.slice(0, 60)}... | 答案: ${answer === '不变' ? '不变' : answer.slice(0, 60) + '...'} | 标准: ${rubric === '不变' ? '不变' : rubric.slice(0, 60) + '...'}`);
+
+    return { reason, question, answer, rubric };
 }
 
 // ========== 分小题提示词组装 ==========

@@ -113,6 +113,7 @@ jobs:
           port: ${{ secrets.SSH_PORT || 22 }}
           source: "dist/ai_marker.user.js"
           target: /opt/1panel/apps/openresty/openresty/www/sites/auto-update.aimarking.five-plus-one.com/index/ota/
+          overwrite: true
 
       - name: Set permissions
         uses: appleboy/ssh-action@v1.0.3

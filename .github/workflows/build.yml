@@ -11,8 +11,8 @@ permissions:
   id-token: write
 
 concurrency:
-  group: pages
-  cancel-in-progress: false
+  group: deploy-core
+  cancel-in-progress: true
 
 jobs:
   build:
@@ -74,7 +74,15 @@ jobs:
         with:
           path: dist
 
-  deploy:
+      - name: Upload script for server deploy
+        uses: actions/upload-artifact@v4
+        with:
+          name: script-dist
+          path: dist/ai_marker.user.js
+          retention-days: 1
+
+  # 部署到 GitHub Pages（保留）
+  deploy-pages:
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
@@ -84,3 +92,36 @@ jobs:
       - name: Deploy to GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v5
+
+  # 部署到云服务器
+  deploy-server:
+    needs: build
+    runs-on: ubuntu-latest
+    if: ${{ secrets.SSH_HOST != '' }}
+    steps:
+      - name: Download script
+        uses: actions/download-artifact@v4
+        with:
+          name: script-dist
+          path: dist
+
+      - name: Deploy script to server via SCP
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USERNAME }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          port: ${{ secrets.SSH_PORT || 22 }}
+          source: "dist/ai_marker.user.js"
+          target: /opt/1panel/apps/openresty/openresty/www/sites/auto-update.aimarking.five-plus-one.com/index/ota/
+
+      - name: Set permissions
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USERNAME }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          port: ${{ secrets.SSH_PORT || 22 }}
+          script: |
+            chown www:www /opt/1panel/apps/openresty/openresty/www/sites/auto-update.aimarking.five-plus-one.com/index/ota/ai_marker.user.js
+            chmod 644 /opt/1panel/apps/openresty/openresty/www/sites/auto-update.aimarking.five-plus-one.com/index/ota/ai_marker.user.js

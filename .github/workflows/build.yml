@@ -104,7 +104,7 @@ jobs:
           name: script-dist
           path: dist
 
-      - name: Deploy script to server via SCP
+      - name: Upload to temp directory
         uses: appleboy/scp-action@v0.1.7
         with:
           host: ${{ secrets.SSH_HOST }}
@@ -112,12 +112,9 @@ jobs:
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           port: ${{ secrets.SSH_PORT || 22 }}
           source: "dist/ai_marker.user.js"
-          target: /opt/1panel/apps/openresty/openresty/www/sites/auto-update.aimarking.five-plus-one.com/index/ota/
-          strip_components: 1
-          overwrite: true
-          rm: true
+          target: /tmp/deploy-script/
 
-      - name: Set permissions
+      - name: Move to target and set permissions
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ secrets.SSH_HOST }}
@@ -125,5 +122,8 @@ jobs:
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           port: ${{ secrets.SSH_PORT || 22 }}
           script: |
+            sudo rm -f /opt/1panel/apps/openresty/openresty/www/sites/auto-update.aimarking.five-plus-one.com/index/ota/ai_marker.user.js
+            sudo cp /tmp/deploy-script/dist/ai_marker.user.js /opt/1panel/apps/openresty/openresty/www/sites/auto-update.aimarking.five-plus-one.com/index/ota/
             sudo chown www:www /opt/1panel/apps/openresty/openresty/www/sites/auto-update.aimarking.five-plus-one.com/index/ota/ai_marker.user.js
             sudo chmod 644 /opt/1panel/apps/openresty/openresty/www/sites/auto-update.aimarking.five-plus-one.com/index/ota/ai_marker.user.js
+            rm -rf /tmp/deploy-script

@@ -274,6 +274,9 @@ function createSettingsPanel() {
                     <button class="save-btn" id="save-config-btn">保存并启用</button>
                 </div>
 
+                <!-- ===== 基本 ===== -->
+                <div class="group-title" id="group-basic">基本</div>
+
                 <div class="form-section highlight">
                     <div class="section-header"><h4>场景方案</h4><svg class="section-arrow" viewBox="0 0 16 16" fill="none"><path d="M4 6l4 4 4-4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
                     <div class="section-body">
@@ -304,6 +307,9 @@ function createSettingsPanel() {
                     </div>
                 </div>
 
+                <!-- ===== 批改 ===== -->
+                <div class="group-title" id="group-grading">批改</div>
+
                 <div class="form-section">
                     <div class="section-header"><h4>批改上下文</h4><svg class="section-arrow" viewBox="0 0 16 16" fill="none"><path d="M4 6l4 4 4-4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
                     <div class="section-body">
@@ -327,8 +333,14 @@ function createSettingsPanel() {
                     </div>
                 </div>
 
-                <div class="form-section collapsed">
-                    <div class="section-header"><h4>AI 模型与算力</h4><svg class="section-arrow" viewBox="0 0 16 16" fill="none"><path d="M4 6l4 4 4-4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+                <!-- ===== AI 配置 ===== -->
+                <div class="group-title" id="group-ai">AI 配置</div>
+
+                <div class="form-section">
+                    <div class="section-header">
+                        <h4>AI 模型与算力<span class="section-badge" id="api-key-badge" style="display:none;"></span></h4>
+                        <svg class="section-arrow" viewBox="0 0 16 16" fill="none"><path d="M4 6l4 4 4-4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                    </div>
                     <div class="section-body">
                         <div class="form-group">
                             <label>服务提供商</label>
@@ -340,10 +352,17 @@ function createSettingsPanel() {
                             <div id="api-key-link-container" style="display:none;"><a href="https://api.ai.five-plus-one.com/console/token" target="_blank" class="api-key-link">获取访问凭证</a></div>
                         </div>
                         <div class="form-group"><label>服务网关 URL</label><input type="text" id="api-endpoint"></div>
-                        <div class="form-group"><label>通信密钥 (Token) *</label><input type="password" id="api-key"></div>
+                        <div class="form-group"><label>通信密钥 (Token) *</label><input type="password" id="api-key" placeholder="必填，否则无法使用 AI 批改"></div>
                         <div class="form-group"><label>调用模型 ID</label><input type="text" id="model-name"></div>
                     </div>
                 </div>
+                <div class="api-key-warning hidden" id="api-key-warning">
+                    <span class="warn-icon">!</span>
+                    <span>尚未填写通信密钥，AI 批改功能将无法使用。请在上方填入 API Key。</span>
+                </div>
+
+                <!-- ===== 其他 ===== -->
+                <div class="group-title" id="group-other">其他</div>
 
                 <div class="form-section collapsed">
                     <div class="section-header"><h4>历史记录</h4><svg class="section-arrow" viewBox="0 0 16 16" fill="none"><path d="M4 6l4 4 4-4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
@@ -563,6 +582,25 @@ function createSettingsPanel() {
         input.addEventListener('change', markUnsavedChanges);
     });
 
+    // API 密钥实时监听：输入变化时更新警告状态
+    const apiKeyInput = panel.querySelector('#api-key');
+    if (apiKeyInput) {
+        apiKeyInput.addEventListener('input', () => {
+            const hasKey = apiKeyInput.value.trim().length > 0;
+            const warning = document.getElementById('api-key-warning');
+            const badge = document.getElementById('api-key-badge');
+            if (warning) warning.classList.toggle('hidden', hasKey);
+            if (badge) badge.style.display = hasKey ? 'none' : 'inline-block';
+            updateGroupHints();
+        });
+    }
+
+    // 批改上下文实时监听
+    const questionInput = panel.querySelector('#question-content');
+    if (questionInput) {
+        questionInput.addEventListener('input', () => updateGroupHints());
+    }
+
     // 分小题评分交互
     const subToggle = panel.querySelector('#enable-sub-questions');
     const subContainer = panel.querySelector('#sub-questions-container');
@@ -665,7 +703,12 @@ function fillFormFromActivePreset() {
         ProviderManager.save();
         document.getElementById('ai-provider').value = providerName;
     }
-    document.getElementById('api-endpoint').value = config.endpoint || SCRIPT_CONFIG.DEFAULT_ENDPOINT;
+    // 5plus1 官方：强制使用默认网关
+    if (providerName === '5plus1官方') {
+        document.getElementById('api-endpoint').value = SCRIPT_CONFIG.DEFAULT_ENDPOINT;
+    } else {
+        document.getElementById('api-endpoint').value = config.endpoint || SCRIPT_CONFIG.DEFAULT_ENDPOINT;
+    }
     document.getElementById('api-key').value = config.apiKey || '';
     document.getElementById('model-name').value = config.model || SCRIPT_CONFIG.DEFAULT_MODEL;
 
@@ -774,7 +817,75 @@ function getSubQuestionsFromForm() {
 
 function updateUIVisibility() {
     const provider = document.getElementById('ai-provider').value;
-    document.getElementById('api-key-link-container').style.display = provider === '5plus1官方' ? 'block' : 'none';
+    const apiKeyLink = document.getElementById('api-key-link-container');
+    const endpointInput = document.getElementById('api-endpoint');
+    const apiKeyInput = document.getElementById('api-key');
+    const apiKeyWarning = document.getElementById('api-key-warning');
+    const apiKeyBadge = document.getElementById('api-key-badge');
+
+    // 5plus1 官方：网关 URL 固定为只读
+    if (provider === '5plus1官方') {
+        apiKeyLink.style.display = 'block';
+        endpointInput.value = SCRIPT_CONFIG.DEFAULT_ENDPOINT;
+        endpointInput.readOnly = true;
+        endpointInput.classList.add('readonly-field');
+    } else {
+        apiKeyLink.style.display = 'none';
+        endpointInput.readOnly = false;
+        endpointInput.classList.remove('readonly-field');
+    }
+
+    // API 密钥未填写时显示警告
+    const hasKey = apiKeyInput.value.trim().length > 0;
+    if (apiKeyWarning) {
+        apiKeyWarning.classList.toggle('hidden', hasKey);
+    }
+    if (apiKeyBadge) {
+        apiKeyBadge.style.display = hasKey ? 'none' : 'inline-block';
+    }
+
+    // 分组标题提示
+    updateGroupHints();
+}
+
+function updateGroupHints() {
+    const apiKeyInput = document.getElementById('api-key');
+    const hasKey = apiKeyInput && apiKeyInput.value.trim().length > 0;
+    const questionEl = document.getElementById('question-content');
+    const hasContext = questionEl && questionEl.value.trim().length > 0;
+
+    const groupAI = document.getElementById('group-ai');
+    const groupGrading = document.getElementById('group-grading');
+
+    // AI 配置组：密钥未填写时显示红色提示
+    if (groupAI) {
+        const existingWarn = groupAI.querySelector('.config-warn');
+        if (!hasKey) {
+            if (!existingWarn) {
+                const warn = document.createElement('span');
+                warn.className = 'config-warn';
+                warn.textContent = '请填写密钥';
+                groupAI.appendChild(warn);
+            }
+        } else if (existingWarn) {
+            existingWarn.remove();
+        }
+    }
+
+    // 批改组：未配置上下文时显示提示
+    if (groupGrading) {
+        const existingWarn = groupGrading.querySelector('.config-warn');
+        if (!hasContext) {
+            if (!existingWarn) {
+                const warn = document.createElement('span');
+                warn.className = 'config-warn';
+                warn.textContent = '建议填写';
+                groupGrading.appendChild(warn);
+            }
+        } else if (existingWarn) {
+            existingWarn.remove();
+        }
+    }
 }
 
 // ========== 方案操作功能 ==========
@@ -836,10 +947,15 @@ function handleProviderChange() {
     ProviderManager.data.active = name;
     ProviderManager.save();
     const provider = ProviderManager.getCurrent();
-    if (provider.endpoint) document.getElementById('api-endpoint').value = provider.endpoint;
+    if (name === '5plus1官方') {
+        document.getElementById('api-endpoint').value = SCRIPT_CONFIG.DEFAULT_ENDPOINT;
+    } else {
+        if (provider.endpoint) document.getElementById('api-endpoint').value = provider.endpoint;
+    }
     if (provider.model) document.getElementById('model-name').value = provider.model;
     if (provider.apiKey !== undefined) document.getElementById('api-key').value = provider.apiKey;
     document.getElementById('api-key-link-container').style.display = name === '5plus1官方' ? 'block' : 'none';
+    updateUIVisibility();
     markUnsavedChanges();
 }
 

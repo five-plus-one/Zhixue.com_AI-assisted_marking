@@ -448,7 +448,30 @@ function createSettingsPanel() {
                         </div>
                     </div>
 
-                    <div class="about-section">
+                    <div class="about-support">
+                        <div class="about-support-title">☕ 支持作者</div>
+                        <div class="about-support-desc">如果这个工具对您有帮助，欢迎请作者喝杯咖啡！您的支持是持续更新的动力。</div>
+                        <div class="about-qrcodes">
+                            <div class="about-qrcode">
+                                <img src="https://r-l.ink/paywx1" alt="微信赞赏" onerror="this.style.display='none'">
+                                <div class="about-qrcode-label">微信赞赏</div>
+                            </div>
+                            <div class="about-qrcode">
+                                <img src="https://r-l.ink/payzfb1" alt="支付宝赞赏" onerror="this.style.display='none'">
+                                <div class="about-qrcode-label">支付宝赞赏</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div style="margin-top:16px;">
+                        <div class="about-section-title">关注公众号</div>
+                        <div style="text-align:center;">
+                            <img src="https://r-l.ink/wxmp1" alt="微信公众号" style="width:120px;height:120px;border-radius:8px;border:1px solid rgba(0,0,0,0.1);" onerror="this.style.display='none'">
+                            <div style="font-size:11px;color:#86868b;margin-top:4px;">扫码关注公众号获取最新动态</div>
+                        </div>
+                    </div>
+
+                    <div class="about-section" style="margin-top:20px;">
                         <div class="about-section-title">社区与交流</div>
                         <div class="about-links">
                             <a href="https://five-plus-one.com" target="_blank" class="about-link">
@@ -478,29 +501,6 @@ function createSettingsPanel() {
                     <div class="about-section changelog-section">
                         <div class="about-section-title">更新日志</div>
                         <div class="changelog-list" id="changelog-list"></div>
-                    </div>
-
-                    <div class="about-support">
-                        <div class="about-support-title">☕ 支持作者</div>
-                        <div class="about-support-desc">如果这个工具对您有帮助，欢迎请作者喝杯咖啡！您的支持是持续更新的动力。</div>
-                        <div class="about-qrcodes">
-                            <div class="about-qrcode">
-                                <img src="https://r-l.ink/paywx1" alt="微信赞赏" onerror="this.style.display='none'">
-                                <div class="about-qrcode-label">微信赞赏</div>
-                            </div>
-                            <div class="about-qrcode">
-                                <img src="https://r-l.ink/payzfb1" alt="支付宝赞赏" onerror="this.style.display='none'">
-                                <div class="about-qrcode-label">支付宝赞赏</div>
-                            </div>
-                        </div>
-                    </div>
-
-                    <div style="margin-top:16px;">
-                        <div class="about-section-title">关注公众号</div>
-                        <div style="text-align:center;">
-                            <img src="https://r-l.ink/wxmp1" alt="微信公众号" style="width:120px;height:120px;border-radius:8px;border:1px solid rgba(0,0,0,0.1);" onerror="this.style.display='none'">
-                            <div style="font-size:11px;color:#86868b;margin-top:4px;">扫码关注公众号获取最新动态</div>
-                        </div>
                     </div>
 
                     <div class="about-copyright">

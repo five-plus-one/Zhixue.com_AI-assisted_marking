@@ -3,7 +3,7 @@
 
 const SCRIPT_CONFIG = {
     /** 当前脚本版本号，修改此处即可同步更新所有引用 */
-    VERSION: '1.12.0',
+    VERSION: '1.12.0.101',
 
     /** 远端原始脚本地址（用于检查更新） */
     UPDATE_CHECK_URL: 'https://auto-update.aimarking.five-plus-one.com/ota/ai_marker.user.js',

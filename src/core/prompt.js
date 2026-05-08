@@ -10,13 +10,64 @@ function buildPrompt(config) {
 }
 
 function parseAIResponseText(text) {
-    const studentAnswerMatch = text.match(/学生答案[：:]\s*(.+?)(?=\n分数|$)/s);
-    const scoreMatch = text.match(/分数[：:]\s*(\d+\.?\d*)/);
-    const commentMatch = text.match(/评语[：:]\s*(.+)/s);
+    // 清理文本：去除 markdown 加粗标记
+    const clean = text.replace(/\*\*/g, '');
+
+    // 提取学生答案
+    const studentAnswerMatch = clean.match(/学生答案[：:]\s*(.+?)(?=\n.*?分数|$)/s);
+    const studentAnswer = studentAnswerMatch ? studentAnswerMatch[1].trim() : '未能识别';
+
+    // 提取分数 - 多种格式兼容
+    let score = null;
+
+    // 格式1: "分数：8" 或 "分数:8"
+    let scoreMatch = clean.match(/分数[：:]\s*(\d+\.?\d*)/);
+    if (scoreMatch) {
+        score = parseFloat(scoreMatch[1]);
+    }
+
+    // 格式2: "得分：8" 或 "得分:8"
+    if (score === null) {
+        scoreMatch = clean.match(/得分[：:]\s*(\d+\.?\d*)/);
+        if (scoreMatch) {
+            score = parseFloat(scoreMatch[1]);
+        }
+    }
+
+    // 格式3: "8分" 或 "8 分"
+    if (score === null) {
+        scoreMatch = clean.match(/(\d+\.?\d*)\s*分/);
+        if (scoreMatch) {
+            score = parseFloat(scoreMatch[1]);
+        }
+    }
+
+    // 格式4: 行首或行尾的纯数字（作为最后手段）
+    if (score === null) {
+        // 尝试提取最后一行的数字
+        const lines = clean.trim().split('\n');
+        for (let i = lines.length - 1; i >= 0; i--) {
+            const line = lines[i].trim();
+            const numMatch = line.match(/^(\d+\.?\d*)$/);
+            if (numMatch) {
+                const num = parseFloat(numMatch[1]);
+                // 合理范围检查（0-100分）
+                if (num >= 0 && num <= 100) {
+                    score = num;
+                    break;
+                }
+            }
+        }
+    }
+
+    // 提取评语
+    const commentMatch = clean.match(/评语[：:]\s*(.+)/s);
+    const comment = commentMatch ? commentMatch[1].trim() : '';
+
     return {
-        studentAnswer: studentAnswerMatch ? studentAnswerMatch[1].trim() : '未能识别',
-        score: scoreMatch ? parseFloat(scoreMatch[1]) : null,
-        comment: commentMatch ? commentMatch[1].trim() : text
+        studentAnswer: studentAnswer,
+        score: score,
+        comment: comment || text
     };
 }
 
@@ -78,16 +129,43 @@ function buildSubQuestionPrompt(config) {
 
 // ========== 分小题结果解析 ==========
 function parseSubQuestionResponse(text, config) {
-    const studentAnswerMatch = text.match(/学生答案[：:]\s*(.+?)(?=\n.*?分数|$)/s);
+    // 清理文本：去除 markdown 加粗标记
+    const clean = text.replace(/\*\*/g, '');
+
+    const studentAnswerMatch = clean.match(/学生答案[：:]\s*(.+?)(?=\n.*?分数|$)/s);
     const studentAnswer = studentAnswerMatch ? studentAnswerMatch[1].trim() : '未能识别';
 
     const subScores = [];
     let calculatedTotal = 0;
     for (const sq of config.subQuestions) {
         const escapedLabel = sq.label.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-        const scoreMatch = text.match(new RegExp(escapedLabel + '分数[：:]\\s*(\\d+\\.?\\d*)'));
-        const commentMatch = text.match(new RegExp(escapedLabel + '评语[：:]\\s*(.+?)(?=\\n|$)'));
-        const score = scoreMatch ? parseFloat(scoreMatch[1]) : null;
+
+        // 多种格式兼容
+        let score = null;
+
+        // 格式1: "第1题分数：8"
+        let scoreMatch = clean.match(new RegExp(escapedLabel + '分数[：:]\\s*(\\d+\\.?\\d*)'));
+        if (scoreMatch) {
+            score = parseFloat(scoreMatch[1]);
+        }
+
+        // 格式2: "第1题：8分" 或 "第1题: 8"
+        if (score === null) {
+            scoreMatch = clean.match(new RegExp(escapedLabel + '[：:]\\s*(\\d+\\.?\\d*)'));
+            if (scoreMatch) {
+                score = parseFloat(scoreMatch[1]);
+            }
+        }
+
+        // 格式3: "第1题 8分"
+        if (score === null) {
+            scoreMatch = clean.match(new RegExp(escapedLabel + '\\s+(\\d+\\.?\\d*)\\s*分'));
+            if (scoreMatch) {
+                score = parseFloat(scoreMatch[1]);
+            }
+        }
+
+        const commentMatch = clean.match(new RegExp(escapedLabel + '评语[：:]\\s*(.+?)(?=\\n|$)'));
         if (score !== null) calculatedTotal += score;
         subScores.push({
             id: sq.id,
@@ -98,8 +176,21 @@ function parseSubQuestionResponse(text, config) {
         });
     }
 
-    const totalMatch = text.match(/总分[：:]\s*(\d+\.?\d*)/);
-    const totalScore = totalMatch ? parseFloat(totalMatch[1]) : calculatedTotal;
+    // 提取总分 - 多种格式兼容
+    let totalScore = null;
+    let totalMatch = clean.match(/总分[：:]\s*(\d+\.?\d*)/);
+    if (totalMatch) {
+        totalScore = parseFloat(totalMatch[1]);
+    }
+    if (totalScore === null) {
+        totalMatch = clean.match(/总分\s*(\d+\.?\d*)\s*分/);
+        if (totalMatch) {
+            totalScore = parseFloat(totalMatch[1]);
+        }
+    }
+    if (totalScore === null) {
+        totalScore = calculatedTotal;
+    }
 
     console.log(`🧠 [诊断] 分小题解析结果 — 总分: ${totalScore}, 各小题: ${subScores.map(s => s.label + '=' + s.score).join(', ')}`);
     return { studentAnswer, score: totalScore, comment: '', subScores };
@@ -112,12 +203,15 @@ function callAIGrading(base64DataArray, config, onStreamUpdate) {
 
     return callAI(prompt, base64DataArray, config, onStreamUpdate)
         .then(fullText => {
+            // 输出原始AI返回内容，方便调试
+            console.log('📝 [诊断] AI原始返回内容：\n' + fullText);
+
             const parsed = hasSub
                 ? parseSubQuestionResponse(fullText, config)
                 : parseAIResponseText(fullText);
             console.log(`🧠 [诊断] AI响应解析结果 — 分数: ${parsed.score}, 识别答案长度: ${(parsed.studentAnswer || '').length}字, 原始文本长度: ${fullText.length}字`);
             if (parsed.score === null) {
-                console.warn('⚠️ [诊断] 分数解析为 null，原始AI返回文本如下：\n' + fullText);
+                console.warn('⚠️ [诊断] 分数解析为 null');
             }
             return parsed;
         });

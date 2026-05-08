@@ -52,11 +52,13 @@ const BUILD_CONFIGS = [
             'adapters/qitian-new/adapter.js',
             'adapters/haofenshu/selectors.js',
             'adapters/haofenshu/adapter.js',
+            'adapters/wuyue/selectors.js',
+            'adapters/wuyue/adapter.js',
         ],
         header: {
             name: 'AI-Marker-Suite',
             namespace: 'http://tampermonkey.net/',
-            description: 'AI自动批改助手，支持智学网、七天网络、好分数等阅卷平台。自动识别答案、智能评分、自动提交！',
+            description: 'AI自动批改助手，支持智学网、七天网络、好分数、五岳阅卷等平台。自动识别答案、智能评分、自动提交！',
             author: '5plus1',
             match: [
                 'https://www.zhixue.com/webmarking/*',
@@ -65,6 +67,7 @@ const BUILD_CONFIGS = [
                 '*://yj5.7net.cc/*',
                 '*://*.qt7.net/*',
                 '*://*.haofenshu.com/*',
+                '*://*.wylkyj.com/*',
             ],
             icon: 'https://www.zhixue.com/favicon.ico',
             grant: ['GM_xmlhttpRequest', 'GM_setValue', 'GM_getValue'],
@@ -91,6 +94,37 @@ function extractVersion() {
         throw new Error('无法从 src/core/config.js 解析 VERSION 字段，请检查格式。');
     }
     return match[1];
+}
+
+// ========== 从 src/core/config.js 提取 CHANGELOG ==========
+function extractChangelog() {
+    const configPath = path.join(CORE_DIR, 'config.js');
+    const content = fs.readFileSync(configPath, 'utf8');
+    const match = content.match(/CHANGELOG\s*:\s*(\{[\s\S]*?\})\s*[,}]/);
+    if (!match) return {};
+    try {
+        // 用 Function 安全求值
+        const fn = new Function('return ' + match[1]);
+        return fn() || {};
+    } catch (e) {
+        console.warn('  ⚠️ 解析 CHANGELOG 失败:', e.message);
+        return {};
+    }
+}
+
+// ========== 生成 manifest.json ==========
+function generateManifest(version) {
+    const changelog = extractChangelog();
+    const manifest = {
+        version: version,
+        releaseDate: new Date().toISOString().slice(0, 10),
+        downloadUrl: 'https://auto-update.aimarking.five-plus-one.com/ota/ai_marker.user.js',
+        changelog: changelog
+    };
+    const manifestPath = path.join(DIST_DIR, 'manifest.json');
+    fs.writeFileSync(manifestPath, JSON.stringify(manifest, null, 2), 'utf8');
+    const sizeKB = (fs.statSync(manifestPath).size / 1024).toFixed(1);
+    console.log(`  ✅ 生成: dist/manifest.json (${sizeKB} KB)`);
 }
 
 // ========== 构建逻辑 ==========
@@ -199,6 +233,9 @@ async function build() {
             }
         }
     }
+
+    // 生成 manifest.json（轻量级更新检查文件）
+    generateManifest(VERSION);
 
     console.log(`\n✅ 全部构建完成！\n`);
 }

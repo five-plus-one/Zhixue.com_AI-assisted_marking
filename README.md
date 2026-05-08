@@ -2,8 +2,8 @@
 
 > **晚上挂机睡觉，早上起来全改完。**
 
-[![版本](https://img.shields.io/badge/version-1.11.2-blue.svg)](https://github.com/five-plus-one/Zhixue.com_AI-assisted_marking)
-[![许可证](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
+[![版本](https://img.shields.io/badge/version-1.12.1-blue.svg)](https://github.com/five-plus-one/AI-Marker-Suite)
+[![许可证](https://img.shields.io/badge/license-GPL--3.0-green.svg)](LICENSE)
 
 ---
 
@@ -17,7 +17,7 @@
 | 每道题都要手动输分、点提交 | **全自动**：识别 → 打分 → 填入 → 提交 → 下一份 |
 | 改完想回头看某份试卷 | **评阅历史**，一键回看，支持导出报告 |
 
-**支持平台：智学网、七天网络、好分数**  如果您有适配需求，请联系我。
+**支持平台：智学网、七天网络、好分数、五岳阅卷**  如果您有适配需求，请联系我。
 
 ![](./img/1.png)
 
@@ -134,6 +134,20 @@
 
 ## 更新日志
 
+### v1.12.1 (2026-05-08)
+- 新增五岳阅卷 (wylkyj.com) 平台适配，支持答题卡识别和分小题评分
+- 轻量级更新检查：优先检查 manifest.json (~1KB)，失败时降级检查完整脚本
+- Changelog 统一管理：文档站和脚本从远端 manifest.json 加载
+- 更新后刷新优化：等待时间从 15 秒缩短到 10 秒，新增「立即刷新」按钮
+- 开源协议从 MIT 更改为 GPL-3.0
+
+### v1.12.0 (2026-05-07)
+- 新增好分数 (haofenshu.com) 平台适配，支持 SVG 答题卡识别和 Vue 输入框分数填充
+- 侧边栏配置页重构为分组结构：基本、批改、AI 配置、其他
+- 关于页新增完整 CHANGELOG 展示
+- 通信密钥未填写时显示醒目红色警告横幅和分组标题提示
+- 新增「保存答题卡图片」开关，可关闭图片缓存以节省存储空间
+
 ### v1.11.2 (2026-05-02)
 - 修复纠错面板"提示词优化"不显示优化结果的问题：AI 输出含 markdown 加粗标记导致正则匹配失败，解析器已增强容错
 - 修复解析器将"不变"后的括号注释误认为评分标准内容的问题
@@ -212,7 +226,7 @@
 
 ## 许可证
 
-MIT License - 详见 [LICENSE](LICENSE)
+GNU General Public License v3.0 - 详见 [LICENSE](LICENSE)
 
 ---
 

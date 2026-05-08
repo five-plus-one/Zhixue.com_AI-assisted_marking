@@ -3,7 +3,7 @@
 
 const SCRIPT_CONFIG = {
     /** 当前脚本版本号，修改此处即可同步更新所有引用 */
-    VERSION: '1.12.0.205',
+    VERSION: '1.12.1.0',
 
     /** 轻量级更新检查 URL（优先使用，~1KB） */
     MANIFEST_URL: 'https://auto-update.aimarking.five-plus-one.com/ota/manifest.json',
@@ -25,6 +25,13 @@ const SCRIPT_CONFIG = {
      * 运行时从远端 manifest.json 加载，此处作为构建时的数据源
      */
     CHANGELOG: {
+        '1.12.1': [
+            '新增五岳阅卷 (wylkyj.com) 平台适配，支持答题卡识别和分小题评分',
+            '轻量级更新检查：优先检查 manifest.json (~1KB)，失败时降级检查完整脚本',
+            'Changelog 统一管理：文档站和脚本从远端 manifest.json 加载',
+            '更新后刷新优化：等待时间从 15 秒缩短到 10 秒，新增「立即刷新」按钮',
+            '开源协议从 MIT 更改为 GPL-3.0',
+        ],
         '1.12.0': [
             '新增好分数 (haofenshu.com) 平台适配，支持 SVG 答题卡识别和 Vue 输入框分数填充',
             '侧边栏配置页重构为分组结构：基本、批改、AI 配置、其他',

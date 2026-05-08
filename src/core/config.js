@@ -3,9 +3,12 @@
 
 const SCRIPT_CONFIG = {
     /** 当前脚本版本号，修改此处即可同步更新所有引用 */
-    VERSION: '1.12.0.203',
+    VERSION: '1.12.0.205',
 
-    /** 远端原始脚本地址（用于检查更新） */
+    /** 轻量级更新检查 URL（优先使用，~1KB） */
+    MANIFEST_URL: 'https://auto-update.aimarking.five-plus-one.com/ota/manifest.json',
+
+    /** 远端原始脚本地址（降级使用 + 立即更新） */
     UPDATE_CHECK_URL: 'https://auto-update.aimarking.five-plus-one.com/ota/ai_marker.user.js',
 
     /** 更新检查间隔（毫秒），默认 24 小时 */
@@ -17,7 +20,10 @@ const SCRIPT_CONFIG = {
     /** 默认模型 */
     DEFAULT_MODEL: 'mimo-v2.5',
 
-    /** 版本更新日志（用于更新提示弹窗），键为版本号，值为更新内容数组 */
+    /**
+     * 版本更新日志（用于构建 manifest.json）
+     * 运行时从远端 manifest.json 加载，此处作为构建时的数据源
+     */
     CHANGELOG: {
         '1.12.0': [
             '新增好分数 (haofenshu.com) 平台适配，支持 SVG 答题卡识别和 Vue 输入框分数填充',

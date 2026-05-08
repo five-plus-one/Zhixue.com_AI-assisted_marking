@@ -668,49 +668,24 @@ function createSettingsPanel() {
 }
 
 // ========== 渲染 CHANGELOG ==========
-function renderChangelog() {
-    const container = document.getElementById('changelog-list');
-    if (!container) return;
-
-    const changelog = SCRIPT_CONFIG.CHANGELOG;
+function renderChangelogContent(container, changelog) {
     const versions = Object.keys(changelog);
     if (versions.length === 0) {
         container.innerHTML = '<div style="font-size:12px;color:#aaa;">暂无更新日志</div>';
         return;
     }
 
-    // 版本日期映射（与 Docs/changelog.md 保持一致）
-    const dateMap = {
-        '1.12.0': '2026-05-07',
-        '1.11.3': '2026-05-07',
-        '1.11.2': '2026-05-02',
-        '1.11.1': '2026-05-02',
-        '1.11.0': '2026-05-02',
-        '1.10.4': '2026-05-01',
-        '1.10.3': '2026-05-01',
-        '1.10.2': '2026-05-01',
-        '1.10.0': '2026-05-01',
-        '1.9.0': '2026-04-30',
-        '1.8.6': '2026-04-30',
-        '1.8.5': '2026-04-30',
-        '1.8.3': '2026-04-30',
-        '1.8.0': '2026-04-20',
-        '1.7.0': '2026-04-10',
-    };
-
     const arrowSVG = '<svg class="changelog-toggle" viewBox="0 0 16 16" fill="none"><path d="M4 6l4 4 4-4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>';
 
     let html = '';
     versions.forEach((ver, idx) => {
         const items = changelog[ver];
-        const date = dateMap[ver] || '';
         const collapsedClass = idx === 0 ? '' : ' collapsed'; // 最新版本展开，其余折叠
 
         html += `<div class="changelog-version${collapsedClass}">`;
         html += `<div class="changelog-version-header">`;
         html += arrowSVG;
         html += `<span class="changelog-ver">v${ver}</span>`;
-        if (date) html += `<span class="changelog-date">${date}</span>`;
         html += `</div>`;
         html += `<ul class="changelog-items">`;
         items.forEach(item => {
@@ -725,6 +700,43 @@ function renderChangelog() {
     container.querySelectorAll('.changelog-version-header').forEach(header => {
         header.onclick = () => header.parentElement.classList.toggle('collapsed');
     });
+}
+
+async function renderChangelog() {
+    const container = document.getElementById('changelog-list');
+    if (!container) return;
+
+    // 先显示加载状态
+    container.innerHTML = '<div style="font-size:12px;color:#aaa;">加载中...</div>';
+
+    // 尝试从远端 manifest.json 加载 changelog
+    try {
+        const response = await new Promise((resolve, reject) => {
+            GM_xmlhttpRequest({
+                method: 'GET',
+                url: SCRIPT_CONFIG.MANIFEST_URL + '?_t=' + Date.now(),
+                timeout: 5000,
+                onload: resolve,
+                onerror: reject,
+                ontimeout: reject
+            });
+        });
+
+        if (response.status >= 200 && response.status < 300) {
+            const manifest = JSON.parse(response.responseText);
+            if (manifest.changelog && typeof manifest.changelog === 'object') {
+                console.log('[Changelog] 成功从远端加载');
+                renderChangelogContent(container, manifest.changelog);
+                return;
+            }
+        }
+    } catch (e) {
+        console.warn('[Changelog] 远端加载失败:', e.message);
+    }
+
+    // 降级：使用本地 CHANGELOG
+    console.log('[Changelog] 使用本地 CHANGELOG');
+    renderChangelogContent(container, SCRIPT_CONFIG.CHANGELOG || {});
 }
 
 // ========== 侧边栏开关 ==========

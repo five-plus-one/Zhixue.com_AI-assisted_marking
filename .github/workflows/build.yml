@@ -78,7 +78,9 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: script-dist
-          path: dist/ai_marker.user.js
+          path: |
+            dist/ai_marker.user.js
+            dist/manifest.json
           retention-days: 1
 
   # 部署到 GitHub Pages（保留）
@@ -111,7 +113,7 @@ jobs:
           username: ${{ secrets.SSH_USERNAME }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           port: ${{ secrets.SSH_PORT || 22 }}
-          source: "dist/ai_marker.user.js"
+          source: "dist/ai_marker.user.js,dist/manifest.json"
           target: /tmp/deploy-script/
 
       - name: Move to target and set permissions
@@ -122,8 +124,24 @@ jobs:
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           port: ${{ secrets.SSH_PORT || 22 }}
           script: |
-            sudo rm -f /opt/1panel/apps/openresty/openresty/www/sites/auto-update.aimarking.five-plus-one.com/index/ota/ai_marker.user.js
-            sudo cp /tmp/deploy-script/dist/ai_marker.user.js /opt/1panel/apps/openresty/openresty/www/sites/auto-update.aimarking.five-plus-one.com/index/ota/
-            sudo chown www:www /opt/1panel/apps/openresty/openresty/www/sites/auto-update.aimarking.five-plus-one.com/index/ota/ai_marker.user.js
-            sudo chmod 644 /opt/1panel/apps/openresty/openresty/www/sites/auto-update.aimarking.five-plus-one.com/index/ota/ai_marker.user.js
+            # 部署目录
+            DEPLOY_DIR=/opt/1panel/apps/openresty/openresty/www/sites/auto-update.aimarking.five-plus-one.com/index/ota
+
+            # 部署 ai_marker.user.js
+            sudo rm -f $DEPLOY_DIR/ai_marker.user.js
+            sudo cp /tmp/deploy-script/dist/ai_marker.user.js $DEPLOY_DIR/
+            sudo chown www:www $DEPLOY_DIR/ai_marker.user.js
+            sudo chmod 644 $DEPLOY_DIR/ai_marker.user.js
+
+            # 部署 manifest.json（轻量级更新检查文件）
+            sudo rm -f $DEPLOY_DIR/manifest.json
+            sudo cp /tmp/deploy-script/dist/manifest.json $DEPLOY_DIR/
+            sudo chown www:www $DEPLOY_DIR/manifest.json
+            sudo chmod 644 $DEPLOY_DIR/manifest.json
+
+            # 清理临时文件
             rm -rf /tmp/deploy-script
+
+            # 验证部署
+            echo "✅ 部署完成，文件列表："
+            ls -la $DEPLOY_DIR/

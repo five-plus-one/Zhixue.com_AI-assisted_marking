@@ -49,11 +49,11 @@ function extractRemoteChangelog(scriptText) {
  * 收集从当前版本到远端版本之间的更新日志条目。
  * 返回 HTML 字符串，若无日志则返回空字符串。
  * @param {string} remoteVersion - 远端版本号
- * @param {Object|null} remoteChangelog - 远端脚本中的 CHANGELOG 对象（优先使用），为空时回退到本地
+ * @param {Object|null} remoteChangelog - 远端 changelog 对象（优先使用），为空时返回空字符串
  */
 function collectChangelogHTML(remoteVersion, remoteChangelog) {
-    const changelog = remoteChangelog || SCRIPT_CONFIG.CHANGELOG;
-    if (!changelog) return '';
+    const changelog = remoteChangelog;
+    if (!changelog || typeof changelog !== 'object') return '';
     const versions = Object.keys(changelog)
         .filter(v => compareVersions(v, SCRIPT_CONFIG.VERSION) > 0 && compareVersions(v, remoteVersion) <= 0)
         .sort((a, b) => compareVersions(b, a)); // 降序
@@ -120,26 +120,39 @@ function showUpdateDialog(remoteVersion, remoteChangelog) {
 
     dialog.querySelector('#upd-btn-now').addEventListener('click', () => {
         window.open(SCRIPT_CONFIG.UPDATE_CHECK_URL, '_blank');
-        let dotCount = 0, cancelled = false, seconds = 0;
+        let cancelled = false, seconds = 0;
         const bodyEl = dialog.querySelector('.upd-body');
         bodyEl.innerHTML = `<span style="color:#1a1a1a;font-weight:500;">请在新标签页中确认安装更新</span><br><span style="font-size:12px;color:#999;margin-top:4px;display:inline-block;">安装完成后页面将自动刷新</span><div style="margin-top:10px;display:flex;align-items:center;gap:8px;"><span class="upd-spinner" style="width:14px;height:14px;border-width:2px;"></span><span id="upd-poll-status" style="font-size:12px;color:#666;">等待安装中</span></div>`;
         dialog.querySelector('.upd-changelog') && (dialog.querySelector('.upd-changelog').style.display = 'none');
-        dialog.querySelector('.upd-btns').innerHTML = '<button class="upd-btn upd-btn-secondary" id="upd-btn-cancel" style="flex:1;">取消更新</button>';
+        dialog.querySelector('.upd-btns').innerHTML = '<button class="upd-btn upd-btn-secondary" id="upd-btn-refresh" style="flex:1;">立即刷新</button><button class="upd-btn upd-btn-secondary" id="upd-btn-cancel" style="flex:1;">取消</button>';
         dialog.querySelector('#upd-btn-skip').style.display = 'none';
         const statusEl = dialog.querySelector('#upd-poll-status');
-        const dotTimer = setInterval(() => { if (!cancelled && statusEl) { dotCount = (dotCount + 1) % 4; statusEl.textContent = '等待安装中' + '.'.repeat(dotCount); } }, 500);
+
+        // 立即刷新按钮
+        dialog.querySelector('#upd-btn-refresh').addEventListener('click', () => {
+            cancelled = true;
+            sessionStorage.setItem('ai-update-reloaded', 'true');
+            location.reload();
+        });
+
+        // 自动刷新（10秒后）
         const reloadTimer = setInterval(() => {
             if (cancelled) return;
             seconds += 1;
-            if (seconds >= 15) {
-                clearInterval(reloadTimer); clearInterval(dotTimer);
+            if (seconds >= 10) {
+                clearInterval(reloadTimer);
                 if (statusEl) statusEl.textContent = '正在刷新页面…';
                 sessionStorage.setItem('ai-update-reloaded', 'true');
                 setTimeout(() => location.reload(), 500);
+            } else if (statusEl) {
+                statusEl.textContent = `${10 - seconds}秒后自动刷新...`;
             }
         }, 1000);
+
         dialog.querySelector('#upd-btn-cancel').addEventListener('click', () => {
-            cancelled = true; clearInterval(dotTimer); clearInterval(reloadTimer); dialog.remove();
+            cancelled = true;
+            clearInterval(reloadTimer);
+            dialog.remove();
         });
     });
 
@@ -155,10 +168,74 @@ function showUpdateDialog(remoteVersion, remoteChangelog) {
 }
 
 /**
+ * 处理更新检查结果（统一处理版本比较和弹窗逻辑）
+ */
+function handleUpdateResult(remoteVersion, remoteChangelog, force, restoreBtn) {
+    if (restoreBtn) restoreBtn();
+
+    if (!remoteVersion) {
+        console.warn('[更新检查] 无法解析版本号');
+        if (force) showToast('检查更新失败，无法解析版本信息');
+        return;
+    }
+
+    console.log(`[更新检查] 远端版本: ${remoteVersion}, 本地版本: ${SCRIPT_CONFIG.VERSION}`);
+
+    const skippedVersion = GM_getValue('skip-update-version', '');
+    if (skippedVersion === remoteVersion && !force) {
+        console.log(`[更新检查] 用户已选择跳过版本 ${remoteVersion}`);
+        return;
+    }
+
+    if (compareVersions(remoteVersion, SCRIPT_CONFIG.VERSION) > 0) {
+        console.log(`[更新检查] 发现新版本 ${remoteVersion}，弹出提示`);
+        showUpdateDialog(remoteVersion, remoteChangelog);
+    } else {
+        console.log('[更新检查] 当前已是最新版本');
+        if (force) showToast('当前已是最新版本');
+    }
+}
+
+/**
+ * 降级检查：下载完整脚本文件（~180KB）
+ */
+function fallbackCheckFullScript(force, btn, restoreBtn, now) {
+    console.log('[更新检查] manifest.json 检查失败，降级检查完整脚本...');
+
+    GM_xmlhttpRequest({
+        method: 'GET',
+        url: SCRIPT_CONFIG.UPDATE_CHECK_URL + '?_t=' + now,
+        timeout: 15000,
+        onload: function(res) {
+            if (res.status < 200 || res.status >= 300) {
+                console.warn(`[更新检查] 请求失败，状态码: ${res.status}`);
+                if (restoreBtn) restoreBtn();
+                if (force) showToast('检查更新失败，服务器返回错误');
+                return;
+            }
+            const remoteVersion = extractRemoteVersion(res.responseText);
+            const remoteChangelog = extractRemoteChangelog(res.responseText);
+            handleUpdateResult(remoteVersion, remoteChangelog, force, restoreBtn);
+        },
+        onerror: function() {
+            if (restoreBtn) restoreBtn();
+            console.warn('[更新检查] 网络请求失败，可能是跨域限制或网络问题');
+            if (force) showToast('检查更新失败，请检查网络');
+        },
+        ontimeout: function() {
+            if (restoreBtn) restoreBtn();
+            console.warn('[更新检查] 请求超时');
+            if (force) showToast('检查更新超时，请检查网络');
+        }
+    });
+}
+
+/**
  * 主更新检查函数。
- * - 每 24 小时至多检查一次（通过 GM_getValue 持久化上次检查时间）
- * - 无人值守模式下完全跳过，不打扰批改流程
- * - 如果远端版本 > 当前版本且用户未选择跳过该版本，则弹出提示卡片
+ * - 优先检查轻量级 manifest.json（~1KB）
+ * - 失败时降级检查完整脚本文件（~180KB）
+ * - 每 24 小时至多检查一次
+ * - 无人值守模式下完全跳过
  */
 function checkForUpdate(force = false, btn) {
     // 无人值守模式：不提醒
@@ -190,49 +267,34 @@ function checkForUpdate(force = false, btn) {
     }
     const restoreBtn = () => { if (btn) { btn.disabled = false; btn.textContent = btn._origText || '检查更新'; } };
 
+    // 第一级：尝试检查轻量级 manifest.json（~1KB，超时更短）
     GM_xmlhttpRequest({
         method: 'GET',
-        url: SCRIPT_CONFIG.UPDATE_CHECK_URL + '?_t=' + now, // 加时间戳避免缓存
-        timeout: 15000,
+        url: SCRIPT_CONFIG.MANIFEST_URL + '?_t=' + now,
+        timeout: 5000,
         onload: function(res) {
-            restoreBtn();
-            if (res.status < 200 || res.status >= 300) {
-                console.warn(`[更新检查] 请求失败，状态码: ${res.status}`);
-                if (force) showToast('检查更新失败，服务器返回错误');
-                return;
+            if (res.status >= 200 && res.status < 300) {
+                try {
+                    const manifest = JSON.parse(res.responseText);
+                    if (manifest.version) {
+                        console.log('[更新检查] 成功从 manifest.json 获取版本信息');
+                        handleUpdateResult(manifest.version, manifest.changelog, force, restoreBtn);
+                        return;
+                    }
+                } catch (e) {
+                    console.warn('[更新检查] manifest.json 解析失败:', e.message);
+                }
             }
-            const remoteVersion = extractRemoteVersion(res.responseText);
-            if (!remoteVersion) {
-                console.warn('[更新检查] 无法从远端文件解析版本号');
-                if (force) showToast('检查更新失败，无法解析版本信息');
-                return;
-            }
-            console.log(`[更新检查] 远端版本: ${remoteVersion}, 本地版本: ${SCRIPT_CONFIG.VERSION}`);
-
-            const skippedVersion = GM_getValue('skip-update-version', '');
-            if (skippedVersion === remoteVersion && !force) {
-                console.log(`[更新检查] 用户已选择跳过版本 ${remoteVersion}`);
-                return;
-            }
-
-            if (compareVersions(remoteVersion, SCRIPT_CONFIG.VERSION) > 0) {
-                const remoteChangelog = extractRemoteChangelog(res.responseText);
-                console.log(`[更新检查] 发现新版本 ${remoteVersion}，弹出提示`);
-                showUpdateDialog(remoteVersion, remoteChangelog);
-            } else {
-                console.log('[更新检查] 当前已是最新版本');
-                if (force) showToast('当前已是最新版本');
-            }
+            // 降级：检查完整脚本
+            fallbackCheckFullScript(force, btn, restoreBtn, now);
         },
         onerror: function() {
-            restoreBtn();
-            console.warn('[更新检查] 网络请求失败，可能是跨域限制或网络问题');
-            if (force) showToast('检查更新失败，请检查网络');
+            console.warn('[更新检查] manifest.json 请求失败，降级检查完整脚本');
+            fallbackCheckFullScript(force, btn, restoreBtn, now);
         },
         ontimeout: function() {
-            restoreBtn();
-            console.warn('[更新检查] 请求超时');
-            if (force) showToast('检查更新超时，请检查网络');
+            console.warn('[更新检查] manifest.json 请求超时，降级检查完整脚本');
+            fallbackCheckFullScript(force, btn, restoreBtn, now);
         }
     });
 }

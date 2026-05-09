@@ -11,10 +11,16 @@ const HanhanAdapter = {
         return window.location.hostname.includes('yunyuejuan.net');
     },
 
+    // 快速页面检查（不等待 DOM），用于 URL 变化监听器
+    isMarkingPage() {
+        return /\/marking\/grading(\?|$)/.test(window.location.hash);
+    },
+
     async detectMarkingPage() {
         // 华翰云是 SPA，先检查 hash 路径是否为阅卷页面
+        // 精确匹配 /marking/grading 后跟 ? 或结尾，排除 /marking/gradingList 等
         const hash = window.location.hash;
-        if (!hash.includes('/marking/grading')) {
+        if (!/\/marking\/grading(\?|$)/.test(hash)) {
             console.log('🔎 [诊断] 华翰云 — 当前不在阅卷页面 (hash:', hash, ')');
             return false;
         }

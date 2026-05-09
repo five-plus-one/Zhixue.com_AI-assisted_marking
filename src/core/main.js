@@ -275,7 +275,7 @@ if (document.readyState === 'loading') {
 
 // URL 及 题号变化监听器 (轻量级轮询)
 let lastUrlId = PresetManager.getTaskIdentifier();
-setInterval(() => {
+setInterval(async () => {
     const currentUrlId = PresetManager.getTaskIdentifier();
     if (currentUrlId !== lastUrlId) {
         lastUrlId = currentUrlId;
@@ -284,6 +284,16 @@ setInterval(() => {
         if (adapter && adapter.isRegradeMode ? adapter.isRegradeMode() : window.aiGradingState.isRegrading) return;
 
         if (!window.aiGradingState.isRunning) {
+            // 非阅卷页面不弹窗，直接返回
+            const adapter = window.__AI_MARKER_ADAPTER__;
+            if (adapter) {
+                // 优先使用快速检查（不等待 DOM），回退到完整检测
+                const onMarkingPage = adapter.isMarkingPage
+                    ? adapter.isMarkingPage()
+                    : (adapter.detectMarkingPage ? await adapter.detectMarkingPage() : true);
+                if (!onMarkingPage) return;
+            }
+
             const boundPreset = PresetManager.data.bindings[currentUrlId];
 
             if (boundPreset && PresetManager.data.list[boundPreset]) {

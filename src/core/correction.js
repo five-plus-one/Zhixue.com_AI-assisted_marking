@@ -449,5 +449,7 @@ ${scoreComparison}
 新参考答案：[修改后的参考答案，或写"不变"]
 新评分标准：[修改后的评分标准，或写"不变"]`;
 
-    return callAI(analysisPrompt, context.base64DataArray, context.config, onStreamUpdate);
+    // 使用 callConfig（含 endpoint/apiKey/model）调用 API，config 仅用于构建提示词
+    const apiConfig = context.callConfig || context.config;
+    return callAI(analysisPrompt, context.base64DataArray, apiConfig, onStreamUpdate);
 }

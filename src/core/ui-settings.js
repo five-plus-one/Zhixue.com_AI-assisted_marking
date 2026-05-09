@@ -361,14 +361,33 @@ function createSettingsPanel() {
                 <!-- ===== AI 配置 ===== -->
                 <div class="group-title" id="group-ai">AI 配置</div>
 
+                <!-- 工作流选择 -->
+                <div class="form-section highlight">
+                    <div class="section-header"><h4>批改工作流</h4><svg class="section-arrow" viewBox="0 0 16 16" fill="none"><path d="M4 6l4 4 4-4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+                    <div class="section-body">
+                        <div class="form-group">
+                            <label>当前工作流</label>
+                            <div class="preset-controls">
+                                <select id="workflow-select"></select>
+                                <button class="preset-btn" id="btn-edit-workflow">编辑</button>
+                                <button class="preset-btn danger" id="btn-del-workflow">删除</button>
+                                <button class="preset-btn" id="btn-new-workflow">新建</button>
+                            </div>
+                            <div id="workflow-desc" style="font-size:12px;color:#86868b;margin-top:4px;"></div>
+                        </div>
+                        <div id="workflow-model-info" style="font-size:12px;color:#666;background:rgba(0,0,0,0.02);padding:8px 12px;border-radius:6px;margin-top:8px;"></div>
+                    </div>
+                </div>
+
+                <!-- 供应商模型管理 -->
                 <div class="form-section">
                     <div class="section-header">
-                        <h4>AI 模型与算力<span class="section-badge" id="api-key-badge" style="display:none;"></span></h4>
+                        <h4>供应商与模型<span class="section-badge" id="api-key-badge" style="display:none;"></span></h4>
                         <svg class="section-arrow" viewBox="0 0 16 16" fill="none"><path d="M4 6l4 4 4-4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
                     </div>
                     <div class="section-body">
                         <div class="form-group">
-                            <label>服务提供商</label>
+                            <label>供应商</label>
                             <div class="preset-controls">
                                 <select id="ai-provider"></select>
                                 <button class="preset-btn" id="btn-new-provider">新建</button>
@@ -378,12 +397,42 @@ function createSettingsPanel() {
                         </div>
                         <div class="form-group"><label>服务网关 URL</label><input type="text" id="api-endpoint"></div>
                         <div class="form-group"><label>通信密钥 (Token) *</label><input type="password" id="api-key" placeholder="必填，否则无法使用 AI 批改"></div>
-                        <div class="form-group"><label>调用模型 ID</label><input type="text" id="model-name"></div>
+                        <div class="form-group">
+                            <label>模型列表</label>
+                            <div id="model-list" style="margin-bottom:8px;"></div>
+                            <div style="display:flex;gap:8px;">
+                                <input type="text" id="new-model-id" placeholder="模型ID (如 doubao-seed-2-0-mini)" style="flex:1;">
+                                <button class="preset-btn" id="btn-add-model">添加</button>
+                            </div>
+                        </div>
                     </div>
                 </div>
                 <div class="api-key-warning hidden" id="api-key-warning">
                     <span class="warn-icon">!</span>
                     <span>尚未填写通信密钥，AI 批改功能将无法使用。请在上方填入 API Key。</span>
+                </div>
+
+                <!-- 取整配置 -->
+                <div class="form-section collapsed">
+                    <div class="section-header"><h4>取整规则</h4><svg class="section-arrow" viewBox="0 0 16 16" fill="none"><path d="M4 6l4 4 4-4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+                    <div class="section-body">
+                        <div class="form-group">
+                            <label>取整步长</label>
+                            <select id="scoring-round-step">
+                                <option value="1">整数 (1分)</option>
+                                <option value="0.5">0.5分</option>
+                                <option value="0.1">0.1分 (不取整)</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label>取整方式</label>
+                            <select id="scoring-round-method">
+                                <option value="round">四舍五入</option>
+                                <option value="floor">向下取整</option>
+                                <option value="ceil">向上取整</option>
+                            </select>
+                        </div>
+                    </div>
                 </div>
 
                 <!-- ===== 其他 ===== -->
@@ -408,6 +457,10 @@ function createSettingsPanel() {
                             <button class="footer-btn" id="btn-import-config" style="flex:1;">导入配置</button>
                         </div>
                         <input type="file" id="import-config-file" accept=".json" style="display:none;">
+                        <div style="margin-top:10px;">
+                            <button class="footer-btn danger" id="btn-reset-config" style="width:100%;">恢复默认设置</button>
+                        </div>
+                        <div style="font-size:11px;color:#86868b;margin-top:4px;">将重置所有方案、供应商、工作流为默认值</div>
                     </div>
                 </div>
             </div>
@@ -546,6 +599,12 @@ function createSettingsPanel() {
     panel.querySelector('#btn-new-provider').onclick = handleNewProvider;
     panel.querySelector('#btn-del-provider').onclick = handleDeleteProvider;
     panel.querySelector('#ai-provider').onchange = handleProviderChange;
+    panel.querySelector('#btn-add-model').onclick = handleAddModel;
+    panel.querySelector('#new-model-id').onkeydown = (e) => { if (e.key === 'Enter') handleAddModel(); };
+    panel.querySelector('#workflow-select').onchange = handleWorkflowChange;
+    panel.querySelector('#btn-edit-workflow').onclick = handleEditWorkflow;
+    panel.querySelector('#btn-del-workflow').onclick = handleDeleteWorkflow;
+    panel.querySelector('#btn-new-workflow').onclick = handleNewWorkflow;
 
     // 配置导出
     panel.querySelector('#btn-export-config').onclick = () => {
@@ -554,6 +613,7 @@ function createSettingsPanel() {
             timestamp: new Date().toISOString(),
             presets: PresetManager.data,
             providers: ProviderManager.data,
+            workflows: WorkflowManager.data,
         };
         const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' });
         const url = URL.createObjectURL(blob);
@@ -582,6 +642,10 @@ function createSettingsPanel() {
                 ProviderManager.data = data.providers;
                 ProviderManager.save();
             }
+            if (data.workflows) {
+                WorkflowManager.data = data.workflows;
+                WorkflowManager.save();
+            }
             renderPresetDropdown();
             fillFormFromActivePreset();
             showToast('配置导入成功');
@@ -589,6 +653,25 @@ function createSettingsPanel() {
             if (err) showToast('导入失败：' + (err.message || '文件格式错误'));
         }
         fileInput.value = '';
+    };
+
+    // 恢复默认设置
+    panel.querySelector('#btn-reset-config').onclick = async () => {
+        if (await showConfirmModal('确定要恢复默认设置吗？\n\n将重置：\n• 所有配置方案\n• 供应商与模型\n• 工作流配置\n\n此操作不可撤销！')) {
+            PresetManager.data = {
+                list: { "默认配置": { question: '', answer: '', rubric: '', workflowId: 'fast', gradingMode: 'normal', scoring: { roundStep: 1, roundMethod: 'round' } } },
+                active: "默认配置",
+                bindings: {}
+            };
+            PresetManager.save();
+            ProviderManager.data = ProviderManager._getDefault();
+            ProviderManager.save();
+            WorkflowManager.data = WorkflowManager._getDefault();
+            WorkflowManager.save();
+            GM_setValue('ai-grading-show-onboarding', true);
+            showToast('已恢复默认设置，正在刷新...');
+            setTimeout(() => location.reload(), 800);
+        }
     };
 
     const modeDescs = {
@@ -798,22 +881,39 @@ function fillFormFromActivePreset() {
     document.getElementById('standard-answer').value = config.answer || '';
     document.getElementById('grading-rubric').value = config.rubric || '';
 
+    // 供应商下拉（仅用于管理供应商配置，默认选中 5plus1官方）
     renderProviderDropdown();
-    const providerMigration = { '5plus1': '5plus1官方', 'openai': 'OpenAI兼容' };
-    const providerName = providerMigration[config.provider] || config.provider || '5plus1官方';
-    if (ProviderManager.data.list[providerName]) {
-        ProviderManager.data.active = providerName;
-        ProviderManager.save();
-        document.getElementById('ai-provider').value = providerName;
+    const currentProviderSelect = document.getElementById('ai-provider');
+    const defaultProvider = ProviderManager.data.providers['5plus1官方'] ? '5plus1官方' : Object.keys(ProviderManager.data.providers)[0];
+    if (defaultProvider && currentProviderSelect) {
+        currentProviderSelect.value = defaultProvider;
     }
     // 5plus1 官方：强制使用默认网关
+    const providerName = currentProviderSelect?.value || defaultProvider;
+    const provider = ProviderManager.getProvider(providerName);
     if (providerName === '5plus1官方') {
         document.getElementById('api-endpoint').value = SCRIPT_CONFIG.DEFAULT_ENDPOINT;
     } else {
-        document.getElementById('api-endpoint').value = config.endpoint || SCRIPT_CONFIG.DEFAULT_ENDPOINT;
+        document.getElementById('api-endpoint').value = provider?.endpoint || '';
     }
-    document.getElementById('api-key').value = config.apiKey || '';
-    document.getElementById('model-name').value = config.model || SCRIPT_CONFIG.DEFAULT_MODEL;
+    document.getElementById('api-key').value = provider?.apiKey || '';
+
+    // 模型列表
+    renderModelList();
+
+    // 工作流下拉
+    renderWorkflowDropdown();
+    if (config.workflowId) {
+        document.getElementById('workflow-select').value = config.workflowId;
+        renderWorkflowInfo();
+    }
+
+    // 取整配置
+    const scoring = config.scoring || { roundStep: 1, roundMethod: 'round' };
+    const stepSelect = document.getElementById('scoring-round-step');
+    const methodSelect = document.getElementById('scoring-round-method');
+    if (stepSelect) stepSelect.value = scoring.roundStep;
+    if (methodSelect) methodSelect.value = scoring.roundMethod;
 
     const gradingMode = config.gradingMode || 'normal';
     const modeRadio = document.querySelector(`input[name="grading-mode"][value="${gradingMode}"]`);
@@ -1035,66 +1135,411 @@ async function handleDeletePreset() {
 function renderProviderDropdown() {
     const select = document.getElementById('ai-provider');
     if (!select) return;
+    const currentValue = select.value;
     select.innerHTML = '';
-    for (const name in ProviderManager.data.list) {
+    for (const name in ProviderManager.data.providers) {
         const option = document.createElement('option');
         option.value = name;
         option.textContent = name;
         select.appendChild(option);
     }
-    select.value = ProviderManager.data.active;
+    // 保持当前选中的供应商，如果没有则选中第一个
+    if (currentValue && ProviderManager.data.providers[currentValue]) {
+        select.value = currentValue;
+    }
 }
+
+function renderModelList() {
+    const container = document.getElementById('model-list');
+    if (!container) return;
+    const currentProviderName = document.getElementById('ai-provider')?.value;
+    const provider = ProviderManager.getProvider(currentProviderName);
+    const models = provider?.models || {};
+
+    let html = '';
+    for (const [id, info] of Object.entries(models)) {
+        const tags = (info.tags || []).map(t => `<span style="display:inline-block;padding:1px 6px;margin-left:4px;font-size:10px;border-radius:3px;background:${t === '推荐' ? 'rgba(0,82,255,0.1)' : 'rgba(0,0,0,0.05)'};color:${t === '推荐' ? '#0052FF' : '#666'};">${t}</span>`).join('');
+        const isBuiltin = info.isBuiltin;
+        html += `<div style="display:flex;align-items:center;justify-content:space-between;padding:6px 10px;margin-bottom:4px;border-radius:6px;background:rgba(0,0,0,0.02);border:1px solid rgba(0,0,0,0.06);">`;
+        html += `<div><span style="font-size:12px;font-weight:500;">${info.label || id}</span>${tags}${isBuiltin ? '<span style="display:inline-block;padding:1px 6px;margin-left:4px;font-size:10px;border-radius:3px;background:rgba(217,48,37,0.08);color:#D93025;">内置</span>' : ''}</div>`;
+        html += `<div style="display:flex;align-items:center;gap:6px;">`;
+        if (!isBuiltin) {
+            html += `<button class="preset-btn danger" style="padding:2px 6px;font-size:10px;" onclick="event.stopPropagation();deleteModel('${id}')">删除</button>`;
+        }
+        html += `</div></div>`;
+    }
+    if (Object.keys(models).length === 0) {
+        html = '<div style="font-size:12px;color:#999;padding:8px;">暂无模型，请在下方添加</div>';
+    }
+    container.innerHTML = html;
+}
+
+// 暴露到页面全局作用域（供内联 onclick 使用，必须用 unsafeWindow）
+const _unsafeWin = typeof unsafeWindow !== 'undefined' ? unsafeWindow : window;
+_unsafeWin.deleteModel = async function(modelId) {
+    if (typeof ProviderManager === 'undefined') return;
+    const currentProviderName = document.getElementById('ai-provider')?.value;
+    const provider = ProviderManager.getProvider(currentProviderName);
+    if (!provider || !provider.models || !provider.models[modelId]) return;
+    if (provider.models[modelId].isBuiltin) {
+        if (typeof showAlertModal === 'function') showAlertModal("内置模型不允许删除！");
+        return;
+    }
+    const confirmFn = typeof showConfirmModal === 'function' ? showConfirmModal : confirm;
+    if (await confirmFn(`确定要删除模型【${modelId}】吗？`)) {
+        ProviderManager.deleteModel(currentProviderName, modelId);
+        if (typeof renderModelList === 'function') renderModelList();
+        if (typeof showToast === 'function') showToast(`模型「${modelId}」已删除`);
+    }
+};
 
 function handleProviderChange() {
     const name = document.getElementById('ai-provider').value;
-    ProviderManager.data.active = name;
-    ProviderManager.save();
-    const provider = ProviderManager.getCurrent();
-    if (name === '5plus1官方') {
-        document.getElementById('api-endpoint').value = SCRIPT_CONFIG.DEFAULT_ENDPOINT;
-    } else {
-        if (provider.endpoint) document.getElementById('api-endpoint').value = provider.endpoint;
+
+    const provider = ProviderManager.getProvider(name);
+    if (provider) {
+        document.getElementById('api-endpoint').value = provider.endpoint || '';
+        document.getElementById('api-key').value = provider.apiKey || '';
     }
-    if (provider.model) document.getElementById('model-name').value = provider.model;
-    if (provider.apiKey !== undefined) document.getElementById('api-key').value = provider.apiKey;
     document.getElementById('api-key-link-container').style.display = name === '5plus1官方' ? 'block' : 'none';
+    renderModelList();
+    renderWorkflowInfo();
     updateUIVisibility();
     markUnsavedChanges();
 }
 
 async function handleNewProvider() {
-    const name = await showPromptModal("请输入新的服务商名称 (例如: 我的代理)：");
+    const name = await showPromptModal("请输入新的供应商名称 (例如: 火山引擎)：");
     if (!name || !name.trim()) return;
-    if (ProviderManager.data.list[name]) {
-        showAlertModal("该服务商名称已存在！");
+    if (ProviderManager.data.providers[name]) {
+        showAlertModal("该供应商名称已存在！");
         return;
     }
-    ProviderManager.data.list[name] = {
+    ProviderManager.addProvider(name, {
         endpoint: document.getElementById('api-endpoint').value,
-        model: document.getElementById('model-name').value,
-        apiKey: document.getElementById('api-key').value
-    };
-    ProviderManager.data.active = name;
-    ProviderManager.save();
+        apiKey: document.getElementById('api-key').value,
+        models: {}
+    });
     renderProviderDropdown();
+    document.getElementById('ai-provider').value = name;
+    handleProviderChange();
+    renderModelList();
     document.getElementById('api-key-link-container').style.display = 'none';
-    showToast(`服务商「${name}」创建成功`);
+    showToast(`供应商「${name}」创建成功`);
 }
 
 async function handleDeleteProvider() {
-    const name = ProviderManager.data.active;
-    if (Object.keys(ProviderManager.data.list).length <= 1) {
-        showAlertModal("必须至少保留一个服务商！");
+    const name = document.getElementById('ai-provider').value;
+    if (name === '5plus1官方') {
+        showAlertModal("默认供应商「5plus1官方」不允许删除！");
         return;
     }
-    if (await showConfirmModal(`确定要删除服务商【${name}】吗？`)) {
-        delete ProviderManager.data.list[name];
-        ProviderManager.data.active = Object.keys(ProviderManager.data.list)[0];
-        ProviderManager.save();
+    if (Object.keys(ProviderManager.data.providers).length <= 1) {
+        showAlertModal("必须至少保留一个供应商！");
+        return;
+    }
+    if (await showConfirmModal(`确定要删除供应商【${name}】吗？`)) {
+        ProviderManager.deleteProvider(name);
         renderProviderDropdown();
         handleProviderChange();
-        showToast(`服务商「${name}」已删除`);
+        showToast(`供应商「${name}」已删除`);
     }
+}
+
+async function handleAddModel() {
+    const modelId = document.getElementById('new-model-id').value.trim();
+    if (!modelId) {
+        showAlertModal("请输入模型 ID！");
+        return;
+    }
+    const currentProviderName = document.getElementById('ai-provider')?.value;
+    const provider = ProviderManager.getProvider(currentProviderName);
+    if (!provider) return;
+    if (provider.models && provider.models[modelId]) {
+        showAlertModal("该模型已存在！");
+        return;
+    }
+    ProviderManager.addModel(currentProviderName, modelId, modelId, []);
+    document.getElementById('new-model-id').value = '';
+    renderModelList();
+    renderWorkflowInfo();
+    showToast(`模型「${modelId}」已添加`);
+}
+
+// ========== 工作流管理 ==========
+function renderWorkflowDropdown() {
+    const select = document.getElementById('workflow-select');
+    if (!select) return;
+    select.innerHTML = '';
+    const workflows = WorkflowManager.getAll();
+    for (const wf of workflows) {
+        const option = document.createElement('option');
+        option.value = wf.id;
+        option.textContent = wf.name;
+        select.appendChild(option);
+    }
+    select.value = WorkflowManager.data.activeWorkflow;
+    renderWorkflowInfo();
+}
+
+function renderWorkflowInfo() {
+    const wf = WorkflowManager.getActiveWorkflow();
+    const descEl = document.getElementById('workflow-desc');
+    const infoEl = document.getElementById('workflow-model-info');
+
+    if (descEl) {
+        descEl.textContent = wf ? wf.description : '';
+    }
+
+    if (infoEl && wf) {
+        const modelInfo = wf.model;
+        const reasoningLabel = { minimal: '不思考', low: '轻度', medium: '中度', high: '深度' };
+        let html = `<div style="margin-bottom:4px;"><strong>主模型：</strong>${modelInfo.provider} / ${modelInfo.model}${modelInfo.reasoningEffort ? ' <span style="font-size:11px;color:#86868b;">(' + (reasoningLabel[modelInfo.reasoningEffort] || modelInfo.reasoningEffort) + ')</span>' : ''}</div>`;
+        if (wf.dualEval && wf.dualEval.enabled) {
+            const sec = wf.dualEval.secondary;
+            const arb = wf.dualEval.arbitration;
+            html += `<div style="margin-bottom:4px;"><strong>副模型：</strong>${sec.provider} / ${sec.model}${sec.reasoningEffort ? ' <span style="font-size:11px;color:#86868b;">(' + (reasoningLabel[sec.reasoningEffort] || sec.reasoningEffort) + ')</span>' : ''}</div>`;
+            html += `<div style="margin-bottom:4px;"><strong>仲裁模型：</strong>${arb.provider} / ${arb.model}${arb.reasoningEffort ? ' <span style="font-size:11px;color:#86868b;">(' + (reasoningLabel[arb.reasoningEffort] || arb.reasoningEffort) + ')</span>' : ''}</div>`;
+            html += `<div><strong>分差阈值：</strong>${wf.dualEval.threshold}分</div>`;
+        }
+        infoEl.innerHTML = html;
+    }
+
+    // 删除按钮：仅用户工作流可用
+    const delBtn = document.getElementById('btn-del-workflow');
+    if (delBtn) {
+        if (wf && !wf.isBuiltin) {
+            delBtn.style.display = '';
+        } else {
+            delBtn.style.display = 'none';
+        }
+    }
+}
+
+function handleWorkflowChange() {
+    const id = document.getElementById('workflow-select').value;
+    WorkflowManager.setActive(id);
+    renderWorkflowInfo();
+    markUnsavedChanges();
+}
+
+async function handleDeleteWorkflow() {
+    const wf = WorkflowManager.getActiveWorkflow();
+    if (!wf) return;
+    if (wf.isBuiltin) {
+        showAlertModal("默认工作流不允许删除！");
+        return;
+    }
+    if (await showConfirmModal(`确定要删除工作流【${wf.name}】吗？`)) {
+        WorkflowManager.deleteWorkflow(wf.name);
+        renderWorkflowDropdown();
+        showToast(`工作流「${wf.name}」已删除`);
+    }
+}
+
+async function handleNewWorkflow() {
+    const name = await showPromptModal("请输入工作流名称 (例如: 作文批改)：");
+    if (!name || !name.trim()) return;
+    if (WorkflowManager.data.workflows[name]) {
+        showAlertModal("该工作流名称已存在！");
+        return;
+    }
+    const firstProvider = Object.keys(ProviderManager.data.providers)[0];
+    const firstModel = firstProvider ? Object.keys(ProviderManager.data.providers[firstProvider]?.models || {})[0] || '' : '';
+    WorkflowManager.addWorkflow(name, {
+        id: name.toLowerCase().replace(/\s+/g, '-'),
+        description: '',
+        model: { provider: firstProvider || '', model: firstModel, reasoningEffort: '' },
+        dualEval: null
+    });
+    WorkflowManager.data.activeWorkflow = WorkflowManager.data.workflows[name].id;
+    WorkflowManager.save();
+    renderWorkflowDropdown();
+    showToast(`工作流「${name}」创建成功，正在打开编辑...`);
+    // 自动弹出编辑窗口
+    const wf = WorkflowManager.getActiveWorkflow();
+    if (wf) showWorkflowEditModal(wf);
+}
+
+async function handleEditWorkflow() {
+    const wf = WorkflowManager.getActiveWorkflow();
+    if (!wf) return;
+    showWorkflowEditModal(wf);
+}
+
+function showWorkflowEditModal(wf) {
+    // 确保模态框样式已加载
+    ensureModalStyles();
+
+    const providers = Object.keys(ProviderManager.data.providers);
+    const providerOptions = providers.map(p => `<option value="${p}">${p}</option>`).join('');
+
+    function getModelOptions(providerName) {
+        const provider = ProviderManager.data.providers[providerName];
+        if (!provider) return '';
+        return Object.entries(provider.models || {}).map(([id, info]) =>
+            `<option value="${id}">${info.label || id}</option>`
+        ).join('');
+    }
+
+    const isDual = wf.dualEval && wf.dualEval.enabled;
+
+    const reasoningEffortOptions = `
+        <option value="">不设置</option>
+        <option value="minimal">minimal (不思考)</option>
+        <option value="low">low (轻度)</option>
+        <option value="medium">medium (中度)</option>
+        <option value="high">high (深度)</option>
+    `;
+
+    const modal = document.createElement('div');
+    modal.className = 'ai-modal-overlay';
+    modal.innerHTML = `
+        <div class="ai-modal-card" style="max-width:500px;max-height:85vh;display:flex;flex-direction:column;">
+            <div class="ai-modal-header">编辑工作流</div>
+            <div class="ai-modal-body" style="overflow-y:auto;flex:1;min-height:0;">
+                <div class="form-group"><label>名称</label><input type="text" id="wf-edit-name" value="${wf.name}" ${wf.isBuiltin ? 'readonly' : ''}></div>
+                <div class="form-group"><label>描述</label><input type="text" id="wf-edit-desc" value="${wf.description || ''}"></div>
+                <div style="border-top:1px solid rgba(0,0,0,0.06);padding-top:12px;margin-top:8px;">
+                    <div style="font-size:13px;font-weight:600;margin-bottom:10px;">主模型</div>
+                    <div class="form-group"><label>供应商</label><select id="wf-edit-provider">${providerOptions}</select></div>
+                    <div class="form-group"><label>模型</label><select id="wf-edit-model"></select></div>
+                    <div class="form-group"><label>思考链深度 <span style="font-size:11px;color:#86868b;">(部分模型不支持)</span></label><select id="wf-edit-reasoning">${reasoningEffortOptions}</select></div>
+                </div>
+                <div style="border-top:1px solid rgba(0,0,0,0.06);padding-top:12px;margin-top:8px;">
+                    <div class="checkbox-group">
+                        <input type="checkbox" id="wf-edit-dual" ${isDual ? 'checked' : ''}>
+                        <label for="wf-edit-dual">启用双评模式</label>
+                    </div>
+                    <div id="wf-dual-config" style="display:${isDual ? 'block' : 'none'};">
+                        <div style="font-size:13px;font-weight:600;margin:10px 0;">副模型</div>
+                        <div class="form-group"><label>供应商</label><select id="wf-edit-sec-provider">${providerOptions}</select></div>
+                        <div class="form-group"><label>模型</label><select id="wf-edit-sec-model"></select></div>
+                        <div class="form-group"><label>思考链深度</label><select id="wf-edit-sec-reasoning">${reasoningEffortOptions}</select></div>
+                        <div style="font-size:13px;font-weight:600;margin:10px 0;">仲裁模型</div>
+                        <div class="form-group"><label>供应商</label><select id="wf-edit-arb-provider">${providerOptions}</select></div>
+                        <div class="form-group"><label>模型</label><select id="wf-edit-arb-model"></select></div>
+                        <div class="form-group"><label>思考链深度</label><select id="wf-edit-arb-reasoning">${reasoningEffortOptions}</select></div>
+                        <div class="form-group"><label>分差阈值 (分)</label><input type="number" id="wf-edit-threshold" value="${wf.dualEval?.threshold || 2}" min="1" max="10"></div>
+                    </div>
+                </div>
+            </div>
+            <div class="ai-modal-footer">
+                ${!wf.isBuiltin ? '<button class="ai-modal-btn-cancel" id="wf-edit-delete" style="margin-right:auto;color:#D93025;">删除</button>' : ''}
+                <button class="ai-modal-btn-cancel" id="wf-edit-cancel">取消</button>
+                <button class="ai-modal-btn-confirm" id="wf-edit-save">保存</button>
+            </div>
+        </div>
+    `;
+    document.body.appendChild(modal);
+
+    // 初始化下拉框
+    const mainProvider = document.getElementById('wf-edit-provider');
+    const mainModel = document.getElementById('wf-edit-model');
+    const mainReasoning = document.getElementById('wf-edit-reasoning');
+    const secProvider = document.getElementById('wf-edit-sec-provider');
+    const secModel = document.getElementById('wf-edit-sec-model');
+    const secReasoning = document.getElementById('wf-edit-sec-reasoning');
+    const arbProvider = document.getElementById('wf-edit-arb-provider');
+    const arbModel = document.getElementById('wf-edit-arb-model');
+    const arbReasoning = document.getElementById('wf-edit-arb-reasoning');
+
+    // 确保 provider 有效，若无效则回退到第一个可用 provider
+    const validProviders = Object.keys(ProviderManager.data.providers);
+    const fallbackProvider = validProviders[0] || '';
+
+    function resolveProvider(name) {
+        return (name && ProviderManager.data.providers[name]) ? name : fallbackProvider;
+    }
+
+    const resolvedMainProvider = resolveProvider(wf.model.provider);
+    mainProvider.value = resolvedMainProvider;
+    mainModel.innerHTML = getModelOptions(resolvedMainProvider);
+    mainModel.value = wf.model.model || '';
+    mainReasoning.value = wf.model.reasoningEffort || '';
+
+    if (isDual) {
+        const resolvedSecProvider = resolveProvider(wf.dualEval.secondary.provider);
+        secProvider.value = resolvedSecProvider;
+        secModel.innerHTML = getModelOptions(resolvedSecProvider);
+        secModel.value = wf.dualEval.secondary.model || '';
+        secReasoning.value = wf.dualEval.secondary.reasoningEffort || '';
+
+        const resolvedArbProvider = resolveProvider(wf.dualEval.arbitration.provider);
+        arbProvider.value = resolvedArbProvider;
+        arbModel.innerHTML = getModelOptions(resolvedArbProvider);
+        arbModel.value = wf.dualEval.arbitration.model || '';
+        arbReasoning.value = wf.dualEval.arbitration.reasoningEffort || '';
+    }
+
+    // 供应商变化时更新模型列表
+    mainProvider.onchange = () => { mainModel.innerHTML = getModelOptions(mainProvider.value); };
+    secProvider.onchange = () => { secModel.innerHTML = getModelOptions(secProvider.value); };
+    arbProvider.onchange = () => { arbModel.innerHTML = getModelOptions(arbProvider.value); };
+
+    // 双评开关
+    document.getElementById('wf-edit-dual').onchange = (e) => {
+        document.getElementById('wf-dual-config').style.display = e.target.checked ? 'block' : 'none';
+    };
+
+    // 关闭
+    const close = () => modal.remove();
+    modal.querySelector('#wf-edit-cancel').onclick = close;
+
+    // 删除
+    const deleteBtn = modal.querySelector('#wf-edit-delete');
+    if (deleteBtn) {
+        deleteBtn.onclick = async () => {
+            if (await showConfirmModal(`确定要删除工作流【${wf.name}】吗？`)) {
+                WorkflowManager.deleteWorkflow(wf.name);
+                renderWorkflowDropdown();
+                close();
+                showToast(`工作流「${wf.name}」已删除`);
+            }
+        };
+    }
+
+    // 保存
+    modal.querySelector('#wf-edit-save').onclick = async () => {
+        const dualEnabled = document.getElementById('wf-edit-dual').checked;
+        const config = {
+            description: document.getElementById('wf-edit-desc').value,
+            model: {
+                provider: mainProvider.value,
+                model: mainModel.value,
+                reasoningEffort: mainReasoning.value
+            },
+            dualEval: dualEnabled ? {
+                enabled: true,
+                secondary: { provider: secProvider.value, model: secModel.value, reasoningEffort: secReasoning.value },
+                arbitration: { provider: arbProvider.value, model: arbModel.value, reasoningEffort: arbReasoning.value },
+                threshold: parseInt(document.getElementById('wf-edit-threshold').value) || 2
+            } : null
+        };
+
+        if (wf.isBuiltin) {
+            // 修改默认工作流需要确认
+            if (!await showConfirmModal(`确定要修改默认工作流【${wf.name}】吗？`)) return;
+            WorkflowManager.updateWorkflow(wf.name, config);
+        } else {
+            const newName = document.getElementById('wf-edit-name').value.trim();
+            if (newName && newName !== wf.name) {
+                // 重命名
+                delete WorkflowManager.data.workflows[wf.name];
+                WorkflowManager.data.workflows[newName] = { ...wf, ...config, name: undefined };
+                if (WorkflowManager.data.activeWorkflow === wf.id) {
+                    WorkflowManager.data.activeWorkflow = WorkflowManager.data.workflows[newName].id;
+                }
+                WorkflowManager.save();
+            } else {
+                WorkflowManager.updateWorkflow(wf.name, config);
+            }
+        }
+
+        renderWorkflowDropdown();
+        close();
+        showToast('工作流已保存');
+    };
 }
 
 function saveAISettings() {
@@ -1103,25 +1548,34 @@ function saveAISettings() {
 
     const providerName = document.getElementById('ai-provider').value;
     const subQuestions = getSubQuestionsFromForm();
+
+    // 保存供应商配置（仅保存当前编辑的供应商，不设置"活跃"供应商）
+    const provider = ProviderManager.getProvider(providerName);
+    if (provider) {
+        provider.endpoint = document.getElementById('api-endpoint').value;
+        provider.apiKey = document.getElementById('api-key').value;
+        ProviderManager.save();
+    }
+
+    // 保存工作流选择
+    const workflowId = document.getElementById('workflow-select')?.value;
+    if (workflowId) {
+        WorkflowManager.setActive(workflowId);
+    }
+
+    // 保存取整配置
+    const roundStep = parseFloat(document.getElementById('scoring-round-step')?.value) || 1;
+    const roundMethod = document.getElementById('scoring-round-method')?.value || 'round';
+
     const config = {
         question: document.getElementById('question-content').value,
         answer: document.getElementById('standard-answer').value,
         rubric: document.getElementById('grading-rubric').value,
-        provider: providerName,
-        endpoint: document.getElementById('api-endpoint').value,
-        apiKey: document.getElementById('api-key').value,
-        model: document.getElementById('model-name').value,
+        workflowId: workflowId || 'fast',
         gradingMode,
-        subQuestions: subQuestions.length > 0 ? subQuestions : undefined
+        subQuestions: subQuestions.length > 0 ? subQuestions : undefined,
+        scoring: { roundStep, roundMethod }
     };
-
-    if (ProviderManager.data.list[providerName]) {
-        ProviderManager.data.list[providerName].endpoint = config.endpoint;
-        ProviderManager.data.list[providerName].model = config.model;
-        ProviderManager.data.list[providerName].apiKey = config.apiKey;
-        ProviderManager.data.active = providerName;
-        ProviderManager.save();
-    }
 
     const activeName = PresetManager.data.active;
     PresetManager.data.list[activeName] = config;
@@ -1143,4 +1597,326 @@ function saveAISettings() {
 
     // 保存后自动关闭侧边栏
     closeSettingsPanel();
+}
+
+// ========== 新手引导 ==========
+function showOnboardingDialog(forceShow, mode) {
+    mode = mode || 'first-launch';
+    const existingApiKey = ProviderManager.getProvider('5plus1官方')?.apiKey || '';
+    if (!forceShow && existingApiKey && mode !== 'new-question') return;
+
+    ensureModalStyles();
+
+    const overlay = document.createElement('div');
+    overlay.className = 'ai-modal-overlay';
+    overlay.style.zIndex = '1000020';
+
+    let currentStep = 1;
+    let presetName = '';
+    let gradingMode = 'trial';
+    let selectedWorkflow = 'fast';
+
+    function getStepInfo() {
+        const isFirst = mode === 'first-launch';
+        const hasApiStep = isFirst;
+        // Steps: API → Name+Mode → Workflow → Context → Done
+        const apiStep = hasApiStep && currentStep === 1;
+        const nameModeStep = (hasApiStep && currentStep === 2) || (!hasApiStep && currentStep === 1);
+        const workflowStep = (hasApiStep && currentStep === 3) || (!hasApiStep && currentStep === 2);
+        const ctxStep = (hasApiStep && currentStep === 4) || (!hasApiStep && currentStep === 3);
+        const doneStep = (hasApiStep && currentStep === 5) || (!hasApiStep && currentStep === 4);
+        return { isFirst, hasApiStep, apiStep, nameModeStep, workflowStep, ctxStep, doneStep };
+    }
+
+    function render() {
+        const s = getStepInfo();
+        const title = s.apiStep ? '欢迎使用 AI 批改助手' : s.nameModeStep ? '配置方案' : s.workflowStep ? '选择批改工作流' : s.ctxStep ? '批改上下文（可选）' : '配置完成！';
+
+        overlay.innerHTML = `
+            <div class="ai-modal-card" style="max-width:520px;max-height:85vh;display:flex;flex-direction:column;">
+                <div class="ai-modal-header" style="display:flex;align-items:center;gap:10px;padding:20px 24px 12px;border-bottom:1px solid rgba(0,0,0,0.06);flex-shrink:0;">
+                    <span style="font-size:20px;">🎓</span>
+                    <span>${title}</span>
+                </div>
+                <div class="ai-modal-body" style="overflow-y:auto;flex:1;min-height:0;padding:20px 24px;">
+                    ${s.apiStep ? renderApiStep() : s.nameModeStep ? renderNameModeStep() : s.workflowStep ? renderWorkflowStep() : s.ctxStep ? renderCtxStep() : renderDoneStep()}
+                </div>
+                <div class="ai-modal-footer" style="padding:12px 24px 20px;border-top:1px solid rgba(0,0,0,0.06);flex-shrink:0;">
+                    ${s.apiStep ? `
+                        <button class="ai-modal-btn-cancel" id="ob-skip">稍后设置</button>
+                        <button class="ai-modal-btn-confirm" id="ob-next">验证并继续</button>
+                    ` : s.nameModeStep ? `
+                        ${s.hasApiStep ? '<button class="ai-modal-btn-cancel" id="ob-back">上一步</button>' : ''}
+                        <button class="ai-modal-btn-confirm" id="ob-next">继续</button>
+                    ` : s.workflowStep ? `
+                        <button class="ai-modal-btn-cancel" id="ob-back">上一步</button>
+                        <button class="ai-modal-btn-confirm" id="ob-next">继续</button>
+                    ` : s.ctxStep ? `
+                        <button class="ai-modal-btn-cancel" id="ob-skip-ctx">跳过</button>
+                        <button class="ai-modal-btn-confirm" id="ob-next">保存并继续</button>
+                    ` : `
+                        <button class="ai-modal-btn-confirm" id="ob-start" style="flex:1;">一键开始批改</button>
+                    `}
+                </div>
+            </div>
+        `;
+        bindEvents();
+    }
+
+    function renderApiStep() {
+        return `
+            <p style="font-size:13px;color:#666;line-height:1.6;margin-bottom:16px;">
+                AI 批改助手可以帮助你自动批改试卷。首先，请配置你的 API 密钥。
+            </p>
+            <div class="form-group">
+                <label>API 密钥</label>
+                <input type="password" id="ob-apikey" placeholder="请输入 5plus1 API 密钥" value="${existingApiKey}" style="width:100%;">
+                <div style="margin-top:6px;">
+                    <a href="https://api.ai.five-plus-one.com/console/token" target="_blank" style="font-size:12px;color:#0052FF;text-decoration:none;">点击获取访问凭证 →</a>
+                </div>
+            </div>
+            <div id="ob-status" style="font-size:12px;padding:8px 12px;border-radius:6px;margin-top:8px;display:none;"></div>
+        `;
+    }
+
+    function renderNameModeStep() {
+        return `
+            <div class="form-group">
+                <label>配置方案名称</label>
+                <input type="text" id="ob-preset-name" placeholder="例如: 语文作文、数学大题" value="${presetName}" style="width:100%;">
+            </div>
+            <div style="margin-top:16px;">
+                <label style="display:block;margin-bottom:8px;color:#666;font-size:12px;font-weight:500;">批改模式</label>
+                <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;">
+                    <label style="display:flex;flex-direction:column;align-items:center;gap:6px;padding:14px 8px;border:2px solid ${gradingMode==='normal'?'#0052FF':'rgba(0,0,0,0.08)'};border-radius:12px;cursor:pointer;transition:all 0.2s;background:${gradingMode==='normal'?'rgba(0,82,255,0.04)':'white'};text-align:center;">
+                        <input type="radio" name="ob-grading-mode" value="normal" ${gradingMode==='normal'?'checked':''} style="display:none;">
+                        <div style="font-size:20px;">📝</div>
+                        <div style="font-size:13px;font-weight:600;color:#1d1d1f;">普通</div>
+                        <div style="font-size:11px;color:#86868b;line-height:1.4;">等待确认<br>后提交</div>
+                    </label>
+                    <label style="display:flex;flex-direction:column;align-items:center;gap:6px;padding:14px 8px;border:2px solid ${gradingMode==='trial'?'#7c3aed':'rgba(0,0,0,0.08)'};border-radius:12px;cursor:pointer;transition:all 0.2s;background:${gradingMode==='trial'?'rgba(124,58,237,0.04)':'white'};text-align:center;position:relative;">
+                        <input type="radio" name="ob-grading-mode" value="trial" ${gradingMode==='trial'?'checked':''} style="display:none;">
+                        <span style="position:absolute;top:-8px;right:-8px;font-size:9px;background:#7c3aed;color:white;padding:2px 6px;border-radius:4px;font-weight:600;">推荐</span>
+                        <div style="font-size:20px;">🔍</div>
+                        <div style="font-size:13px;font-weight:600;color:#1d1d1f;">试改</div>
+                        <div style="font-size:11px;color:#86868b;line-height:1.4;">支持纠错<br>和优化</div>
+                    </label>
+                    <label style="display:flex;flex-direction:column;align-items:center;gap:6px;padding:14px 8px;border:2px solid ${gradingMode==='unattended'?'#D93025':'rgba(0,0,0,0.08)'};border-radius:12px;cursor:pointer;transition:all 0.2s;background:${gradingMode==='unattended'?'rgba(217,48,37,0.04)':'white'};text-align:center;">
+                        <input type="radio" name="ob-grading-mode" value="unattended" ${gradingMode==='unattended'?'checked':''} style="display:none;">
+                        <div style="font-size:20px;">⚡</div>
+                        <div style="font-size:13px;font-weight:600;color:#1d1d1f;">无人</div>
+                        <div style="font-size:11px;color:#86868b;line-height:1.4;">全自动<br>自动重试</div>
+                    </label>
+                </div>
+            </div>
+            <div id="ob-status" style="font-size:12px;padding:8px 12px;border-radius:6px;margin-top:8px;display:none;"></div>
+        `;
+    }
+
+    function renderWorkflowStep() {
+        const workflows = [
+            { id: 'fast', icon: '⚡', name: '快速批改', desc: '速度快、性价比高，适合大多数题型', color: '#0052FF' },
+            { id: 'normal', icon: '🎯', name: '普通批改', desc: '精度更高，适合复杂题型', color: '#1d1d1f' },
+            { id: 'dual', icon: '🔄', name: '双评模式', desc: '两个模型独立评分，分差超阈值自动仲裁', color: '#7c3aed' }
+        ];
+        return `
+            <p style="font-size:13px;color:#666;line-height:1.6;margin-bottom:16px;">
+                选择批改工作流，决定使用哪个 AI 模型进行评分。
+            </p>
+            <div style="display:flex;flex-direction:column;gap:10px;">
+                ${workflows.map(w => `
+                    <label style="display:flex;align-items:center;gap:14px;padding:16px;border:2px solid ${selectedWorkflow===w.id?w.color:'rgba(0,0,0,0.08)'};border-radius:12px;cursor:pointer;transition:all 0.2s;background:${selectedWorkflow===w.id?w.color+'08':'white'};">
+                        <input type="radio" name="ob-workflow" value="${w.id}" ${selectedWorkflow===w.id?'checked':''} style="display:none;">
+                        <div style="width:40px;height:40px;border-radius:10px;background:${selectedWorkflow===w.id?w.color:'rgba(0,0,0,0.06)'};display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0;transition:all 0.2s;">
+                            ${w.icon}
+                        </div>
+                        <div style="flex:1;">
+                            <div style="font-size:14px;font-weight:600;color:#1d1d1f;">${w.name}</div>
+                            <div style="font-size:12px;color:#86868b;margin-top:2px;">${w.desc}</div>
+                        </div>
+                        <div style="width:20px;height:20px;border-radius:50%;border:2px solid ${selectedWorkflow===w.id?w.color:'rgba(0,0,0,0.15)'};display:flex;align-items:center;justify-content:center;flex-shrink:0;transition:all 0.2s;">
+                            ${selectedWorkflow===w.id?`<div style="width:10px;height:10px;border-radius:50%;background:${w.id==='fast'?'#0052FF':w.id==='normal'?'#1d1d1f':'#7c3aed'};"></div>`:''}
+                        </div>
+                    </label>
+                `).join('')}
+            </div>
+        `;
+    }
+
+    function renderCtxStep() {
+        return `
+            <p style="font-size:13px;color:#666;line-height:1.6;margin-bottom:16px;">
+                配置批改上下文可以提高评分准确性。这些信息也可以稍后在设置中配置。
+            </p>
+            <div class="form-group">
+                <label>题目内容</label>
+                <textarea id="ob-question" placeholder="粘贴题目内容..." style="width:100%;min-height:60px;"></textarea>
+            </div>
+            <div class="form-group">
+                <label>参考答案</label>
+                <textarea id="ob-answer" placeholder="粘贴参考答案..." style="width:100%;min-height:60px;"></textarea>
+            </div>
+            <div class="form-group">
+                <label>评分标准</label>
+                <textarea id="ob-rubric" placeholder="粘贴评分标准..." style="width:100%;min-height:60px;"></textarea>
+            </div>
+        `;
+    }
+
+    function renderDoneStep() {
+        const wfName = { fast: '快速批改', normal: '普通批改', dual: '双评模式' }[selectedWorkflow] || '快速批改';
+        const modeName = { normal: '普通模式', trial: '试改模式', unattended: '无人模式' }[gradingMode] || '试改模式';
+        return `
+            <div style="text-align:center;padding:20px 0;">
+                <div style="font-size:48px;margin-bottom:16px;">✅</div>
+                <div style="font-size:16px;font-weight:600;color:#1d1d1f;margin-bottom:8px;">配置完成！</div>
+                <div style="font-size:13px;color:#666;line-height:1.8;">
+                    方案「${presetName}」已创建并绑定到当前试题。<br>
+                    <span style="color:#1d1d1f;font-weight:500;">${wfName}</span> · <span style="color:#1d1d1f;font-weight:500;">${modeName}</span>
+                </div>
+                <div style="margin-top:16px;padding:12px;background:rgba(0,82,255,0.06);border-radius:10px;font-size:12px;color:#0052FF;">
+                    点击下方按钮即可开始自动批改
+                </div>
+            </div>
+        `;
+    }
+
+    function bindEvents() {
+        const s = getStepInfo();
+
+        if (s.apiStep) {
+            overlay.querySelector('#ob-skip').onclick = () => overlay.remove();
+            overlay.querySelector('#ob-next').onclick = async () => {
+                const key = overlay.querySelector('#ob-apikey').value.trim();
+                if (!key) { showStatus('请输入 API 密钥', 'error'); return; }
+                const btn = overlay.querySelector('#ob-next');
+                btn.disabled = true; btn.textContent = '验证中...';
+                const valid = await testApiKey(key);
+                btn.disabled = false; btn.textContent = '验证并继续';
+                if (valid) {
+                    const p = ProviderManager.getProvider('5plus1官方');
+                    if (p) p.apiKey = key;
+                    ProviderManager.save();
+                    currentStep++; render();
+                } else { showStatus('密钥验证失败，请检查是否正确', 'error'); }
+            };
+        } else if (s.nameModeStep) {
+            if (s.hasApiStep) overlay.querySelector('#ob-back').onclick = () => { currentStep--; render(); };
+            overlay.querySelectorAll('input[name="ob-grading-mode"]').forEach(r => {
+                r.onchange = () => { gradingMode = r.value; render(); };
+            });
+            overlay.querySelector('#ob-next').onclick = () => {
+                const name = overlay.querySelector('#ob-preset-name')?.value?.trim();
+                if (!name) { showStatus('请输入配置方案名称', 'error'); return; }
+                if (PresetManager.data.list[name]) { showStatus('该方案名称已存在', 'error'); return; }
+                presetName = name;
+                currentStep++; render();
+            };
+        } else if (s.workflowStep) {
+            overlay.querySelector('#ob-back').onclick = () => { currentStep--; render(); };
+            overlay.querySelectorAll('input[name="ob-workflow"]').forEach(r => {
+                r.onchange = () => { selectedWorkflow = r.value; render(); };
+            });
+            overlay.querySelector('#ob-next').onclick = () => { currentStep++; render(); };
+        } else if (s.ctxStep) {
+            overlay.querySelector('#ob-skip-ctx').onclick = () => saveAndFinish(false);
+            overlay.querySelector('#ob-next').onclick = () => saveAndFinish(true);
+        } else if (s.doneStep) {
+            overlay.querySelector('#ob-start').onclick = () => {
+                overlay.remove();
+                GM_setValue('ai-grading-show-onboarding', false);
+                const btn = document.querySelector('.ai-grade-btn');
+                if (btn && !window.aiGradingState.isRunning) btn.click();
+            };
+        }
+    }
+
+    function showStatus(msg, type) {
+        const el = overlay.querySelector('#ob-status');
+        if (!el) return;
+        el.style.display = 'block';
+        el.style.background = type === 'error' ? 'rgba(217,48,37,0.08)' : 'rgba(52,168,83,0.08)';
+        el.style.color = type === 'error' ? '#D93025' : '#34A853';
+        el.textContent = msg;
+    }
+
+    async function testApiKey(key) {
+        return new Promise(resolve => {
+            GM_xmlhttpRequest({
+                method: 'POST', url: SCRIPT_CONFIG.DEFAULT_ENDPOINT,
+                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${key}` },
+                data: JSON.stringify({ model: 'aimarker-fast', messages: [{ role: 'user', content: 'hi' }], max_tokens: 1 }),
+                timeout: 10000,
+                onload: res => resolve(res.status >= 200 && res.status < 300),
+                onerror: () => resolve(false), ontimeout: () => resolve(false)
+            });
+        });
+    }
+
+    function saveAndFinish(saveCtx) {
+        const newPreset = {
+            question: '', answer: '', rubric: '',
+            workflowId: selectedWorkflow, gradingMode: gradingMode,
+            scoring: { roundStep: 1, roundMethod: 'round' }
+        };
+        if (saveCtx) {
+            newPreset.question = overlay.querySelector('#ob-question')?.value?.trim() || '';
+            newPreset.answer = overlay.querySelector('#ob-answer')?.value?.trim() || '';
+            newPreset.rubric = overlay.querySelector('#ob-rubric')?.value?.trim() || '';
+        }
+        PresetManager.data.list[presetName] = newPreset;
+        PresetManager.data.active = presetName;
+        PresetManager.data.bindings[PresetManager.getTaskIdentifier()] = presetName;
+        PresetManager.save();
+        WorkflowManager.setActive(selectedWorkflow);
+        renderPresetDropdown();
+        fillFormFromActivePreset();
+        currentStep = mode === 'first-launch' ? 5 : 4;
+        render();
+    }
+
+    document.body.appendChild(overlay);
+    render();
+}
+
+// ========== 余额不足提示 ==========
+function showInsufficientBalanceDialog(isOfficial) {
+    ensureModalStyles();
+    const overlay = document.createElement('div');
+    overlay.className = 'ai-modal-overlay';
+    overlay.style.zIndex = '1000020';
+    overlay.innerHTML = `
+        <div class="ai-modal-card" style="max-width:420px;">
+            <div class="ai-modal-header" style="display:flex;align-items:center;gap:10px;">
+                <span style="font-size:20px;">⚠️</span>
+                <span>余额不足</span>
+            </div>
+            <div class="ai-modal-body">
+                <p style="font-size:13px;color:#666;line-height:1.6;margin-bottom:16px;">
+                    ${isOfficial
+                        ? '您的 5plus1 API 余额不足，无法继续批改。请前往充值页面完成充值。'
+                        : '您的 API 余额不足，请前往对应平台充值后再试。'
+                    }
+                </p>
+            </div>
+            <div class="ai-modal-footer">
+                <button class="ai-modal-btn-cancel" id="balance-close">关闭</button>
+                ${isOfficial
+                    ? '<button class="ai-modal-btn-confirm" id="balance-topup">前往充值</button>'
+                    : ''
+                }
+            </div>
+        </div>
+    `;
+    document.body.appendChild(overlay);
+
+    overlay.querySelector('#balance-close').onclick = () => overlay.remove();
+    overlay.onclick = (e) => { if (e.target === overlay) overlay.remove(); };
+
+    if (isOfficial) {
+        overlay.querySelector('#balance-topup').onclick = () => {
+            window.open('https://api.ai.five-plus-one.com/console/topup', '_blank');
+            overlay.remove();
+        };
+    }
 }

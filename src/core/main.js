@@ -31,11 +31,24 @@ async function startAutoGrading() {
     console.log('▶️ [诊断] startAutoGrading 开始执行');
 
     try {
-        const config = PresetManager.getCurrentConfig();
+        // 使用新的配置获取方式（优先工作流，回退直接配置）
+        const config = PresetManager.getActiveCallConfig();
         if (!config.apiKey) {
-            safeAlert('❌ 请先配置API密钥！');
+            safeAlert('❌ 请先配置API密钥！请在设置中配置供应商和模型。');
             window.aiGradingState.isRunning = false;
             return;
+        }
+
+        // 获取工作流信息（用于双评判断）
+        const presetConfig = PresetManager.getCurrentConfig();
+        const workflowId = presetConfig.workflowId;
+        const workflow = workflowId ? WorkflowManager.getWorkflow(workflowId) : null;
+        const isDualEval = workflow && workflow.dualEval && workflow.dualEval.enabled;
+
+        if (isDualEval) {
+            console.log(`🔄 [诊断] 使用双评模式 — 工作流: ${workflow.name}`);
+        } else if (workflow) {
+            console.log(`🔍 [诊断] 使用工作流: ${workflow.name} — 模型: ${config.model}`);
         }
 
         const adapter = window.__AI_MARKER_ADAPTER__;
@@ -89,23 +102,41 @@ async function startAutoGrading() {
         }
 
         console.log('🤖 [诊断] 开始调用AI接口...');
-        const result = await callAIGrading(base64DataArray, config, (streamedText) => {
-            if (window.aiGradingState.gradingMode !== 'unattended') updateStreamPanel(streamedText);
-        });
+        // 根据是否启用双评，选择调用方式
+        const gradingConfig = { ...config, workflowId: workflowId };
+        const result = isDualEval
+            ? await callDualEvaluation(base64DataArray, gradingConfig, (streamedText) => {
+                if (window.aiGradingState.gradingMode !== 'unattended') updateStreamPanel(streamedText);
+            })
+            : await callAIGrading(base64DataArray, config, (streamedText) => {
+                if (window.aiGradingState.gradingMode !== 'unattended') updateStreamPanel(streamedText);
+            });
 
         hideStreamPanel();
         if (window.aiGradingState.isPaused) throw new Error('用户暂停');
 
         console.log(`📊 [诊断] callAIGrading 返回 — score: ${result.score}, comment长度: ${(result.comment || '').length}字`);
         if (result.score !== undefined && result.score !== null) {
+            // 应用取整规则
+            const scoringConfig = presetConfig.scoring || { roundStep: 1, roundMethod: 'round' };
+            const finalScore = applyScoringRules(result.score, scoringConfig);
+            if (finalScore !== result.score) {
+                console.log(`📐 [诊断] 取整: ${result.score} → ${finalScore} (步长: ${scoringConfig.roundStep}, 方式: ${scoringConfig.roundMethod})`);
+            }
+
             window.aiGradingState.currentStudentAnswer = result.studentAnswer || '未能识别';
             window.aiGradingState.errorRetryCount = 0;
-            console.log(`✏️ [诊断] 准备填入分数: ${result.score}，调用 fillScore...`);
+            console.log(`✏️ [诊断] 准备填入分数: ${finalScore}，调用 fillScore...`);
             const adapter = window.__AI_MARKER_ADAPTER__;
             if (adapter && adapter.fillScore) {
-                adapter.fillScore({ total: result.score, subScores: result.subScores });
+                adapter.fillScore({ total: finalScore, subScores: result.subScores });
             }
-            showAutoSubmitDialog(result.score, result.comment, result.subScores);
+            // 传递结构化评分详情和双评信息到提交对话框
+            showAutoSubmitDialog(finalScore, result.comment, result.subScores, {
+                scoringDetails: result._sections || null,
+                dualEval: result.dualEval || null,
+                rawScore: result.rawScore || result.score
+            });
         } else {
             // 分数解析失败（"未能识别"），自动重试
             window.aiGradingState.errorRetryCount++;
@@ -153,6 +184,12 @@ async function init() {
     createMainButton();
     createSettingsPanel();
 
+    // 首次启动或重置后显示新手引导
+    const showOnboarding = GM_getValue('ai-grading-show-onboarding', true);
+    if (showOnboarding) {
+        setTimeout(() => showOnboardingDialog(true, 'first-launch'), 500);
+    }
+
     // 检查更新（延迟 5 秒，避免影响页面主要功能加载）
     setTimeout(() => checkForUpdate(), 5000);
 
@@ -197,6 +234,7 @@ async function init() {
                         score: record.aiScore, comment: record.aiComment,
                         studentAnswer: record.studentAnswer, imageUrls,
                         base64DataArray, config: PresetManager.getCurrentConfig(),
+                        callConfig: PresetManager.getActiveCallConfig(),
                         subScores: record.subScores,
                         onAccept(finalScore, correctionInfo) {
                             const correctedSubScores = correctionInfo.correctedSubScores || record.subScores;
@@ -256,6 +294,19 @@ setInterval(() => {
                 PresetManager.data.active = "默认配置";
                 PresetManager.save();
                 showToast(`📝 未找到当前题目的专属方案，已恢复为【默认配置】`);
+            }
+
+            // 检查 API KEY 是否配置
+            const apiKey = ProviderManager.getProvider('5plus1官方')?.apiKey || '';
+            if (!apiKey) {
+                showOnboardingDialog(true, 'first-launch');
+                return;
+            }
+
+            // 检查是否是新试题（未绑定配置）
+            if (!boundPreset || !PresetManager.data.list[boundPreset]) {
+                showOnboardingDialog(true, 'new-question');
+                return;
             }
 
             const select = document.getElementById('preset-select');

@@ -12,12 +12,16 @@ function fillScore(score, comment, subScores) {
     showAutoSubmitDialog(score, comment, subScores);
 }
 
-function showAutoSubmitDialog(score, comment, subScores) {
+function showAutoSubmitDialog(score, comment, subScores, extraInfo) {
     const oldDialog = document.getElementById('auto-submit-dialog');
     if (oldDialog) oldDialog.remove();
 
     const mode = window.aiGradingState.gradingMode;
-    console.log(`🪟 [诊断] showAutoSubmitDialog 调用 — 分数: ${score}, 模式: ${mode}`);
+    const scoringDetails = extraInfo?.scoringDetails || null;
+    const dualEval = extraInfo?.dualEval || null;
+    const rawScore = extraInfo?.rawScore || score;
+
+    console.log(`🪟 [诊断] showAutoSubmitDialog 调用 — 分数: ${score}, 模式: ${mode}, 双评: ${!!dualEval}`);
 
     window.aiGradingState.countdownPaused = false;
     const studentAnswer = window.aiGradingState.currentStudentAnswer;
@@ -146,6 +150,89 @@ function showAutoSubmitDialog(score, comment, subScores) {
                         `).join('')}
                     </div>
                 </div>` : ''}
+                ${scoringDetails && scoringDetails['评分依据'] ? `
+                <div class="asd-info-block">
+                    <div class="asd-info-label">评分依据</div>
+                    <div class="asd-info-content" style="max-height:120px;overflow-y:auto;">${scoringDetails['评分依据']}</div>
+                </div>` : ''}
+                ${scoringDetails && scoringDetails['分数计算'] ? `
+                <div class="asd-info-block">
+                    <div class="asd-info-label">分数计算</div>
+                    <div class="asd-info-content" style="font-weight:600;">${scoringDetails['分数计算']}</div>
+                </div>` : ''}
+                ${dualEval ? `
+                <div class="asd-info-block">
+                    <div class="asd-info-label">双评结果</div>
+                    <div style="padding:10px 14px;background:rgba(0,0,0,0.02);border-radius:8px;border:1px solid rgba(0,0,0,0.04);">
+                        <div style="display:flex;justify-content:space-between;margin-bottom:6px;">
+                            <span style="font-size:12px;color:#666;">分差</span>
+                            <span style="font-size:13px;font-weight:600;color:${(dualEval.diff || 0) > 2 ? '#D93025' : '#1d1d1f'};">${dualEval.diff !== null ? dualEval.diff + '分' : '—'}</span>
+                        </div>
+                        <div style="display:flex;justify-content:space-between;">
+                            <span style="font-size:12px;color:#666;">判定结果</span>
+                            <span style="font-size:12px;font-weight:500;color:${dualEval.result === 'consensus' ? '#34A853' : dualEval.result === 'arbitration' ? '#7c3aed' : '#86868b'};">${
+                                dualEval.result === 'consensus' ? '✓ 共识' :
+                                dualEval.result === 'arbitration' ? '⚠ 三评仲裁' :
+                                dualEval.result === 'fallback-a' ? '使用老师A' :
+                                dualEval.result === 'fallback-b' ? '使用老师B' : dualEval.result
+                            }</span>
+                        </div>
+                    </div>
+                </div>
+                <div class="asd-info-block">
+                    <div class="asd-info-label">老师A 评分</div>
+                    <div style="padding:10px 14px;background:rgba(0,0,0,0.02);border-radius:8px;border:1px solid rgba(0,0,0,0.04);">
+                        <div style="display:flex;justify-content:space-between;margin-bottom:8px;">
+                            <span style="font-size:12px;color:#666;">得分</span>
+                            <span style="font-size:14px;font-weight:600;">${dualEval.scoreA !== null ? dualEval.scoreA + '分' : '失败'}</span>
+                        </div>
+                        ${dualEval.detailA ? `
+                        <div style="margin-bottom:6px;">
+                            <div style="font-size:11px;color:#86868b;margin-bottom:4px;">评分依据</div>
+                            <div style="font-size:12px;line-height:1.5;font-family:'SF Mono',monospace;background:rgba(255,255,255,0.6);padding:8px;border-radius:6px;white-space:pre-wrap;border:1px solid rgba(0,0,0,0.04);max-height:100px;overflow-y:auto;">${dualEval.detailA['评分依据'] || '—'}</div>
+                        </div>` : ''}
+                        ${dualEval.detailA && dualEval.detailA['分数计算'] ? `
+                        <div>
+                            <div style="font-size:11px;color:#86868b;margin-bottom:4px;">分数计算</div>
+                            <div style="font-size:12px;font-weight:600;font-family:'SF Mono',monospace;background:rgba(255,255,255,0.6);padding:8px;border-radius:6px;border:1px solid rgba(0,0,0,0.04);">${dualEval.detailA['分数计算']}</div>
+                        </div>` : ''}
+                    </div>
+                </div>
+                <div class="asd-info-block">
+                    <div class="asd-info-label">老师B 评分</div>
+                    <div style="padding:10px 14px;background:rgba(0,0,0,0.02);border-radius:8px;border:1px solid rgba(0,0,0,0.04);">
+                        <div style="display:flex;justify-content:space-between;margin-bottom:8px;">
+                            <span style="font-size:12px;color:#666;">得分</span>
+                            <span style="font-size:14px;font-weight:600;">${dualEval.scoreB !== null ? dualEval.scoreB + '分' : '失败'}</span>
+                        </div>
+                        ${dualEval.detailB ? `
+                        <div style="margin-bottom:6px;">
+                            <div style="font-size:11px;color:#86868b;margin-bottom:4px;">评分依据</div>
+                            <div style="font-size:12px;line-height:1.5;font-family:'SF Mono',monospace;background:rgba(255,255,255,0.6);padding:8px;border-radius:6px;white-space:pre-wrap;border:1px solid rgba(0,0,0,0.04);max-height:100px;overflow-y:auto;">${dualEval.detailB['评分依据'] || '—'}</div>
+                        </div>` : ''}
+                        ${dualEval.detailB && dualEval.detailB['分数计算'] ? `
+                        <div>
+                            <div style="font-size:11px;color:#86868b;margin-bottom:4px;">分数计算</div>
+                            <div style="font-size:12px;font-weight:600;font-family:'SF Mono',monospace;background:rgba(255,255,255,0.6);padding:8px;border-radius:6px;border:1px solid rgba(0,0,0,0.04);">${dualEval.detailB['分数计算']}</div>
+                        </div>` : ''}
+                    </div>
+                </div>
+                ${dualEval.result === 'arbitration' ? `
+                <div class="asd-info-block">
+                    <div class="asd-info-label">仲裁结果</div>
+                    <div style="padding:10px 14px;background:rgba(124,58,237,0.04);border-radius:8px;border:1px solid rgba(124,58,237,0.12);">
+                        <div style="display:flex;justify-content:space-between;margin-bottom:8px;">
+                            <span style="font-size:12px;color:#7c3aed;">仲裁得分</span>
+                            <span style="font-size:14px;font-weight:600;color:#7c3aed;">${dualEval.arbScore !== undefined ? dualEval.arbScore + '分' : '—'}</span>
+                        </div>
+                        ${dualEval.arbAnalysis ? `
+                        <div>
+                            <div style="font-size:11px;color:#86868b;margin-bottom:4px;">仲裁分析</div>
+                            <div style="font-size:12px;line-height:1.5;font-family:'SF Mono',monospace;background:rgba(255,255,255,0.6);padding:8px;border-radius:6px;white-space:pre-wrap;border:1px solid rgba(0,0,0,0.04);max-height:100px;overflow-y:auto;">${dualEval.arbAnalysis}</div>
+                        </div>` : ''}
+                    </div>
+                </div>` : ''}
+                ` : ''}
                 <div class="asd-info-block"><div class="asd-info-label">识别答案</div><div class="asd-info-content">${studentAnswer}</div></div>
                 ${comment ? `<div class="asd-info-block"><div class="asd-info-label">评语</div><div class="asd-info-content">${comment}</div></div>` : ''}
             </div>
@@ -176,6 +263,7 @@ function showAutoSubmitDialog(score, comment, subScores) {
                 score, comment, studentAnswer, imageUrls,
                 base64DataArray: window.aiGradingState.currentBase64DataArray || [],
                 config: PresetManager.getCurrentConfig(),
+                callConfig: PresetManager.getActiveCallConfig(),
                 subScores,
                 onAccept(finalScore, correctionInfo) {
                     const correctedSubScores = correctionInfo.correctedSubScores || subScores;
@@ -187,7 +275,8 @@ function showAutoSubmitDialog(score, comment, subScores) {
                         finalScore, isCorrected: correctionInfo.isCorrected,
                         correctionReason: correctionInfo.correctionReason,
                         imageBase64s: window.aiGradingState.currentBase64DataArray || [],
-                        subScores: correctedSubScores
+                        subScores: correctedSubScores,
+                        dualEval: dualEval || null
                     });
                     if (correctionInfo.newAnswer || correctionInfo.newRubric) {
                         const activeName = PresetManager.data.active;
@@ -239,7 +328,8 @@ function showAutoSubmitDialog(score, comment, subScores) {
             aiScore: score, aiComment: comment,
             finalScore: score, isCorrected: false, correctionReason: '',
             imageBase64s: window.aiGradingState.currentBase64DataArray || [],
-            subScores: subScores
+            subScores: subScores,
+            dualEval: dualEval || null
         });
 
         const adapter = window.__AI_MARKER_ADAPTER__;

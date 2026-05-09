@@ -87,7 +87,6 @@ function showAlertModal(message) {
         let closed = false;
         const close = () => { if (closed) return; closed = true; overlay.remove(); resolve(); };
         overlay.querySelector('.ai-modal-btn-confirm').onclick = e => { e.stopPropagation(); close(); };
-        overlay.onclick = e => { if (e.target === overlay) close(); };
         overlay.querySelector('.ai-modal-btn-confirm').focus();
     });
 }
@@ -111,7 +110,6 @@ function showConfirmModal(message) {
         const close = result => { if (closed) return; closed = true; overlay.remove(); resolve(result); };
         overlay.querySelector('.ai-modal-btn-cancel').onclick = e => { e.stopPropagation(); close(false); };
         overlay.querySelector('.ai-modal-btn-confirm').onclick = e => { e.stopPropagation(); close(true); };
-        overlay.onclick = e => { if (e.target === overlay) close(false); };
         overlay.querySelector('.ai-modal-btn-confirm').focus();
     });
 }
@@ -142,6 +140,5 @@ function showPromptModal(message, defaultValue) {
         overlay.querySelector('.ai-modal-btn-cancel').onclick = e => { e.stopPropagation(); close(null); };
         overlay.querySelector('.ai-modal-btn-confirm').onclick = e => { e.stopPropagation(); close(input.value); };
         input.addEventListener('keydown', e => { if (e.key === 'Enter') close(input.value); if (e.key === 'Escape') close(null); });
-        overlay.onclick = e => { if (e.target === overlay) close(null); };
     });
 }

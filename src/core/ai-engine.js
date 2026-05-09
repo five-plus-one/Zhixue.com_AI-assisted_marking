@@ -436,6 +436,18 @@ function callAI(prompt, base64DataArray, config, onStreamUpdate) {
                         if (errObj.error?.message) errorMsg = errObj.error.message;
                     } catch (e) {}
                     console.error(`❌ [诊断] API返回错误: ${res.status} — ${errorMsg}`);
+
+                    // 检测余额不足
+                    const isInsufficient = /insufficient|balance|quota|余额|额度|欠费/i.test(errorMsg);
+                    if (isInsufficient) {
+                        const isOfficial = config.endpoint?.includes('five-plus-one.com');
+                        if (isOfficial) {
+                            showInsufficientBalanceDialog(true);
+                        } else {
+                            showInsufficientBalanceDialog(false);
+                        }
+                    }
+
                     return reject(new Error(`API报错 (${res.status}): ${errorMsg}`));
                 }
 

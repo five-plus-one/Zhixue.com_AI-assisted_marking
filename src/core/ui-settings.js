@@ -666,9 +666,9 @@ function createSettingsPanel() {
             ProviderManager.save();
             WorkflowManager.data = WorkflowManager._getDefault();
             WorkflowManager.save();
-            renderPresetDropdown();
-            fillFormFromActivePreset();
-            showToast('已恢复默认设置');
+            GM_setValue('ai-grading-show-onboarding', true);
+            showToast('已恢复默认设置，正在刷新...');
+            setTimeout(() => location.reload(), 800);
         }
     };
 
@@ -1231,6 +1231,10 @@ async function handleNewProvider() {
 
 async function handleDeleteProvider() {
     const name = document.getElementById('ai-provider').value;
+    if (name === '5plus1官方') {
+        showAlertModal("默认供应商「5plus1官方」不允许删除！");
+        return;
+    }
     if (Object.keys(ProviderManager.data.providers).length <= 1) {
         showAlertModal("必须至少保留一个供应商！");
         return;
@@ -1554,4 +1558,258 @@ function saveAISettings() {
 
     // 保存后自动关闭侧边栏
     closeSettingsPanel();
+}
+
+// ========== 新手引导 ==========
+function showOnboardingDialog(forceShow) {
+    const apiKey = ProviderManager.getProvider('5plus1官方')?.apiKey || '';
+    if (!forceShow && apiKey) return;
+
+    ensureModalStyles();
+
+    const overlay = document.createElement('div');
+    overlay.className = 'ai-modal-overlay';
+    overlay.style.zIndex = '1000020';
+
+    let currentStep = 1;
+    let selectedWorkflow = 'fast';
+
+    function render() {
+        overlay.innerHTML = `
+            <div class="ai-modal-card" style="max-width:520px;max-height:85vh;display:flex;flex-direction:column;">
+                <div class="ai-modal-header" style="display:flex;align-items:center;gap:10px;">
+                    <span style="font-size:20px;">🎓</span>
+                    <span id="onboarding-title">${currentStep === 1 ? '欢迎使用 AI 批改助手' : currentStep === 2 ? '选择批改模式' : currentStep === 3 ? '配置批改上下文（可选）' : '配置完成！'}</span>
+                </div>
+                <div class="ai-modal-body" style="overflow-y:auto;flex:1;min-height:0;" id="onboarding-body">
+                    ${currentStep === 1 ? renderStep1() : currentStep === 2 ? renderStep2() : currentStep === 3 ? renderStep3() : renderStep4()}
+                </div>
+                <div class="ai-modal-footer" id="onboarding-footer">
+                    ${currentStep === 1 ? `
+                        <button class="ai-modal-btn-cancel" id="onboarding-skip">稍后设置</button>
+                        <button class="ai-modal-btn-confirm" id="onboarding-next">验证并继续</button>
+                    ` : currentStep === 2 ? `
+                        <button class="ai-modal-btn-cancel" id="onboarding-back">上一步</button>
+                        <button class="ai-modal-btn-confirm" id="onboarding-next">继续</button>
+                    ` : currentStep === 3 ? `
+                        <button class="ai-modal-btn-cancel" id="onboarding-skip-ctx">跳过</button>
+                        <button class="ai-modal-btn-confirm" id="onboarding-next">保存并完成</button>
+                    ` : `
+                        <button class="ai-modal-btn-confirm" id="onboarding-done" style="width:100%;">开始批改</button>
+                    `}
+                </div>
+            </div>
+        `;
+        bindEvents();
+    }
+
+    function renderStep1() {
+        return `
+            <p style="font-size:13px;color:#666;line-height:1.6;margin-bottom:16px;">
+                AI 批改助手可以帮助你自动批改试卷。首先，请配置你的 API 密钥。
+            </p>
+            <div class="form-group">
+                <label>API 密钥</label>
+                <input type="password" id="onboarding-apikey" placeholder="请输入 5plus1 API 密钥" value="${apiKey}" style="width:100%;">
+                <div style="margin-top:6px;">
+                    <a href="https://api.ai.five-plus-one.com/console/token" target="_blank" style="font-size:12px;color:#0052FF;text-decoration:none;">点击获取访问凭证 →</a>
+                </div>
+            </div>
+            <div id="onboarding-key-status" style="font-size:12px;padding:8px 12px;border-radius:6px;margin-top:8px;display:none;"></div>
+        `;
+    }
+
+    function renderStep2() {
+        return `
+            <p style="font-size:13px;color:#666;line-height:1.6;margin-bottom:16px;">
+                请选择适合你的批改模式：
+            </p>
+            <div style="display:flex;flex-direction:column;gap:10px;">
+                <label style="display:flex;align-items:flex-start;gap:12px;padding:14px;border:2px solid ${selectedWorkflow === 'fast' ? '#0052FF' : 'rgba(0,0,0,0.08)'};border-radius:10px;cursor:pointer;transition:all 0.2s;background:${selectedWorkflow === 'fast' ? 'rgba(0,82,255,0.03)' : 'transparent'};">
+                    <input type="radio" name="onboarding-mode" value="fast" ${selectedWorkflow === 'fast' ? 'checked' : ''} style="margin-top:2px;">
+                    <div>
+                        <div style="font-size:14px;font-weight:600;color:#1d1d1f;">快速批改</div>
+                        <div style="font-size:12px;color:#666;margin-top:4px;line-height:1.5;">速度快、性价比高，适合大多数题型。使用轻量模型，不开启深度思考。</div>
+                    </div>
+                </label>
+                <label style="display:flex;align-items:flex-start;gap:12px;padding:14px;border:2px solid ${selectedWorkflow === 'normal' ? '#0052FF' : 'rgba(0,0,0,0.08)'};border-radius:10px;cursor:pointer;transition:all 0.2s;background:${selectedWorkflow === 'normal' ? 'rgba(0,82,255,0.03)' : 'transparent'};">
+                    <input type="radio" name="onboarding-mode" value="normal" ${selectedWorkflow === 'normal' ? 'checked' : ''} style="margin-top:2px;">
+                    <div>
+                        <div style="font-size:14px;font-weight:600;color:#1d1d1f;">普通批改</div>
+                        <div style="font-size:12px;color:#666;margin-top:4px;line-height:1.5;">精度更高，适合复杂题型。使用专业模型，支持深度思考。</div>
+                    </div>
+                </label>
+                <label style="display:flex;align-items:flex-start;gap:12px;padding:14px;border:2px solid ${selectedWorkflow === 'dual' ? '#0052FF' : 'rgba(0,0,0,0.08)'};border-radius:10px;cursor:pointer;transition:all 0.2s;background:${selectedWorkflow === 'dual' ? 'rgba(0,82,255,0.03)' : 'transparent'};">
+                    <input type="radio" name="onboarding-mode" value="dual" ${selectedWorkflow === 'dual' ? 'checked' : ''} style="margin-top:2px;">
+                    <div>
+                        <div style="font-size:14px;font-weight:600;color:#1d1d1f;">双评模式</div>
+                        <div style="font-size:12px;color:#666;margin-top:4px;line-height:1.5;">最高精度，两个模型独立评分，分差超阈值自动仲裁。适合重要考试。</div>
+                    </div>
+                </label>
+            </div>
+        `;
+    }
+
+    function renderStep3() {
+        return `
+            <p style="font-size:13px;color:#666;line-height:1.6;margin-bottom:16px;">
+                配置批改上下文可以提高评分准确性。这些信息也可以稍后在设置中配置。
+            </p>
+            <div class="form-group">
+                <label>题目内容</label>
+                <textarea id="onboarding-question" placeholder="粘贴题目内容..." style="width:100%;min-height:60px;"></textarea>
+            </div>
+            <div class="form-group">
+                <label>参考答案</label>
+                <textarea id="onboarding-answer" placeholder="粘贴参考答案..." style="width:100%;min-height:60px;"></textarea>
+            </div>
+            <div class="form-group">
+                <label>评分标准</label>
+                <textarea id="onboarding-rubric" placeholder="粘贴评分标准..." style="width:100%;min-height:60px;"></textarea>
+            </div>
+        `;
+    }
+
+    function renderStep4() {
+        return `
+            <div style="text-align:center;padding:20px 0;">
+                <div style="font-size:48px;margin-bottom:16px;">✅</div>
+                <div style="font-size:16px;font-weight:600;color:#1d1d1f;margin-bottom:8px;">配置完成！</div>
+                <div style="font-size:13px;color:#666;line-height:1.6;">
+                    现在你可以点击右下角的「AI 批改」按钮开始自动批改了。
+                </div>
+            </div>
+        `;
+    }
+
+    function bindEvents() {
+        if (currentStep === 1) {
+            overlay.querySelector('#onboarding-skip').onclick = () => { overlay.remove(); };
+            overlay.querySelector('#onboarding-next').onclick = async () => {
+                const keyInput = overlay.querySelector('#onboarding-apikey');
+                const key = keyInput.value.trim();
+                if (!key) {
+                    showKeyStatus('请输入 API 密钥', 'error');
+                    return;
+                }
+                const btn = overlay.querySelector('#onboarding-next');
+                btn.disabled = true;
+                btn.textContent = '验证中...';
+                const valid = await testApiKey(key);
+                btn.disabled = false;
+                btn.textContent = '验证并继续';
+                if (valid) {
+                    const provider = ProviderManager.getProvider('5plus1官方');
+                    if (provider) provider.apiKey = key;
+                    ProviderManager.save();
+                    currentStep = 2;
+                    render();
+                } else {
+                    showKeyStatus('密钥验证失败，请检查是否正确', 'error');
+                }
+            };
+        } else if (currentStep === 2) {
+            overlay.querySelectorAll('input[name="onboarding-mode"]').forEach(radio => {
+                radio.onchange = () => { selectedWorkflow = radio.value; render(); };
+            });
+            overlay.querySelector('#onboarding-back').onclick = () => { currentStep = 1; render(); };
+            overlay.querySelector('#onboarding-next').onclick = () => {
+                WorkflowManager.setActive(selectedWorkflow);
+                currentStep = 3;
+                render();
+            };
+        } else if (currentStep === 3) {
+            overlay.querySelector('#onboarding-skip-ctx').onclick = () => { saveAndFinish(); };
+            overlay.querySelector('#onboarding-next').onclick = () => { saveAndFinish(true); };
+        } else if (currentStep === 4) {
+            overlay.querySelector('#onboarding-done').onclick = () => {
+                overlay.remove();
+                GM_setValue('ai-grading-show-onboarding', false);
+            };
+        }
+    }
+
+    function showKeyStatus(msg, type) {
+        const el = overlay.querySelector('#onboarding-key-status');
+        if (!el) return;
+        el.style.display = 'block';
+        el.style.background = type === 'error' ? 'rgba(217,48,37,0.08)' : 'rgba(52,168,83,0.08)';
+        el.style.color = type === 'error' ? '#D93025' : '#34A853';
+        el.textContent = msg;
+    }
+
+    async function testApiKey(key) {
+        return new Promise(resolve => {
+            GM_xmlhttpRequest({
+                method: 'POST',
+                url: SCRIPT_CONFIG.DEFAULT_ENDPOINT,
+                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${key}` },
+                data: JSON.stringify({ model: 'aimarker-fast', messages: [{ role: 'user', content: 'hi' }], max_tokens: 1 }),
+                timeout: 10000,
+                onload: (res) => resolve(res.status >= 200 && res.status < 300),
+                onerror: () => resolve(false),
+                ontimeout: () => resolve(false)
+            });
+        });
+    }
+
+    function saveAndFinish(saveContext) {
+        if (saveContext) {
+            const question = overlay.querySelector('#onboarding-question')?.value?.trim() || '';
+            const answer = overlay.querySelector('#onboarding-answer')?.value?.trim() || '';
+            const rubric = overlay.querySelector('#onboarding-rubric')?.value?.trim() || '';
+            const cfg = PresetManager.getCurrentConfig();
+            if (question) cfg.question = question;
+            if (answer) cfg.answer = answer;
+            if (rubric) cfg.rubric = rubric;
+            PresetManager.save();
+        }
+        currentStep = 4;
+        render();
+    }
+
+    document.body.appendChild(overlay);
+    render();
+}
+
+// ========== 余额不足提示 ==========
+function showInsufficientBalanceDialog(isOfficial) {
+    ensureModalStyles();
+    const overlay = document.createElement('div');
+    overlay.className = 'ai-modal-overlay';
+    overlay.style.zIndex = '1000020';
+    overlay.innerHTML = `
+        <div class="ai-modal-card" style="max-width:420px;">
+            <div class="ai-modal-header" style="display:flex;align-items:center;gap:10px;">
+                <span style="font-size:20px;">⚠️</span>
+                <span>余额不足</span>
+            </div>
+            <div class="ai-modal-body">
+                <p style="font-size:13px;color:#666;line-height:1.6;margin-bottom:16px;">
+                    ${isOfficial
+                        ? '您的 5plus1 API 余额不足，无法继续批改。请前往充值页面完成充值。'
+                        : '您的 API 余额不足，请前往对应平台充值后再试。'
+                    }
+                </p>
+            </div>
+            <div class="ai-modal-footer">
+                <button class="ai-modal-btn-cancel" id="balance-close">关闭</button>
+                ${isOfficial
+                    ? '<button class="ai-modal-btn-confirm" id="balance-topup">前往充值</button>'
+                    : ''
+                }
+            </div>
+        </div>
+    `;
+    document.body.appendChild(overlay);
+
+    overlay.querySelector('#balance-close').onclick = () => overlay.remove();
+    overlay.onclick = (e) => { if (e.target === overlay) overlay.remove(); };
+
+    if (isOfficial) {
+        overlay.querySelector('#balance-topup').onclick = () => {
+            window.open('https://api.ai.five-plus-one.com/console/topup', '_blank');
+            overlay.remove();
+        };
+    }
 }

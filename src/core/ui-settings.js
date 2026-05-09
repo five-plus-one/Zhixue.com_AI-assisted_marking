@@ -856,15 +856,15 @@ function fillFormFromActivePreset() {
     document.getElementById('standard-answer').value = config.answer || '';
     document.getElementById('grading-rubric').value = config.rubric || '';
 
-    // 供应商下拉（仅用于管理供应商配置，不设置"活跃"供应商）
+    // 供应商下拉（仅用于管理供应商配置，默认选中 5plus1官方）
     renderProviderDropdown();
     const currentProviderSelect = document.getElementById('ai-provider');
-    const firstProvider = Object.keys(ProviderManager.data.providers)[0];
-    if (firstProvider && currentProviderSelect) {
-        currentProviderSelect.value = firstProvider;
+    const defaultProvider = ProviderManager.data.providers['5plus1官方'] ? '5plus1官方' : Object.keys(ProviderManager.data.providers)[0];
+    if (defaultProvider && currentProviderSelect) {
+        currentProviderSelect.value = defaultProvider;
     }
     // 5plus1 官方：强制使用默认网关
-    const providerName = currentProviderSelect?.value || firstProvider;
+    const providerName = currentProviderSelect?.value || defaultProvider;
     const provider = ProviderManager.getProvider(providerName);
     if (providerName === '5plus1官方') {
         document.getElementById('api-endpoint').value = SCRIPT_CONFIG.DEFAULT_ENDPOINT;
@@ -1342,9 +1342,9 @@ function showWorkflowEditModal(wf) {
     const modal = document.createElement('div');
     modal.className = 'ai-modal-overlay';
     modal.innerHTML = `
-        <div class="ai-modal-card" style="max-width:500px;">
+        <div class="ai-modal-card" style="max-width:500px;max-height:85vh;display:flex;flex-direction:column;">
             <div class="ai-modal-header">编辑工作流</div>
-            <div class="ai-modal-body">
+            <div class="ai-modal-body" style="overflow-y:auto;flex:1;min-height:0;">
                 <div class="form-group"><label>名称</label><input type="text" id="wf-edit-name" value="${wf.name}" ${wf.isBuiltin ? 'readonly' : ''}></div>
                 <div class="form-group"><label>描述</label><input type="text" id="wf-edit-desc" value="${wf.description || ''}"></div>
                 <div style="border-top:1px solid rgba(0,0,0,0.06);padding-top:12px;margin-top:8px;">

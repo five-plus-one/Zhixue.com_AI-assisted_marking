@@ -863,6 +863,7 @@ function loadSettings() {
 
 function renderPresetDropdown() {
     const select = document.getElementById('preset-select');
+    if (!select) return;
     select.innerHTML = '';
     for (const name in PresetManager.data.list) {
         const option = document.createElement('option');
@@ -874,6 +875,8 @@ function renderPresetDropdown() {
 }
 
 function fillFormFromActivePreset() {
+    // 设置面板可能未创建（如在非阅卷页面），直接返回
+    if (!document.getElementById('ai-grading-settings')) return;
     const config = PresetManager.getCurrentConfig();
     const currentUrlId = PresetManager.getTaskIdentifier();
 

@@ -280,7 +280,7 @@ const WorkflowManager = {
                 "双评模式(高精度)": {
                     id: "dual",
                     description: "高精准度，两次评分超阈值自动仲裁",
-                    model: { provider: "5plus1官方", model: "aimarker-pro", reasoningEffort: "" },
+                    model: { provider: "5plus1官方", model: "aimarker-fast", reasoningEffort: "minimal" },
                     dualEval: {
                         enabled: true,
                         secondary: { provider: "5plus1官方", model: "aimarker-pro", reasoningEffort: "" },

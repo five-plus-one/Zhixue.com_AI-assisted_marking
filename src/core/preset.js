@@ -86,9 +86,7 @@ const PresetManager = {
             if (wfConfig) {
                 return {
                     ...config,
-                    endpoint: wfConfig.endpoint,
-                    apiKey: wfConfig.apiKey,
-                    model: wfConfig.model
+                    ...wfConfig
                 };
             }
         }

@@ -244,6 +244,11 @@ const WorkflowManager = {
                     wf.model = defaultWf.model;
                     changed = true;
                 }
+                // 迁移 reasoningEffort 字段
+                if (wf.model && defaultWf.model && wf.model.reasoningEffort === undefined) {
+                    wf.model.reasoningEffort = defaultWf.model.reasoningEffort || '';
+                    changed = true;
+                }
                 if (defaultWf.dualEval && JSON.stringify(wf.dualEval) !== JSON.stringify(defaultWf.dualEval)) {
                     wf.dualEval = defaultWf.dualEval;
                     changed = true;
@@ -261,25 +266,25 @@ const WorkflowManager = {
                 "快速批改(推荐)": {
                     id: "fast",
                     description: "快速、高性价比，适合逻辑题、画图题等",
-                    model: { provider: "5plus1官方", model: "aimarker-fast" },
+                    model: { provider: "5plus1官方", model: "aimarker-fast", reasoningEffort: "minimal" },
                     dualEval: null,
                     isBuiltin: true
                 },
                 "普通批改": {
                     id: "normal",
                     description: "普通模式，适合大多数题型",
-                    model: { provider: "5plus1官方", model: "aimarker-pro" },
+                    model: { provider: "5plus1官方", model: "aimarker-pro", reasoningEffort: "" },
                     dualEval: null,
                     isBuiltin: true
                 },
                 "双评模式(高精度)": {
                     id: "dual",
                     description: "高精准度，两次评分超阈值自动仲裁",
-                    model: { provider: "5plus1官方", model: "aimarker-pro" },
+                    model: { provider: "5plus1官方", model: "aimarker-pro", reasoningEffort: "" },
                     dualEval: {
                         enabled: true,
-                        secondary: { provider: "5plus1官方", model: "aimarker-pro" },
-                        arbitration: { provider: "5plus1官方", model: "aimarker-pro" },
+                        secondary: { provider: "5plus1官方", model: "aimarker-pro", reasoningEffort: "" },
+                        arbitration: { provider: "5plus1官方", model: "aimarker-pro", reasoningEffort: "" },
                         threshold: 2
                     },
                     isBuiltin: true
@@ -308,7 +313,11 @@ const WorkflowManager = {
     getWorkflowModelConfig(workflowId) {
         const wf = this.getWorkflow(workflowId);
         if (!wf || !wf.model) return null;
-        return ProviderManager.getCallConfig(wf.model.provider, wf.model.model);
+        const callConfig = ProviderManager.getCallConfig(wf.model.provider, wf.model.model);
+        if (callConfig && wf.model.reasoningEffort) {
+            callConfig.reasoningEffort = wf.model.reasoningEffort;
+        }
+        return callConfig;
     },
     setActive(id) {
         this.data.activeWorkflow = id;
@@ -318,7 +327,7 @@ const WorkflowManager = {
         this.data.workflows[name] = {
             id: config.id || name.toLowerCase().replace(/\s+/g, '-'),
             description: config.description || '',
-            model: config.model || { provider: "", model: "" },
+            model: config.model || { provider: "", model: "", reasoningEffort: "" },
             dualEval: config.dualEval || null,
             isBuiltin: false
         };
@@ -364,7 +373,12 @@ function callAI(prompt, base64DataArray, config, onStreamUpdate) {
             stream: true
         };
 
-        console.log(`📤 发送请求到: ${config.endpoint} (模型: ${config.model})`);
+        // 如果配置了思考链深度，添加 reasoning_effort 参数
+        if (config.reasoningEffort) {
+            requestBody.reasoning_effort = config.reasoningEffort;
+        }
+
+        console.log(`📤 发送请求到: ${config.endpoint} (模型: ${config.model}${config.reasoningEffort ? ', 思考深度: ' + config.reasoningEffort : ''})`);
 
         let fullText = '';
         let buffer = '';
@@ -491,9 +505,15 @@ async function callDualEvaluation(base64DataArray, config, onStreamUpdate) {
     const primaryConfig = ProviderManager.getCallConfig(
         workflow.model.provider, workflow.model.model
     );
+    if (workflow.model.reasoningEffort) {
+        primaryConfig.reasoningEffort = workflow.model.reasoningEffort;
+    }
     const secondaryConfig = ProviderManager.getCallConfig(
         dualConfig.secondary.provider, dualConfig.secondary.model
     );
+    if (dualConfig.secondary.reasoningEffort) {
+        secondaryConfig.reasoningEffort = dualConfig.secondary.reasoningEffort;
+    }
 
     if (!primaryConfig || !secondaryConfig) {
         console.warn('⚠️ [双评] 模型配置不完整，回退到单模型模式');
@@ -522,11 +542,11 @@ async function callDualEvaluation(base64DataArray, config, onStreamUpdate) {
     // 一个失败，使用另一个
     if (scoreA === null) {
         console.warn('⚠️ [双评] 主模型失败，使用副模型结果');
-        return { ...detailB, dualEval: { scoreA: null, scoreB, diff: null, result: 'fallback-b' } };
+        return { ...detailB, dualEval: { scoreA: null, scoreB, diff: null, result: 'fallback-b', detailA: null, detailB: detailB?._sections || null } };
     }
     if (scoreB === null) {
         console.warn('⚠️ [双评] 副模型失败，使用主模型结果');
-        return { ...detailA, dualEval: { scoreA, scoreB: null, diff: null, result: 'fallback-a' } };
+        return { ...detailA, dualEval: { scoreA, scoreB: null, diff: null, result: 'fallback-a', detailA: detailA?._sections || null, detailB: null } };
     }
 
     const diff = Math.abs(scoreA - scoreB);
@@ -539,7 +559,11 @@ async function callDualEvaluation(base64DataArray, config, onStreamUpdate) {
         return {
             ...detailA,
             score: finalScore,
-            dualEval: { scoreA, scoreB, diff, result: 'consensus' }
+            dualEval: {
+                scoreA, scoreB, diff, result: 'consensus',
+                detailA: detailA?._sections || null,
+                detailB: detailB?._sections || null
+            }
         };
     }
 
@@ -550,10 +574,13 @@ async function callDualEvaluation(base64DataArray, config, onStreamUpdate) {
     const arbConfig = ProviderManager.getCallConfig(
         dualConfig.arbitration.provider, dualConfig.arbitration.model
     );
+    if (dualConfig.arbitration.reasoningEffort) {
+        arbConfig.reasoningEffort = dualConfig.arbitration.reasoningEffort;
+    }
     if (!arbConfig) {
         console.warn('⚠️ [三评] 仲裁模型配置不完整，取平均分');
         const finalScore = Math.round((scoreA + scoreB) / 2);
-        return { ...detailA, score: finalScore, dualEval: { scoreA, scoreB, diff, result: 'average-fallback' } };
+        return { ...detailA, score: finalScore, dualEval: { scoreA, scoreB, diff, result: 'average-fallback', detailA: detailA?._sections || null, detailB: detailB?._sections || null } };
     }
 
     const arbPrompt = buildArbitrationPrompt(config, detailA, detailB, threshold);
@@ -567,7 +594,9 @@ async function callDualEvaluation(base64DataArray, config, onStreamUpdate) {
             scoreA, scoreB, diff,
             result: 'arbitration',
             arbScore: arbParsed.score,
-            arbAnalysis: arbParsed._sections?.['仲裁分析'] || ''
+            arbAnalysis: arbParsed._sections?.['仲裁分析'] || '',
+            detailA: detailA?._sections || null,
+            detailB: detailB?._sections || null
         }
     };
 }

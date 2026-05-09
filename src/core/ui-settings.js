@@ -856,16 +856,15 @@ function fillFormFromActivePreset() {
     document.getElementById('standard-answer').value = config.answer || '';
     document.getElementById('grading-rubric').value = config.rubric || '';
 
-    // 供应商下拉
+    // 供应商下拉（仅用于管理供应商配置，不设置"活跃"供应商）
     renderProviderDropdown();
-    const providerMigration = { '5plus1': '5plus1官方', 'openai': 'OpenAI兼容' };
-    const providerName = providerMigration[config.provider] || config.provider || ProviderManager.data.activeProvider;
-    if (ProviderManager.data.providers[providerName]) {
-        ProviderManager.data.activeProvider = providerName;
-        ProviderManager.save();
-        document.getElementById('ai-provider').value = providerName;
+    const currentProviderSelect = document.getElementById('ai-provider');
+    const firstProvider = Object.keys(ProviderManager.data.providers)[0];
+    if (firstProvider && currentProviderSelect) {
+        currentProviderSelect.value = firstProvider;
     }
     // 5plus1 官方：强制使用默认网关
+    const providerName = currentProviderSelect?.value || firstProvider;
     const provider = ProviderManager.getProvider(providerName);
     if (providerName === '5plus1官方') {
         document.getElementById('api-endpoint').value = SCRIPT_CONFIG.DEFAULT_ENDPOINT;
@@ -1111,6 +1110,7 @@ async function handleDeletePreset() {
 function renderProviderDropdown() {
     const select = document.getElementById('ai-provider');
     if (!select) return;
+    const currentValue = select.value;
     select.innerHTML = '';
     for (const name in ProviderManager.data.providers) {
         const option = document.createElement('option');
@@ -1118,14 +1118,18 @@ function renderProviderDropdown() {
         option.textContent = name;
         select.appendChild(option);
     }
-    select.value = ProviderManager.data.activeProvider;
+    // 保持当前选中的供应商，如果没有则选中第一个
+    if (currentValue && ProviderManager.data.providers[currentValue]) {
+        select.value = currentValue;
+    }
 }
 
 function renderModelList() {
     const container = document.getElementById('model-list');
     if (!container) return;
-    const provider = ProviderManager.getCurrentProvider();
-    const models = provider.models || {};
+    const currentProviderName = document.getElementById('ai-provider')?.value;
+    const provider = ProviderManager.getProvider(currentProviderName);
+    const models = provider?.models || {};
 
     let html = '';
     for (const [id, info] of Object.entries(models)) {
@@ -1148,7 +1152,8 @@ function renderModelList() {
 // 暴露到全局作用域（供内联 onclick 使用）
 window.deleteModel = async function(modelId) {
     if (typeof ProviderManager === 'undefined') return;
-    const provider = ProviderManager.getCurrentProvider();
+    const currentProviderName = document.getElementById('ai-provider')?.value;
+    const provider = ProviderManager.getProvider(currentProviderName);
     if (!provider || !provider.models || !provider.models[modelId]) return;
     if (provider.models[modelId].isBuiltin) {
         if (typeof showAlertModal === 'function') showAlertModal("内置模型不允许删除！");
@@ -1156,7 +1161,7 @@ window.deleteModel = async function(modelId) {
     }
     const confirmFn = typeof showConfirmModal === 'function' ? showConfirmModal : confirm;
     if (await confirmFn(`确定要删除模型【${modelId}】吗？`)) {
-        ProviderManager.deleteModel(ProviderManager.data.activeProvider, modelId);
+        ProviderManager.deleteModel(currentProviderName, modelId);
         if (typeof renderModelList === 'function') renderModelList();
         if (typeof showToast === 'function') showToast(`模型「${modelId}」已删除`);
     }
@@ -1168,8 +1173,6 @@ async function deleteModel(modelId) {
 
 function handleProviderChange() {
     const name = document.getElementById('ai-provider').value;
-    ProviderManager.data.activeProvider = name;
-    ProviderManager.save();
 
     const provider = ProviderManager.getProvider(name);
     if (provider) {
@@ -1195,17 +1198,16 @@ async function handleNewProvider() {
         apiKey: document.getElementById('api-key').value,
         models: {}
     });
-    ProviderManager.data.activeProvider = name;
-    ProviderManager.data.activeModel = '';
-    ProviderManager.save();
     renderProviderDropdown();
+    document.getElementById('ai-provider').value = name;
+    handleProviderChange();
     renderModelList();
     document.getElementById('api-key-link-container').style.display = 'none';
     showToast(`供应商「${name}」创建成功`);
 }
 
 async function handleDeleteProvider() {
-    const name = ProviderManager.data.activeProvider;
+    const name = document.getElementById('ai-provider').value;
     if (Object.keys(ProviderManager.data.providers).length <= 1) {
         showAlertModal("必须至少保留一个供应商！");
         return;
@@ -1224,12 +1226,14 @@ async function handleAddModel() {
         showAlertModal("请输入模型 ID！");
         return;
     }
-    const provider = ProviderManager.getCurrentProvider();
+    const currentProviderName = document.getElementById('ai-provider')?.value;
+    const provider = ProviderManager.getProvider(currentProviderName);
+    if (!provider) return;
     if (provider.models && provider.models[modelId]) {
         showAlertModal("该模型已存在！");
         return;
     }
-    ProviderManager.addModel(ProviderManager.data.activeProvider, modelId, modelId, []);
+    ProviderManager.addModel(currentProviderName, modelId, modelId, []);
     document.getElementById('new-model-id').value = '';
     renderModelList();
     renderWorkflowInfo();
@@ -1263,10 +1267,13 @@ function renderWorkflowInfo() {
 
     if (infoEl && wf) {
         const modelInfo = wf.model;
-        let html = `<div style="margin-bottom:4px;"><strong>主模型：</strong>${modelInfo.provider} / ${modelInfo.model}</div>`;
+        const reasoningLabel = { minimal: '不思考', low: '轻度', medium: '中度', high: '深度' };
+        let html = `<div style="margin-bottom:4px;"><strong>主模型：</strong>${modelInfo.provider} / ${modelInfo.model}${modelInfo.reasoningEffort ? ' <span style="font-size:11px;color:#86868b;">(' + (reasoningLabel[modelInfo.reasoningEffort] || modelInfo.reasoningEffort) + ')</span>' : ''}</div>`;
         if (wf.dualEval && wf.dualEval.enabled) {
-            html += `<div style="margin-bottom:4px;"><strong>副模型：</strong>${wf.dualEval.secondary.provider} / ${wf.dualEval.secondary.model}</div>`;
-            html += `<div style="margin-bottom:4px;"><strong>仲裁模型：</strong>${wf.dualEval.arbitration.provider} / ${wf.dualEval.arbitration.model}</div>`;
+            const sec = wf.dualEval.secondary;
+            const arb = wf.dualEval.arbitration;
+            html += `<div style="margin-bottom:4px;"><strong>副模型：</strong>${sec.provider} / ${sec.model}${sec.reasoningEffort ? ' <span style="font-size:11px;color:#86868b;">(' + (reasoningLabel[sec.reasoningEffort] || sec.reasoningEffort) + ')</span>' : ''}</div>`;
+            html += `<div style="margin-bottom:4px;"><strong>仲裁模型：</strong>${arb.provider} / ${arb.model}${arb.reasoningEffort ? ' <span style="font-size:11px;color:#86868b;">(' + (reasoningLabel[arb.reasoningEffort] || arb.reasoningEffort) + ')</span>' : ''}</div>`;
             html += `<div><strong>分差阈值：</strong>${wf.dualEval.threshold}分</div>`;
         }
         infoEl.innerHTML = html;
@@ -1287,10 +1294,12 @@ async function handleNewWorkflow() {
         showAlertModal("该工作流名称已存在！");
         return;
     }
+    const firstProvider = Object.keys(ProviderManager.data.providers)[0];
+    const firstModel = firstProvider ? Object.keys(ProviderManager.data.providers[firstProvider]?.models || {})[0] || '' : '';
     WorkflowManager.addWorkflow(name, {
         id: name.toLowerCase().replace(/\s+/g, '-'),
         description: '',
-        model: { provider: ProviderManager.data.activeProvider, model: ProviderManager.data.activeModel },
+        model: { provider: firstProvider || '', model: firstModel, reasoningEffort: '' },
         dualEval: null
     });
     WorkflowManager.data.activeWorkflow = WorkflowManager.data.workflows[name].id;
@@ -1307,7 +1316,7 @@ async function handleEditWorkflow() {
 
 function showWorkflowEditModal(wf) {
     // 确保模态框样式已加载
-    if (typeof T === 'function') T();
+    ensureModalStyles();
 
     const providers = Object.keys(ProviderManager.data.providers);
     const providerOptions = providers.map(p => `<option value="${p}">${p}</option>`).join('');
@@ -1322,6 +1331,14 @@ function showWorkflowEditModal(wf) {
 
     const isDual = wf.dualEval && wf.dualEval.enabled;
 
+    const reasoningEffortOptions = `
+        <option value="">不设置</option>
+        <option value="minimal">minimal (不思考)</option>
+        <option value="low">low (轻度)</option>
+        <option value="medium">medium (中度)</option>
+        <option value="high">high (深度)</option>
+    `;
+
     const modal = document.createElement('div');
     modal.className = 'ai-modal-overlay';
     modal.innerHTML = `
@@ -1334,6 +1351,7 @@ function showWorkflowEditModal(wf) {
                     <div style="font-size:13px;font-weight:600;margin-bottom:10px;">主模型</div>
                     <div class="form-group"><label>供应商</label><select id="wf-edit-provider">${providerOptions}</select></div>
                     <div class="form-group"><label>模型</label><select id="wf-edit-model"></select></div>
+                    <div class="form-group"><label>思考链深度 <span style="font-size:11px;color:#86868b;">(部分模型不支持)</span></label><select id="wf-edit-reasoning">${reasoningEffortOptions}</select></div>
                 </div>
                 <div style="border-top:1px solid rgba(0,0,0,0.06);padding-top:12px;margin-top:8px;">
                     <div class="checkbox-group">
@@ -1344,9 +1362,11 @@ function showWorkflowEditModal(wf) {
                         <div style="font-size:13px;font-weight:600;margin:10px 0;">副模型</div>
                         <div class="form-group"><label>供应商</label><select id="wf-edit-sec-provider">${providerOptions}</select></div>
                         <div class="form-group"><label>模型</label><select id="wf-edit-sec-model"></select></div>
+                        <div class="form-group"><label>思考链深度</label><select id="wf-edit-sec-reasoning">${reasoningEffortOptions}</select></div>
                         <div style="font-size:13px;font-weight:600;margin:10px 0;">仲裁模型</div>
                         <div class="form-group"><label>供应商</label><select id="wf-edit-arb-provider">${providerOptions}</select></div>
                         <div class="form-group"><label>模型</label><select id="wf-edit-arb-model"></select></div>
+                        <div class="form-group"><label>思考链深度</label><select id="wf-edit-arb-reasoning">${reasoningEffortOptions}</select></div>
                         <div class="form-group"><label>分差阈值 (分)</label><input type="number" id="wf-edit-threshold" value="${wf.dualEval?.threshold || 2}" min="1" max="10"></div>
                     </div>
                 </div>
@@ -1363,22 +1383,28 @@ function showWorkflowEditModal(wf) {
     // 初始化下拉框
     const mainProvider = document.getElementById('wf-edit-provider');
     const mainModel = document.getElementById('wf-edit-model');
+    const mainReasoning = document.getElementById('wf-edit-reasoning');
     const secProvider = document.getElementById('wf-edit-sec-provider');
     const secModel = document.getElementById('wf-edit-sec-model');
+    const secReasoning = document.getElementById('wf-edit-sec-reasoning');
     const arbProvider = document.getElementById('wf-edit-arb-provider');
     const arbModel = document.getElementById('wf-edit-arb-model');
+    const arbReasoning = document.getElementById('wf-edit-arb-reasoning');
 
     mainProvider.value = wf.model.provider;
     mainModel.innerHTML = getModelOptions(wf.model.provider);
     mainModel.value = wf.model.model;
+    mainReasoning.value = wf.model.reasoningEffort || '';
 
     if (isDual) {
         secProvider.value = wf.dualEval.secondary.provider;
         secModel.innerHTML = getModelOptions(wf.dualEval.secondary.provider);
         secModel.value = wf.dualEval.secondary.model;
+        secReasoning.value = wf.dualEval.secondary.reasoningEffort || '';
         arbProvider.value = wf.dualEval.arbitration.provider;
         arbModel.innerHTML = getModelOptions(wf.dualEval.arbitration.provider);
         arbModel.value = wf.dualEval.arbitration.model;
+        arbReasoning.value = wf.dualEval.arbitration.reasoningEffort || '';
     }
 
     // 供应商变化时更新模型列表
@@ -1416,12 +1442,13 @@ function showWorkflowEditModal(wf) {
             description: document.getElementById('wf-edit-desc').value,
             model: {
                 provider: mainProvider.value,
-                model: mainModel.value
+                model: mainModel.value,
+                reasoningEffort: mainReasoning.value
             },
             dualEval: dualEnabled ? {
                 enabled: true,
-                secondary: { provider: secProvider.value, model: secModel.value },
-                arbitration: { provider: arbProvider.value, model: arbModel.value },
+                secondary: { provider: secProvider.value, model: secModel.value, reasoningEffort: secReasoning.value },
+                arbitration: { provider: arbProvider.value, model: arbModel.value, reasoningEffort: arbReasoning.value },
                 threshold: parseInt(document.getElementById('wf-edit-threshold').value) || 2
             } : null
         };
@@ -1456,12 +1483,11 @@ function saveAISettings() {
     const providerName = document.getElementById('ai-provider').value;
     const subQuestions = getSubQuestionsFromForm();
 
-    // 保存供应商配置
+    // 保存供应商配置（仅保存当前编辑的供应商，不设置"活跃"供应商）
     const provider = ProviderManager.getProvider(providerName);
     if (provider) {
         provider.endpoint = document.getElementById('api-endpoint').value;
         provider.apiKey = document.getElementById('api-key').value;
-        ProviderManager.data.activeProvider = providerName;
         ProviderManager.save();
     }
 
@@ -1479,7 +1505,6 @@ function saveAISettings() {
         question: document.getElementById('question-content').value,
         answer: document.getElementById('standard-answer').value,
         rubric: document.getElementById('grading-rubric').value,
-        provider: providerName,
         workflowId: workflowId || 'fast',
         gradingMode,
         subQuestions: subQuestions.length > 0 ? subQuestions : undefined,

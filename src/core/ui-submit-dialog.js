@@ -186,13 +186,39 @@ function showAutoSubmitDialog(score, comment, subScores, extraInfo) {
                                 dualEval.result === 'fallback-b' ? '使用老师B' : dualEval.result
                             }</span>
                         </div>
-                        ${dualEval.arbAnalysis ? `
-                        <div style="margin-top:8px;padding-top:8px;border-top:1px solid rgba(0,0,0,0.06);">
-                            <div style="font-size:11px;color:#86868b;margin-bottom:4px;">仲裁分析</div>
-                            <div style="font-size:12px;color:#4a4a4a;line-height:1.5;">${dualEval.arbAnalysis}</div>
-                        </div>` : ''}
                     </div>
+                </div>
+                ${dualEval.detailA ? `
+                <div class="asd-info-block">
+                    <div class="asd-info-label">老师A 评分依据</div>
+                    <div class="asd-info-content" style="max-height:120px;overflow-y:auto;">${dualEval.detailA['评分依据'] || '—'}</div>
                 </div>` : ''}
+                ${dualEval.detailA && dualEval.detailA['分数计算'] ? `
+                <div class="asd-info-block">
+                    <div class="asd-info-label">老师A 分数计算</div>
+                    <div class="asd-info-content" style="font-weight:600;">${dualEval.detailA['分数计算']}</div>
+                </div>` : ''}
+                ${dualEval.detailB ? `
+                <div class="asd-info-block">
+                    <div class="asd-info-label">老师B 评分依据</div>
+                    <div class="asd-info-content" style="max-height:120px;overflow-y:auto;">${dualEval.detailB['评分依据'] || '—'}</div>
+                </div>` : ''}
+                ${dualEval.detailB && dualEval.detailB['分数计算'] ? `
+                <div class="asd-info-block">
+                    <div class="asd-info-label">老师B 分数计算</div>
+                    <div class="asd-info-content" style="font-weight:600;">${dualEval.detailB['分数计算']}</div>
+                </div>` : ''}
+                ${dualEval.arbAnalysis ? `
+                <div class="asd-info-block">
+                    <div class="asd-info-label">仲裁分析</div>
+                    <div class="asd-info-content" style="max-height:120px;overflow-y:auto;">${dualEval.arbAnalysis}</div>
+                </div>` : ''}
+                ${dualEval.arbScore !== undefined ? `
+                <div class="asd-info-block">
+                    <div class="asd-info-label">仲裁得分</div>
+                    <div class="asd-info-content" style="font-weight:600;">${dualEval.arbScore}分</div>
+                </div>` : ''}
+                ` : ''}
                 <div class="asd-info-block"><div class="asd-info-label">识别答案</div><div class="asd-info-content">${studentAnswer}</div></div>
                 ${comment ? `<div class="asd-info-block"><div class="asd-info-label">评语</div><div class="asd-info-content">${comment}</div></div>` : ''}
             </div>

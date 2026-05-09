@@ -1561,9 +1561,10 @@ function saveAISettings() {
 }
 
 // ========== 新手引导 ==========
-function showOnboardingDialog(forceShow) {
+function showOnboardingDialog(forceShow, mode) {
+    mode = mode || 'first-launch';
     const apiKey = ProviderManager.getProvider('5plus1官方')?.apiKey || '';
-    if (!forceShow && apiKey) return;
+    if (!forceShow && apiKey && mode !== 'new-question') return;
 
     ensureModalStyles();
 
@@ -1573,21 +1574,22 @@ function showOnboardingDialog(forceShow) {
 
     let currentStep = 1;
     let selectedWorkflow = 'fast';
+    let presetName = '';
 
     function render() {
         overlay.innerHTML = `
             <div class="ai-modal-card" style="max-width:520px;max-height:85vh;display:flex;flex-direction:column;">
                 <div class="ai-modal-header" style="display:flex;align-items:center;gap:10px;">
                     <span style="font-size:20px;">🎓</span>
-                    <span id="onboarding-title">${currentStep === 1 ? '欢迎使用 AI 批改助手' : currentStep === 2 ? '选择批改模式' : currentStep === 3 ? '配置批改上下文（可选）' : '配置完成！'}</span>
+                    <span id="onboarding-title">${currentStep === 1 ? (mode === 'new-question' ? '创建配置方案' : '欢迎使用 AI 批改助手') : currentStep === 2 ? '选择批改模式' : currentStep === 3 ? '配置批改上下文（可选）' : '配置完成！'}</span>
                 </div>
                 <div class="ai-modal-body" style="overflow-y:auto;flex:1;min-height:0;" id="onboarding-body">
                     ${currentStep === 1 ? renderStep1() : currentStep === 2 ? renderStep2() : currentStep === 3 ? renderStep3() : renderStep4()}
                 </div>
                 <div class="ai-modal-footer" id="onboarding-footer">
                     ${currentStep === 1 ? `
-                        <button class="ai-modal-btn-cancel" id="onboarding-skip">稍后设置</button>
-                        <button class="ai-modal-btn-confirm" id="onboarding-next">验证并继续</button>
+                        ${mode === 'new-question' ? '' : '<button class="ai-modal-btn-cancel" id="onboarding-skip">稍后设置</button>'}
+                        <button class="ai-modal-btn-confirm" id="onboarding-next">${mode === 'new-question' ? '继续' : '验证并继续'}</button>
                     ` : currentStep === 2 ? `
                         <button class="ai-modal-btn-cancel" id="onboarding-back">上一步</button>
                         <button class="ai-modal-btn-confirm" id="onboarding-next">继续</button>
@@ -1604,6 +1606,18 @@ function showOnboardingDialog(forceShow) {
     }
 
     function renderStep1() {
+        if (mode === 'new-question') {
+            return `
+                <p style="font-size:13px;color:#666;line-height:1.6;margin-bottom:16px;">
+                    检测到新的试题，请为这个试题创建一个配置方案。
+                </p>
+                <div class="form-group">
+                    <label>配置方案名称</label>
+                    <input type="text" id="onboarding-preset-name" placeholder="例如: 语文作文、数学大题" style="width:100%;">
+                </div>
+                <div id="onboarding-key-status" style="font-size:12px;padding:8px 12px;border-radius:6px;margin-top:8px;display:none;"></div>
+            `;
+        }
         return `
             <p style="font-size:13px;color:#666;line-height:1.6;margin-bottom:16px;">
                 AI 批改助手可以帮助你自动批改试卷。首先，请配置你的 API 密钥。
@@ -1684,6 +1698,19 @@ function showOnboardingDialog(forceShow) {
 
     function bindEvents() {
         if (currentStep === 1) {
+            if (mode === 'new-question') {
+                overlay.querySelector('#onboarding-next').onclick = () => {
+                    const name = overlay.querySelector('#onboarding-preset-name')?.value?.trim();
+                    if (!name) {
+                        showKeyStatus('请输入配置方案名称', 'error');
+                        return;
+                    }
+                    presetName = name;
+                    currentStep = 2;
+                    render();
+                };
+                return;
+            }
             overlay.querySelector('#onboarding-skip').onclick = () => { overlay.remove(); };
             overlay.querySelector('#onboarding-next').onclick = async () => {
                 const keyInput = overlay.querySelector('#onboarding-apikey');
@@ -1754,16 +1781,38 @@ function showOnboardingDialog(forceShow) {
     }
 
     function saveAndFinish(saveContext) {
-        if (saveContext) {
-            const question = overlay.querySelector('#onboarding-question')?.value?.trim() || '';
-            const answer = overlay.querySelector('#onboarding-answer')?.value?.trim() || '';
-            const rubric = overlay.querySelector('#onboarding-rubric')?.value?.trim() || '';
-            const cfg = PresetManager.getCurrentConfig();
-            if (question) cfg.question = question;
-            if (answer) cfg.answer = answer;
-            if (rubric) cfg.rubric = rubric;
+        if (mode === 'new-question') {
+            const newPreset = {
+                question: '', answer: '', rubric: '',
+                workflowId: selectedWorkflow,
+                gradingMode: 'normal',
+                scoring: { roundStep: 1, roundMethod: 'round' }
+            };
+            if (saveContext) {
+                newPreset.question = overlay.querySelector('#onboarding-question')?.value?.trim() || '';
+                newPreset.answer = overlay.querySelector('#onboarding-answer')?.value?.trim() || '';
+                newPreset.rubric = overlay.querySelector('#onboarding-rubric')?.value?.trim() || '';
+            }
+            PresetManager.data.list[presetName] = newPreset;
+            PresetManager.data.active = presetName;
+            const currentUrlId = PresetManager.getTaskIdentifier();
+            PresetManager.data.bindings[currentUrlId] = presetName;
             PresetManager.save();
+            WorkflowManager.setActive(selectedWorkflow);
+        } else {
+            if (saveContext) {
+                const question = overlay.querySelector('#onboarding-question')?.value?.trim() || '';
+                const answer = overlay.querySelector('#onboarding-answer')?.value?.trim() || '';
+                const rubric = overlay.querySelector('#onboarding-rubric')?.value?.trim() || '';
+                const cfg = PresetManager.getCurrentConfig();
+                if (question) cfg.question = question;
+                if (answer) cfg.answer = answer;
+                if (rubric) cfg.rubric = rubric;
+                PresetManager.save();
+            }
         }
+        renderPresetDropdown();
+        fillFormFromActivePreset();
         currentStep = 4;
         render();
     }

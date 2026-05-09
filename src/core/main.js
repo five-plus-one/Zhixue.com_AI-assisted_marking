@@ -187,7 +187,7 @@ async function init() {
     // 首次启动或重置后显示新手引导
     const showOnboarding = GM_getValue('ai-grading-show-onboarding', true);
     if (showOnboarding) {
-        setTimeout(() => showOnboardingDialog(true), 500);
+        setTimeout(() => showOnboardingDialog(true, 'first-launch'), 500);
     }
 
     // 检查更新（延迟 5 秒，避免影响页面主要功能加载）
@@ -298,7 +298,13 @@ setInterval(() => {
             // 检查 API KEY 是否配置
             const apiKey = ProviderManager.getProvider('5plus1官方')?.apiKey || '';
             if (!apiKey) {
-                showOnboardingDialog(true);
+                showOnboardingDialog(true, 'first-launch');
+                return;
+            }
+
+            // 检查是否是新试题（未绑定配置）
+            if (!boundPreset || !PresetManager.data.list[boundPreset]) {
+                showOnboardingDialog(true, 'new-question');
                 return;
             }
 

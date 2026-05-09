@@ -1563,8 +1563,8 @@ function saveAISettings() {
 // ========== 新手引导 ==========
 function showOnboardingDialog(forceShow, mode) {
     mode = mode || 'first-launch';
-    const apiKey = ProviderManager.getProvider('5plus1官方')?.apiKey || '';
-    if (!forceShow && apiKey && mode !== 'new-question') return;
+    const existingApiKey = ProviderManager.getProvider('5plus1官方')?.apiKey || '';
+    if (!forceShow && existingApiKey && mode !== 'new-question') return;
 
     ensureModalStyles();
 
@@ -1573,31 +1573,40 @@ function showOnboardingDialog(forceShow, mode) {
     overlay.style.zIndex = '1000020';
 
     let currentStep = 1;
-    let selectedWorkflow = 'fast';
     let presetName = '';
+    let gradingMode = 'trial';
 
     function render() {
+        const isFirst = mode === 'first-launch';
+        const hasApiStep = isFirst;
+        const apiStep = hasApiStep && currentStep === 1;
+        const nameModeStep = (hasApiStep && currentStep === 2) || (!hasApiStep && currentStep === 1);
+        const ctxStep = (hasApiStep && currentStep === 3) || (!hasApiStep && currentStep === 2);
+        const doneStep = (hasApiStep && currentStep === 4) || (!hasApiStep && currentStep === 3);
+
+        const title = apiStep ? '欢迎使用 AI 批改助手' : nameModeStep ? '配置方案' : ctxStep ? '批改上下文（可选）' : '配置完成！';
+
         overlay.innerHTML = `
             <div class="ai-modal-card" style="max-width:520px;max-height:85vh;display:flex;flex-direction:column;">
                 <div class="ai-modal-header" style="display:flex;align-items:center;gap:10px;">
                     <span style="font-size:20px;">🎓</span>
-                    <span id="onboarding-title">${currentStep === 1 ? (mode === 'new-question' ? '创建配置方案' : '欢迎使用 AI 批改助手') : currentStep === 2 ? '选择批改模式' : currentStep === 3 ? '配置批改上下文（可选）' : '配置完成！'}</span>
+                    <span>${title}</span>
                 </div>
-                <div class="ai-modal-body" style="overflow-y:auto;flex:1;min-height:0;" id="onboarding-body">
-                    ${currentStep === 1 ? renderStep1() : currentStep === 2 ? renderStep2() : currentStep === 3 ? renderStep3() : renderStep4()}
+                <div class="ai-modal-body" style="overflow-y:auto;flex:1;min-height:0;">
+                    ${apiStep ? renderApiStep() : nameModeStep ? renderNameModeStep() : ctxStep ? renderCtxStep() : renderDoneStep()}
                 </div>
-                <div class="ai-modal-footer" id="onboarding-footer">
-                    ${currentStep === 1 ? `
-                        ${mode === 'new-question' ? '' : '<button class="ai-modal-btn-cancel" id="onboarding-skip">稍后设置</button>'}
-                        <button class="ai-modal-btn-confirm" id="onboarding-next">${mode === 'new-question' ? '继续' : '验证并继续'}</button>
-                    ` : currentStep === 2 ? `
-                        <button class="ai-modal-btn-cancel" id="onboarding-back">上一步</button>
-                        <button class="ai-modal-btn-confirm" id="onboarding-next">继续</button>
-                    ` : currentStep === 3 ? `
-                        <button class="ai-modal-btn-cancel" id="onboarding-skip-ctx">跳过</button>
-                        <button class="ai-modal-btn-confirm" id="onboarding-next">保存并完成</button>
+                <div class="ai-modal-footer">
+                    ${apiStep ? `
+                        <button class="ai-modal-btn-cancel" id="ob-skip">稍后设置</button>
+                        <button class="ai-modal-btn-confirm" id="ob-next">验证并继续</button>
+                    ` : nameModeStep ? `
+                        ${hasApiStep ? '<button class="ai-modal-btn-cancel" id="ob-back">上一步</button>' : ''}
+                        <button class="ai-modal-btn-confirm" id="ob-next">继续</button>
+                    ` : ctxStep ? `
+                        <button class="ai-modal-btn-cancel" id="ob-skip-ctx">跳过</button>
+                        <button class="ai-modal-btn-confirm" id="ob-next">保存并继续</button>
                     ` : `
-                        <button class="ai-modal-btn-confirm" id="onboarding-done" style="width:100%;">开始批改</button>
+                        <button class="ai-modal-btn-confirm" id="ob-start" style="flex:1;">一键开始批改</button>
                     `}
                 </div>
             </div>
@@ -1605,159 +1614,142 @@ function showOnboardingDialog(forceShow, mode) {
         bindEvents();
     }
 
-    function renderStep1() {
-        if (mode === 'new-question') {
-            return `
-                <p style="font-size:13px;color:#666;line-height:1.6;margin-bottom:16px;">
-                    检测到新的试题，请为这个试题创建一个配置方案。
-                </p>
-                <div class="form-group">
-                    <label>配置方案名称</label>
-                    <input type="text" id="onboarding-preset-name" placeholder="例如: 语文作文、数学大题" style="width:100%;">
-                </div>
-                <div id="onboarding-key-status" style="font-size:12px;padding:8px 12px;border-radius:6px;margin-top:8px;display:none;"></div>
-            `;
-        }
+    function renderApiStep() {
         return `
             <p style="font-size:13px;color:#666;line-height:1.6;margin-bottom:16px;">
                 AI 批改助手可以帮助你自动批改试卷。首先，请配置你的 API 密钥。
             </p>
             <div class="form-group">
                 <label>API 密钥</label>
-                <input type="password" id="onboarding-apikey" placeholder="请输入 5plus1 API 密钥" value="${apiKey}" style="width:100%;">
+                <input type="password" id="ob-apikey" placeholder="请输入 5plus1 API 密钥" value="${existingApiKey}" style="width:100%;">
                 <div style="margin-top:6px;">
                     <a href="https://api.ai.five-plus-one.com/console/token" target="_blank" style="font-size:12px;color:#0052FF;text-decoration:none;">点击获取访问凭证 →</a>
                 </div>
             </div>
-            <div id="onboarding-key-status" style="font-size:12px;padding:8px 12px;border-radius:6px;margin-top:8px;display:none;"></div>
+            <div id="ob-status" style="font-size:12px;padding:8px 12px;border-radius:6px;margin-top:8px;display:none;"></div>
         `;
     }
 
-    function renderStep2() {
+    function renderNameModeStep() {
         return `
-            <p style="font-size:13px;color:#666;line-height:1.6;margin-bottom:16px;">
-                请选择适合你的批改模式：
-            </p>
-            <div style="display:flex;flex-direction:column;gap:10px;">
-                <label style="display:flex;align-items:flex-start;gap:12px;padding:14px;border:2px solid ${selectedWorkflow === 'fast' ? '#0052FF' : 'rgba(0,0,0,0.08)'};border-radius:10px;cursor:pointer;transition:all 0.2s;background:${selectedWorkflow === 'fast' ? 'rgba(0,82,255,0.03)' : 'transparent'};">
-                    <input type="radio" name="onboarding-mode" value="fast" ${selectedWorkflow === 'fast' ? 'checked' : ''} style="margin-top:2px;">
-                    <div>
-                        <div style="font-size:14px;font-weight:600;color:#1d1d1f;">快速批改</div>
-                        <div style="font-size:12px;color:#666;margin-top:4px;line-height:1.5;">速度快、性价比高，适合大多数题型。使用轻量模型，不开启深度思考。</div>
-                    </div>
-                </label>
-                <label style="display:flex;align-items:flex-start;gap:12px;padding:14px;border:2px solid ${selectedWorkflow === 'normal' ? '#0052FF' : 'rgba(0,0,0,0.08)'};border-radius:10px;cursor:pointer;transition:all 0.2s;background:${selectedWorkflow === 'normal' ? 'rgba(0,82,255,0.03)' : 'transparent'};">
-                    <input type="radio" name="onboarding-mode" value="normal" ${selectedWorkflow === 'normal' ? 'checked' : ''} style="margin-top:2px;">
-                    <div>
-                        <div style="font-size:14px;font-weight:600;color:#1d1d1f;">普通批改</div>
-                        <div style="font-size:12px;color:#666;margin-top:4px;line-height:1.5;">精度更高，适合复杂题型。使用专业模型，支持深度思考。</div>
-                    </div>
-                </label>
-                <label style="display:flex;align-items:flex-start;gap:12px;padding:14px;border:2px solid ${selectedWorkflow === 'dual' ? '#0052FF' : 'rgba(0,0,0,0.08)'};border-radius:10px;cursor:pointer;transition:all 0.2s;background:${selectedWorkflow === 'dual' ? 'rgba(0,82,255,0.03)' : 'transparent'};">
-                    <input type="radio" name="onboarding-mode" value="dual" ${selectedWorkflow === 'dual' ? 'checked' : ''} style="margin-top:2px;">
-                    <div>
-                        <div style="font-size:14px;font-weight:600;color:#1d1d1f;">双评模式</div>
-                        <div style="font-size:12px;color:#666;margin-top:4px;line-height:1.5;">最高精度，两个模型独立评分，分差超阈值自动仲裁。适合重要考试。</div>
-                    </div>
-                </label>
+            <div class="form-group">
+                <label>配置方案名称</label>
+                <input type="text" id="ob-preset-name" placeholder="例如: 语文作文、数学大题" value="${presetName}" style="width:100%;">
             </div>
+            <div class="form-group" style="margin-top:16px;">
+                <label>批改模式</label>
+                <div style="display:flex;flex-direction:column;gap:8px;margin-top:8px;">
+                    <label style="display:flex;align-items:flex-start;gap:10px;padding:12px;border:2px solid ${gradingMode==='normal'?'#0052FF':'rgba(0,0,0,0.08)'};border-radius:10px;cursor:pointer;transition:all 0.2s;background:${gradingMode==='normal'?'rgba(0,82,255,0.03)':'transparent'};">
+                        <input type="radio" name="ob-grading-mode" value="normal" ${gradingMode==='normal'?'checked':''} style="margin-top:2px;">
+                        <div>
+                            <div style="font-size:13px;font-weight:600;color:#1d1d1f;">普通模式</div>
+                            <div style="font-size:12px;color:#666;margin-top:2px;">每批改一份，等待确认后提交</div>
+                        </div>
+                    </label>
+                    <label style="display:flex;align-items:flex-start;gap:10px;padding:12px;border:2px solid ${gradingMode==='trial'?'#7c3aed':'rgba(0,0,0,0.08)'};border-radius:10px;cursor:pointer;transition:all 0.2s;background:${gradingMode==='trial'?'rgba(124,58,237,0.03)':'transparent'};">
+                        <input type="radio" name="ob-grading-mode" value="trial" ${gradingMode==='trial'?'checked':''} style="margin-top:2px;">
+                        <div>
+                            <div style="font-size:13px;font-weight:600;color:#1d1d1f;">试改模式 <span style="font-size:10px;background:rgba(124,58,237,0.1);color:#7c3aed;padding:2px 6px;border-radius:4px;">推荐</span></div>
+                            <div style="font-size:12px;color:#666;margin-top:2px;">每次批改后暂停，支持分数纠错和提示词优化</div>
+                        </div>
+                    </label>
+                    <label style="display:flex;align-items:flex-start;gap:10px;padding:12px;border:2px solid ${gradingMode==='unattended'?'#D93025':'rgba(0,0,0,0.08)'};border-radius:10px;cursor:pointer;transition:all 0.2s;background:${gradingMode==='unattended'?'rgba(217,48,37,0.03)':'transparent'};">
+                        <input type="radio" name="ob-grading-mode" value="unattended" ${gradingMode==='unattended'?'checked':''} style="margin-top:2px;">
+                        <div>
+                            <div style="font-size:13px;font-weight:600;color:#1d1d1f;">无人模式</div>
+                            <div style="font-size:12px;color:#666;margin-top:2px;">全自动批改，错误时自动重试</div>
+                        </div>
+                    </label>
+                </div>
+            </div>
+            <div id="ob-status" style="font-size:12px;padding:8px 12px;border-radius:6px;margin-top:8px;display:none;"></div>
         `;
     }
 
-    function renderStep3() {
+    function renderCtxStep() {
         return `
             <p style="font-size:13px;color:#666;line-height:1.6;margin-bottom:16px;">
                 配置批改上下文可以提高评分准确性。这些信息也可以稍后在设置中配置。
             </p>
             <div class="form-group">
                 <label>题目内容</label>
-                <textarea id="onboarding-question" placeholder="粘贴题目内容..." style="width:100%;min-height:60px;"></textarea>
+                <textarea id="ob-question" placeholder="粘贴题目内容..." style="width:100%;min-height:60px;"></textarea>
             </div>
             <div class="form-group">
                 <label>参考答案</label>
-                <textarea id="onboarding-answer" placeholder="粘贴参考答案..." style="width:100%;min-height:60px;"></textarea>
+                <textarea id="ob-answer" placeholder="粘贴参考答案..." style="width:100%;min-height:60px;"></textarea>
             </div>
             <div class="form-group">
                 <label>评分标准</label>
-                <textarea id="onboarding-rubric" placeholder="粘贴评分标准..." style="width:100%;min-height:60px;"></textarea>
+                <textarea id="ob-rubric" placeholder="粘贴评分标准..." style="width:100%;min-height:60px;"></textarea>
             </div>
         `;
     }
 
-    function renderStep4() {
+    function renderDoneStep() {
         return `
             <div style="text-align:center;padding:20px 0;">
                 <div style="font-size:48px;margin-bottom:16px;">✅</div>
                 <div style="font-size:16px;font-weight:600;color:#1d1d1f;margin-bottom:8px;">配置完成！</div>
                 <div style="font-size:13px;color:#666;line-height:1.6;">
-                    现在你可以点击右下角的「AI 批改」按钮开始自动批改了。
+                    方案「${presetName}」已创建并绑定到当前试题。<br>
+                    点击下方按钮开始自动批改。
                 </div>
             </div>
         `;
     }
 
     function bindEvents() {
-        if (currentStep === 1) {
-            if (mode === 'new-question') {
-                overlay.querySelector('#onboarding-next').onclick = () => {
-                    const name = overlay.querySelector('#onboarding-preset-name')?.value?.trim();
-                    if (!name) {
-                        showKeyStatus('请输入配置方案名称', 'error');
-                        return;
-                    }
-                    presetName = name;
-                    currentStep = 2;
-                    render();
-                };
-                return;
-            }
-            overlay.querySelector('#onboarding-skip').onclick = () => { overlay.remove(); };
-            overlay.querySelector('#onboarding-next').onclick = async () => {
-                const keyInput = overlay.querySelector('#onboarding-apikey');
-                const key = keyInput.value.trim();
-                if (!key) {
-                    showKeyStatus('请输入 API 密钥', 'error');
-                    return;
-                }
-                const btn = overlay.querySelector('#onboarding-next');
-                btn.disabled = true;
-                btn.textContent = '验证中...';
+        const isFirst = mode === 'first-launch';
+        const hasApiStep = isFirst;
+        const apiStep = hasApiStep && currentStep === 1;
+        const nameModeStep = (hasApiStep && currentStep === 2) || (!hasApiStep && currentStep === 1);
+        const ctxStep = (hasApiStep && currentStep === 3) || (!hasApiStep && currentStep === 2);
+        const doneStep = (hasApiStep && currentStep === 4) || (!hasApiStep && currentStep === 3);
+
+        if (apiStep) {
+            overlay.querySelector('#ob-skip').onclick = () => overlay.remove();
+            overlay.querySelector('#ob-next').onclick = async () => {
+                const key = overlay.querySelector('#ob-apikey').value.trim();
+                if (!key) { showStatus('请输入 API 密钥', 'error'); return; }
+                const btn = overlay.querySelector('#ob-next');
+                btn.disabled = true; btn.textContent = '验证中...';
                 const valid = await testApiKey(key);
-                btn.disabled = false;
-                btn.textContent = '验证并继续';
+                btn.disabled = false; btn.textContent = '验证并继续';
                 if (valid) {
-                    const provider = ProviderManager.getProvider('5plus1官方');
-                    if (provider) provider.apiKey = key;
+                    const p = ProviderManager.getProvider('5plus1官方');
+                    if (p) p.apiKey = key;
                     ProviderManager.save();
-                    currentStep = 2;
-                    render();
-                } else {
-                    showKeyStatus('密钥验证失败，请检查是否正确', 'error');
-                }
+                    currentStep++; render();
+                } else { showStatus('密钥验证失败，请检查是否正确', 'error'); }
             };
-        } else if (currentStep === 2) {
-            overlay.querySelectorAll('input[name="onboarding-mode"]').forEach(radio => {
-                radio.onchange = () => { selectedWorkflow = radio.value; render(); };
+        } else if (nameModeStep) {
+            if (hasApiStep) overlay.querySelector('#ob-back').onclick = () => { currentStep--; render(); };
+            overlay.querySelectorAll('input[name="ob-grading-mode"]').forEach(r => {
+                r.onchange = () => { gradingMode = r.value; render(); };
             });
-            overlay.querySelector('#onboarding-back').onclick = () => { currentStep = 1; render(); };
-            overlay.querySelector('#onboarding-next').onclick = () => {
-                WorkflowManager.setActive(selectedWorkflow);
-                currentStep = 3;
-                render();
+            overlay.querySelector('#ob-next').onclick = () => {
+                const name = overlay.querySelector('#ob-preset-name')?.value?.trim();
+                if (!name) { showStatus('请输入配置方案名称', 'error'); return; }
+                if (PresetManager.data.list[name]) { showStatus('该方案名称已存在', 'error'); return; }
+                presetName = name;
+                currentStep++; render();
             };
-        } else if (currentStep === 3) {
-            overlay.querySelector('#onboarding-skip-ctx').onclick = () => { saveAndFinish(); };
-            overlay.querySelector('#onboarding-next').onclick = () => { saveAndFinish(true); };
-        } else if (currentStep === 4) {
-            overlay.querySelector('#onboarding-done').onclick = () => {
+        } else if (ctxStep) {
+            overlay.querySelector('#ob-skip-ctx').onclick = () => saveAndFinish(false);
+            overlay.querySelector('#ob-next').onclick = () => saveAndFinish(true);
+        } else if (doneStep) {
+            overlay.querySelector('#ob-start').onclick = () => {
                 overlay.remove();
                 GM_setValue('ai-grading-show-onboarding', false);
+                const btn = document.querySelector('.ai-grade-btn');
+                if (btn && !window.aiGradingState.isRunning) btn.click();
             };
         }
     }
 
-    function showKeyStatus(msg, type) {
-        const el = overlay.querySelector('#onboarding-key-status');
+    function showStatus(msg, type) {
+        const el = overlay.querySelector('#ob-status');
         if (!el) return;
         el.style.display = 'block';
         el.style.background = type === 'error' ? 'rgba(217,48,37,0.08)' : 'rgba(52,168,83,0.08)';
@@ -1768,52 +1760,35 @@ function showOnboardingDialog(forceShow, mode) {
     async function testApiKey(key) {
         return new Promise(resolve => {
             GM_xmlhttpRequest({
-                method: 'POST',
-                url: SCRIPT_CONFIG.DEFAULT_ENDPOINT,
+                method: 'POST', url: SCRIPT_CONFIG.DEFAULT_ENDPOINT,
                 headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${key}` },
                 data: JSON.stringify({ model: 'aimarker-fast', messages: [{ role: 'user', content: 'hi' }], max_tokens: 1 }),
                 timeout: 10000,
-                onload: (res) => resolve(res.status >= 200 && res.status < 300),
-                onerror: () => resolve(false),
-                ontimeout: () => resolve(false)
+                onload: res => resolve(res.status >= 200 && res.status < 300),
+                onerror: () => resolve(false), ontimeout: () => resolve(false)
             });
         });
     }
 
-    function saveAndFinish(saveContext) {
-        if (mode === 'new-question') {
-            const newPreset = {
-                question: '', answer: '', rubric: '',
-                workflowId: selectedWorkflow,
-                gradingMode: 'normal',
-                scoring: { roundStep: 1, roundMethod: 'round' }
-            };
-            if (saveContext) {
-                newPreset.question = overlay.querySelector('#onboarding-question')?.value?.trim() || '';
-                newPreset.answer = overlay.querySelector('#onboarding-answer')?.value?.trim() || '';
-                newPreset.rubric = overlay.querySelector('#onboarding-rubric')?.value?.trim() || '';
-            }
-            PresetManager.data.list[presetName] = newPreset;
-            PresetManager.data.active = presetName;
-            const currentUrlId = PresetManager.getTaskIdentifier();
-            PresetManager.data.bindings[currentUrlId] = presetName;
-            PresetManager.save();
-            WorkflowManager.setActive(selectedWorkflow);
-        } else {
-            if (saveContext) {
-                const question = overlay.querySelector('#onboarding-question')?.value?.trim() || '';
-                const answer = overlay.querySelector('#onboarding-answer')?.value?.trim() || '';
-                const rubric = overlay.querySelector('#onboarding-rubric')?.value?.trim() || '';
-                const cfg = PresetManager.getCurrentConfig();
-                if (question) cfg.question = question;
-                if (answer) cfg.answer = answer;
-                if (rubric) cfg.rubric = rubric;
-                PresetManager.save();
-            }
+    function saveAndFinish(saveCtx) {
+        const newPreset = {
+            question: '', answer: '', rubric: '',
+            workflowId: 'fast', gradingMode: gradingMode,
+            scoring: { roundStep: 1, roundMethod: 'round' }
+        };
+        if (saveCtx) {
+            newPreset.question = overlay.querySelector('#ob-question')?.value?.trim() || '';
+            newPreset.answer = overlay.querySelector('#ob-answer')?.value?.trim() || '';
+            newPreset.rubric = overlay.querySelector('#ob-rubric')?.value?.trim() || '';
         }
+        PresetManager.data.list[presetName] = newPreset;
+        PresetManager.data.active = presetName;
+        PresetManager.data.bindings[PresetManager.getTaskIdentifier()] = presetName;
+        PresetManager.save();
+        WorkflowManager.setActive('fast');
         renderPresetDropdown();
         fillFormFromActivePreset();
-        currentStep = 4;
+        currentStep = mode === 'first-launch' ? 4 : 3;
         render();
     }
 

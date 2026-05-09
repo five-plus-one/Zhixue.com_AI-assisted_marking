@@ -456,6 +456,10 @@ function createSettingsPanel() {
                             <button class="footer-btn" id="btn-import-config" style="flex:1;">导入配置</button>
                         </div>
                         <input type="file" id="import-config-file" accept=".json" style="display:none;">
+                        <div style="margin-top:10px;">
+                            <button class="footer-btn danger" id="btn-reset-config" style="width:100%;">恢复默认设置</button>
+                        </div>
+                        <div style="font-size:11px;color:#86868b;margin-top:4px;">将重置所有方案、供应商、工作流为默认值</div>
                     </div>
                 </div>
             </div>
@@ -647,6 +651,25 @@ function createSettingsPanel() {
             if (err) showToast('导入失败：' + (err.message || '文件格式错误'));
         }
         fileInput.value = '';
+    };
+
+    // 恢复默认设置
+    panel.querySelector('#btn-reset-config').onclick = async () => {
+        if (await showConfirmModal('确定要恢复默认设置吗？\n\n将重置：\n• 所有配置方案\n• 供应商与模型\n• 工作流配置\n\n此操作不可撤销！')) {
+            PresetManager.data = {
+                list: { "默认配置": { question: '', answer: '', rubric: '', workflowId: 'fast', gradingMode: 'normal', scoring: { roundStep: 1, roundMethod: 'round' } } },
+                active: "默认配置",
+                bindings: {}
+            };
+            PresetManager.save();
+            ProviderManager.data = ProviderManager._getDefault();
+            ProviderManager.save();
+            WorkflowManager.data = WorkflowManager._getDefault();
+            WorkflowManager.save();
+            renderPresetDropdown();
+            fillFormFromActivePreset();
+            showToast('已恢复默认设置');
+        }
     };
 
     const modeDescs = {

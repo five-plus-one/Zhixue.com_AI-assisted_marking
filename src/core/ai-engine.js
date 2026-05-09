@@ -590,6 +590,7 @@ async function callDualEvaluation(base64DataArray, config, onStreamUpdate) {
     console.log(`✅ [三评] 仲裁结果: ${arbParsed.score}`);
     return {
         ...arbParsed,
+        studentAnswer: detailA?.studentAnswer || detailB?.studentAnswer || arbParsed.studentAnswer || '未能识别',
         dualEval: {
             scoreA, scoreB, diff,
             result: 'arbitration',

@@ -260,7 +260,8 @@ function showAutoSubmitDialog(score, comment, subScores, extraInfo) {
                         finalScore, isCorrected: correctionInfo.isCorrected,
                         correctionReason: correctionInfo.correctionReason,
                         imageBase64s: window.aiGradingState.currentBase64DataArray || [],
-                        subScores: correctedSubScores
+                        subScores: correctedSubScores,
+                        dualEval: dualEval || null
                     });
                     if (correctionInfo.newAnswer || correctionInfo.newRubric) {
                         const activeName = PresetManager.data.active;
@@ -312,7 +313,8 @@ function showAutoSubmitDialog(score, comment, subScores, extraInfo) {
             aiScore: score, aiComment: comment,
             finalScore: score, isCorrected: false, correctionReason: '',
             imageBase64s: window.aiGradingState.currentBase64DataArray || [],
-            subScores: subScores
+            subScores: subScores,
+            dualEval: dualEval || null
         });
 
         const adapter = window.__AI_MARKER_ADAPTER__;

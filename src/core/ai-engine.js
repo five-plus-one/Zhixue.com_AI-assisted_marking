@@ -21,20 +21,42 @@ const ProviderManager = {
     _migrateProviders() {
         let changed = false;
         const defaults = this._getDefault();
-        // 更新内置供应商的模型配置
-        for (const [name, provider] of Object.entries(this.data.providers)) {
-            if (provider.isBuiltin && defaults.providers[name]) {
-                const defaultProvider = defaults.providers[name];
-                // 检查模型是否需要更新
-                const currentModels = Object.keys(provider.models || {});
-                const defaultModels = Object.keys(defaultProvider.models || {});
-                if (JSON.stringify(currentModels.sort()) !== JSON.stringify(defaultModels.sort())) {
-                    provider.models = defaultProvider.models;
+
+        // 确保内置供应商存在且模型正确
+        for (const [name, defaultProvider] of Object.entries(defaults.providers)) {
+            if (!defaultProvider.isBuiltin) continue;
+
+            let provider = this.data.providers[name];
+            if (!provider) {
+                // 内置供应商不存在，添加它
+                this.data.providers[name] = { ...defaultProvider };
+                changed = true;
+                console.log(`[ProviderManager] 添加内置供应商 "${name}"`);
+                continue;
+            }
+
+            // 确保内置模型存在
+            for (const [modelId, modelInfo] of Object.entries(defaultProvider.models)) {
+                if (!provider.models[modelId]) {
+                    provider.models[modelId] = { ...modelInfo };
                     changed = true;
-                    console.log(`[ProviderManager] 已更新供应商 "${name}" 的模型配置`);
+                    console.log(`[ProviderManager] 添加内置模型 "${modelId}" 到供应商 "${name}"`);
+                } else {
+                    // 确保内置模型的 isBuiltin 标记正确
+                    if (modelInfo.isBuiltin && !provider.models[modelId].isBuiltin) {
+                        provider.models[modelId].isBuiltin = true;
+                        changed = true;
+                    }
                 }
             }
+
+            // 确保供应商的 isBuiltin 标记正确
+            if (defaultProvider.isBuiltin && !provider.isBuiltin) {
+                provider.isBuiltin = true;
+                changed = true;
+            }
         }
+
         if (changed) {
             this.save();
         }
@@ -238,25 +260,25 @@ const WorkflowManager = {
             workflows: {
                 "快速批改(推荐)": {
                     id: "fast",
-                    description: "逻辑题、画图题，性价比最高",
+                    description: "快速、高性价比，适合逻辑题、画图题等",
                     model: { provider: "5plus1官方", model: "aimarker-fast" },
                     dualEval: null,
                     isBuiltin: true
                 },
-                "高精度批改": {
-                    id: "precise",
-                    description: "作文、主观题，精度优先",
+                "普通批改": {
+                    id: "normal",
+                    description: "普通模式，适合大多数题型",
                     model: { provider: "5plus1官方", model: "aimarker-pro" },
                     dualEval: null,
                     isBuiltin: true
                 },
-                "双评模式": {
+                "双评模式(高精度)": {
                     id: "dual",
-                    description: "两次评分，超阈值自动仲裁",
-                    model: { provider: "5plus1官方", model: "aimarker-fast" },
+                    description: "高精准度，两次评分超阈值自动仲裁",
+                    model: { provider: "5plus1官方", model: "aimarker-pro" },
                     dualEval: {
                         enabled: true,
-                        secondary: { provider: "5plus1官方", model: "aimarker-fast" },
+                        secondary: { provider: "5plus1官方", model: "aimarker-pro" },
                         arbitration: { provider: "5plus1官方", model: "aimarker-pro" },
                         threshold: 2
                     },

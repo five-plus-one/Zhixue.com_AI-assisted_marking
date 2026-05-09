@@ -862,11 +862,6 @@ function fillFormFromActivePreset() {
     const providerName = providerMigration[config.provider] || config.provider || ProviderManager.data.activeProvider;
     if (ProviderManager.data.providers[providerName]) {
         ProviderManager.data.activeProvider = providerName;
-        const provider = ProviderManager.getProvider(providerName);
-        const modelKeys = Object.keys(provider.models || {});
-        if (!ProviderManager.data.activeModel || !provider.models[ProviderManager.data.activeModel]) {
-            ProviderManager.data.activeModel = modelKeys[0] || '';
-        }
         ProviderManager.save();
         document.getElementById('ai-provider').value = providerName;
     }
@@ -1131,17 +1126,17 @@ function renderModelList() {
     if (!container) return;
     const provider = ProviderManager.getCurrentProvider();
     const models = provider.models || {};
-    const activeModel = ProviderManager.data.activeModel;
 
     let html = '';
     for (const [id, info] of Object.entries(models)) {
-        const isActive = id === activeModel;
         const tags = (info.tags || []).map(t => `<span style="display:inline-block;padding:1px 6px;margin-left:4px;font-size:10px;border-radius:3px;background:${t === '推荐' ? 'rgba(0,82,255,0.1)' : 'rgba(0,0,0,0.05)'};color:${t === '推荐' ? '#0052FF' : '#666'};">${t}</span>`).join('');
-        html += `<div style="display:flex;align-items:center;justify-content:space-between;padding:6px 10px;margin-bottom:4px;border-radius:6px;background:${isActive ? 'rgba(0,82,255,0.06)' : 'rgba(0,0,0,0.02)'};border:1px solid ${isActive ? 'rgba(0,82,255,0.2)' : 'rgba(0,0,0,0.06)'};cursor:pointer;" onclick="selectModel('${id}')">`;
-        html += `<div><span style="font-size:12px;font-weight:500;">${info.label || id}</span>${tags}</div>`;
+        const isBuiltin = info.isBuiltin;
+        html += `<div style="display:flex;align-items:center;justify-content:space-between;padding:6px 10px;margin-bottom:4px;border-radius:6px;background:rgba(0,0,0,0.02);border:1px solid rgba(0,0,0,0.06);">`;
+        html += `<div><span style="font-size:12px;font-weight:500;">${info.label || id}</span>${tags}${isBuiltin ? '<span style="display:inline-block;padding:1px 6px;margin-left:4px;font-size:10px;border-radius:3px;background:rgba(217,48,37,0.08);color:#D93025;">内置</span>' : ''}</div>`;
         html += `<div style="display:flex;align-items:center;gap:6px;">`;
-        if (isActive) html += `<span style="font-size:10px;color:#0052FF;font-weight:600;">当前</span>`;
-        html += `<button class="preset-btn danger" style="padding:2px 6px;font-size:10px;" onclick="event.stopPropagation();deleteModel('${id}')">删除</button>`;
+        if (!isBuiltin) {
+            html += `<button class="preset-btn danger" style="padding:2px 6px;font-size:10px;" onclick="event.stopPropagation();deleteModel('${id}')">删除</button>`;
+        }
         html += `</div></div>`;
     }
     if (Object.keys(models).length === 0) {
@@ -1150,43 +1145,33 @@ function renderModelList() {
     container.innerHTML = html;
 }
 
-function selectModel(modelId) {
-    ProviderManager.data.activeModel = modelId;
-    ProviderManager.save();
-    renderModelList();
-    renderWorkflowInfo();
-    markUnsavedChanges();
-}
 // 暴露到全局作用域（供内联 onclick 使用）
-window.selectModel = selectModel;
-
-async function deleteModel(modelId) {
+window.deleteModel = async function(modelId) {
+    if (typeof ProviderManager === 'undefined') return;
     const provider = ProviderManager.getCurrentProvider();
-    if (Object.keys(provider.models || {}).length <= 1) {
-        showAlertModal("必须至少保留一个模型！");
+    if (!provider || !provider.models || !provider.models[modelId]) return;
+    if (provider.models[modelId].isBuiltin) {
+        if (typeof showAlertModal === 'function') showAlertModal("内置模型不允许删除！");
         return;
     }
-    if (await showConfirmModal(`确定要删除模型【${modelId}】吗？`)) {
+    const confirmFn = typeof showConfirmModal === 'function' ? showConfirmModal : confirm;
+    if (await confirmFn(`确定要删除模型【${modelId}】吗？`)) {
         ProviderManager.deleteModel(ProviderManager.data.activeProvider, modelId);
-        renderModelList();
-        renderWorkflowInfo();
-        showToast(`模型「${modelId}」已删除`);
+        if (typeof renderModelList === 'function') renderModelList();
+        if (typeof showToast === 'function') showToast(`模型「${modelId}」已删除`);
     }
+};
+
+async function deleteModel(modelId) {
+    await window.deleteModel(modelId);
 }
-// 暴露到全局作用域（供内联 onclick 使用）
-window.deleteModel = deleteModel;
 
 function handleProviderChange() {
     const name = document.getElementById('ai-provider').value;
     ProviderManager.data.activeProvider = name;
-    // 自动选择第一个模型
-    const provider = ProviderManager.getProvider(name);
-    if (provider) {
-        const modelKeys = Object.keys(provider.models || {});
-        ProviderManager.data.activeModel = modelKeys[0] || '';
-    }
     ProviderManager.save();
 
+    const provider = ProviderManager.getProvider(name);
     if (provider) {
         document.getElementById('api-endpoint').value = provider.endpoint || '';
         document.getElementById('api-key').value = provider.apiKey || '';

@@ -1,6 +1,54 @@
 // ========== 光大阅卷适配器 ==========
 // pj.yixx.cn — Vue 2 + Canvas 渲染
 
+// 拦截 getDdb API 响应，获取当前试卷图片 URL
+let _guangdaCurrentPaperImages = [];
+let _guangdaNextPaperImages = [];
+const _guangdaOrigOpen = XMLHttpRequest.prototype.open;
+const _guangdaOrigSend = XMLHttpRequest.prototype.send;
+
+XMLHttpRequest.prototype.open = function(method, url, ...args) {
+    this._guangdaUrl = url;
+    return _guangdaOrigOpen.call(this, method, url, ...args);
+};
+
+XMLHttpRequest.prototype.send = function(...args) {
+    this.addEventListener('load', function() {
+        try {
+            const url = this._guangdaUrl || '';
+            if (url.includes('getDdb') || url.includes('getDdbByNext')) {
+                const response = JSON.parse(this.responseText);
+                const vKs = response?.result?.vKs;
+
+                if (vKs && vKs.length > 0) {
+                    // 当前试卷（第一份）
+                    const currentPaper = vKs[0];
+                    if (currentPaper?.imageData?.vUrl) {
+                        _guangdaCurrentPaperImages = currentPaper.imageData.vUrl.filter(url =>
+                            url && (url.startsWith('http://') || url.startsWith('https://'))
+                        );
+                        console.log(`🎯 [API拦截] 当前试卷图片: ${_guangdaCurrentPaperImages.length} 张`);
+                        _guangdaCurrentPaperImages.forEach((url, i) => {
+                            console.log(`  📷 图片${i + 1}: ${url.substring(0, 80)}...`);
+                        });
+                    }
+
+                    // 预加载的下一份试卷
+                    if (vKs.length > 1 && vKs[1]?.imageData?.vUrl) {
+                        _guangdaNextPaperImages = vKs[1].imageData.vUrl.filter(url =>
+                            url && (url.startsWith('http://') || url.startsWith('https://'))
+                        );
+                        console.log(`📦 [API拦截] 预加载下一份试卷图片: ${_guangdaNextPaperImages.length} 张`);
+                    }
+                }
+            }
+        } catch (e) {
+            // 忽略解析错误
+        }
+    });
+    return _guangdaOrigSend.call(this, ...args);
+};
+
 const GuangdaAdapter = {
     name: '光大阅卷',
     id: 'guangda',
@@ -78,64 +126,109 @@ const GuangdaAdapter = {
     async gatherAnswerImages() {
         console.log('🖼️ [诊断] 光大阅卷 — 开始获取答题卡图片...');
 
-        // 等待 Canvas 渲染完成
-        await new Promise(r => setTimeout(r, 1500));
+        // 等待页面加载完成
+        await new Promise(r => setTimeout(r, 2000));
 
-        const canvases = document.querySelectorAll(GUANGDA_SELECTORS.ANSWER_CANVAS);
-        const images = [];
+        // 优先从网络请求获取图片 URL（Canvas 被跨域污染，无法导出）
+        const imageUrls = this._getImageUrlsFromNetwork();
 
-        for (let i = 0; i < canvases.length; i++) {
-            const canvas = canvases[i];
-            try {
-                // 尝试导出 Canvas 内容
-                const dataUrl = canvas.toDataURL('image/png');
-                // 检查是否是有效的图片（不是空白或 tainted）
-                if (dataUrl && dataUrl.length > 5000) {
-                    // 转换为纯 base64（去掉 data:image/png;base64, 前缀）
-                    const base64 = dataUrl.split(',')[1];
-                    if (base64) {
-                        images.push({
-                            index: i,
-                            id: canvas.id,
-                            dataUrl: dataUrl,
-                            base64: base64,
-                            width: canvas.width,
-                            height: canvas.height,
-                        });
-                        console.log(`✅ [诊断] Canvas ${canvas.id} 导出成功 (${canvas.width}x${canvas.height}, ${dataUrl.length} bytes)`);
-                    }
-                } else {
-                    console.log(`⚠️ [诊断] Canvas ${canvas.id} 内容过小或为空 (${dataUrl?.length || 0} bytes)`);
-                }
-            } catch (e) {
-                // Canvas 被跨域图片污染（tainted）
-                console.log(`⚠️ [诊断] Canvas ${canvas.id} 无法导出 (tainted): ${e.message}`);
-            }
+        if (imageUrls.length > 0) {
+            console.log(`🖼️ [诊断] 从网络请求找到 ${imageUrls.length} 张图片`);
+            return imageUrls;
         }
 
-        console.log(`🖼️ [诊断] 光大阅卷 — 找到 ${images.length} 张可用图片`);
-
-        // 如果没有从 Canvas 获取到，尝试拦截网络请求
-        if (images.length === 0) {
-            console.log('🖼️ [诊断] Canvas 导出失败，尝试从网络请求获取图片...');
-            return this._getImageUrlsFromNetwork();
+        // 备用方案：尝试从 Vue 组件获取图片 URL
+        const vueUrls = this._getImageUrlsFromVue();
+        if (vueUrls.length > 0) {
+            console.log(`🖼️ [诊断] 从 Vue 组件找到 ${vueUrls.length} 张图片`);
+            return vueUrls;
         }
 
-        // 返回 base64 数据（适配器需要返回 URL 或 base64）
-        // 由于 Canvas 是本地渲染，我们返回 data URL
-        return images.map(img => img.dataUrl);
+        console.warn('⚠️ [诊断] 未找到答题卡图片');
+        return [];
     },
 
-    // 从网络请求中获取图片 URL（备用方案）
+    // 从网络请求中获取图片 URL
     _getImageUrlsFromNetwork() {
+        // 最优先：从 getDdb API 拦截获取当前试卷图片
+        if (_guangdaCurrentPaperImages.length > 0) {
+            console.log(`🖼️ [诊断] 从 API 拦截获取当前试卷图片: ${_guangdaCurrentPaperImages.length} 张`);
+            _guangdaCurrentPaperImages.forEach((url, i) => {
+                console.log(`  📷 图片${i + 1}: ${url.substring(0, 80)}...`);
+            });
+            return [..._guangdaCurrentPaperImages];
+        }
+
+        // 备用：从 performance 获取
         const entries = performance.getEntriesByType('resource');
         const imageUrls = entries
             .filter(e => e.initiatorType === 'img' || e.name.includes('.jpg') || e.name.includes('.png'))
             .filter(e => e.name.includes('rescenter') || e.name.includes('markpic'))
             .map(e => e.name);
 
-        console.log(`🖼️ [诊断] 从网络请求找到 ${imageUrls.length} 张图片`);
-        return [...new Set(imageUrls)]; // 去重
+        const uniqueUrls = [...new Set(imageUrls)].filter(url =>
+            url.includes('.jpg') || url.includes('.png')
+        );
+
+        if (uniqueUrls.length > 0) {
+            console.log(`🖼️ [诊断] 从 performance 找到 ${uniqueUrls.length} 张图片`);
+            uniqueUrls.forEach((url, i) => {
+                console.log(`  📷 图片${i + 1}: ${url.substring(0, 80)}...`);
+            });
+            return uniqueUrls;
+        }
+
+        console.log(`🖼️ [诊断] 未找到图片`);
+        return [];
+    },
+
+    // 从 Vue 组件获取图片 URL
+    _getImageUrlsFromVue() {
+        try {
+            const painterEl = document.querySelector('#painter');
+            const painterVm = painterEl?.closest('[data-v-]')?.__vue__;
+
+            if (!painterVm) {
+                console.log('🖼️ [诊断] 未找到 painter Vue 实例');
+                return [];
+            }
+
+            const data = painterVm.$data || {};
+            const urls = [];
+
+            // 检查 imgUrl
+            if (data.imgUrl && typeof data.imgUrl === 'string') {
+                if (data.imgUrl.startsWith('http')) {
+                    urls.push(data.imgUrl);
+                }
+            }
+
+            // 检查 listAllUrlPath
+            if (Array.isArray(data.listAllUrlPath)) {
+                data.listAllUrlPath.forEach(item => {
+                    if (typeof item === 'string' && item.startsWith('http')) {
+                        urls.push(item);
+                    } else if (typeof item === 'object' && item?.url) {
+                        urls.push(item.url);
+                    }
+                });
+            }
+
+            // 检查 source
+            if (Array.isArray(data.source)) {
+                data.source.forEach(item => {
+                    if (typeof item === 'string' && item.startsWith('http')) {
+                        urls.push(item);
+                    }
+                });
+            }
+
+            console.log(`🖼️ [诊断] 从 Vue 组件找到 ${urls.length} 张图片`);
+            return [...new Set(urls)];
+        } catch (e) {
+            console.error('❌ [诊断] 从 Vue 获取图片失败:', e);
+            return [];
+        }
     },
 
     async fetchImageAsBase64(url) {
@@ -150,9 +243,29 @@ const GuangdaAdapter = {
 
     fillScore(request) {
         const { total, subScores } = request;
-        console.log(`📝 [诊断] 光大阅卷 fillScore — 分数: ${total}`);
+        console.log(`📝 [诊断] 光大阅卷 fillScore — 总分: ${total}, 小题分数:`, subScores);
 
-        // 光大阅卷使用点击方式选择分数
+        // 获取所有小题容器
+        const scoreWraps = document.querySelectorAll('.score.big-score');
+        console.log(`📝 [诊断] 找到 ${scoreWraps.length} 个小题容器`);
+
+        if (scoreWraps.length === 0) {
+            // 没有小题容器，尝试直接点击总分
+            return this._fillSingleScore(total);
+        }
+
+        if (subScores && subScores.length > 0) {
+            // 有小题分数，为每个小题填入对应分数
+            return this._fillSubScores(subScores, scoreWraps);
+        } else {
+            // 没有小题分数，将总分填入第一个小题
+            console.log('📝 [诊断] 没有小题分数，将总分填入第一个小题');
+            return this._fillSingleScoreInContainer(total, scoreWraps[0]);
+        }
+    },
+
+    // 填入单个分数（没有小题结构时）
+    _fillSingleScore(score) {
         const scoreItems = document.querySelectorAll(GUANGDA_SELECTORS.SCORE_ITEM);
         console.log(`📝 [诊断] 找到 ${scoreItems.length} 个分数选项`);
 
@@ -160,29 +273,76 @@ const GuangdaAdapter = {
         let targetItem = null;
         for (const item of scoreItems) {
             const scoreText = item.textContent.trim();
-            if (scoreText === String(total)) {
+            if (scoreText === String(score)) {
                 targetItem = item;
                 break;
             }
         }
 
         if (targetItem) {
-            // 点击分数项
             targetItem.click();
-            console.log(`✅ [诊断] 已点击分数: ${total}`);
-
-            // 验证是否选中
-            setTimeout(() => {
-                const display = document.querySelector(GUANGDA_SELECTORS.SCORE_DISPLAY);
-                console.log(`📝 [诊断] 当前显示得分: ${display?.textContent}`);
-            }, 300);
-
+            console.log(`✅ [诊断] 已点击分数: ${score}`);
             return true;
         }
 
-        // 如果没有找到匹配的分数项，尝试使用 painter 组件的方法
         console.log('📝 [诊断] 未找到匹配分数项，尝试调用组件方法...');
-        return this._fillScoreViaComponent(total);
+        return this._fillScoreViaComponent(score);
+    },
+
+    // 为多个小题填入分数
+    _fillSubScores(subScores, scoreWraps) {
+        let successCount = 0;
+
+        for (let i = 0; i < Math.min(subScores.length, scoreWraps.length); i++) {
+            const subScore = subScores[i];
+            const container = scoreWraps[i];
+            const score = typeof subScore === 'object' ? subScore.score : subScore;
+
+            console.log(`📝 [诊断] 填入第 ${i + 1} 小题分数: ${score}`);
+
+            // 获取该小题的题号
+            const label = container.querySelector('.xtList label');
+            const questionNum = label ? label.textContent.trim() : `${i + 1}`;
+            console.log(`📝 [诊断] 题号: ${questionNum}`);
+
+            if (this._fillSingleScoreInContainer(score, container)) {
+                successCount++;
+            }
+        }
+
+        console.log(`📝 [诊断] 成功填入 ${successCount}/${subScores.length} 个小题分数`);
+        return successCount > 0;
+    },
+
+    // 在指定小题容器中填入分数
+    _fillSingleScoreInContainer(score, container) {
+        if (!container) {
+            console.warn('⚠️ [诊断] 小题容器不存在');
+            return false;
+        }
+
+        // 获取该容器中的分数选项
+        const scoreItems = container.querySelectorAll('.scores li');
+        console.log(`📝 [诊断] 该小题有 ${scoreItems.length} 个分数选项`);
+
+        // 查找匹配的分数项
+        let targetItem = null;
+        for (const item of scoreItems) {
+            const scoreText = item.textContent.trim();
+            if (scoreText === String(score)) {
+                targetItem = item;
+                break;
+            }
+        }
+
+        if (targetItem) {
+            targetItem.click();
+            console.log(`✅ [诊断] 已点击分数: ${score}`);
+            return true;
+        }
+
+        console.warn(`⚠️ [诊断] 未找到分数 ${score} 对应的选项`);
+        return false;
     },
 
     // 通过 Vue 组件方法填入分数
@@ -223,6 +383,10 @@ const GuangdaAdapter = {
         if (submitBtn) {
             console.log('✅ [诊断] 找到提交按钮，点击中...');
             submitBtn.click();
+
+            // 等待并处理"给分详情"二次确认弹窗
+            this._handleConfirmDialog();
+
             return true;
         }
 
@@ -232,6 +396,7 @@ const GuangdaAdapter = {
             if (btn.textContent.trim().includes('提交分数')) {
                 console.log('✅ [诊断] 找到包含"提交分数"的按钮，点击中...');
                 btn.click();
+                this._handleConfirmDialog();
                 return true;
             }
         }
@@ -243,6 +408,7 @@ const GuangdaAdapter = {
             if (painterVm && typeof painterVm.commitDxj === 'function') {
                 console.log('✅ [诊断] 调用组件方法 commitDxj 提交分数');
                 painterVm.commitDxj();
+                this._handleConfirmDialog();
                 return true;
             }
         } catch (e) {
@@ -251,6 +417,32 @@ const GuangdaAdapter = {
 
         console.warn('⚠️ [诊断] 未找到提交按钮');
         return false;
+    },
+
+    // 处理"给分详情"二次确认弹窗
+    _handleConfirmDialog() {
+        console.log('⏳ [诊断] 等待给分详情弹窗...');
+
+        // 等待弹窗出现并自动点击确认
+        let checkCount = 0;
+        const checkInterval = setInterval(() => {
+            checkCount++;
+
+            // 查找"确认"按钮（在 dialog-btns 容器中）
+            const confirmBtn = document.querySelector('.dialog-btns .sure');
+            if (confirmBtn) {
+                console.log('✅ [诊断] 找到给分详情弹窗，自动点击确认');
+                confirmBtn.click();
+                clearInterval(checkInterval);
+                return;
+            }
+
+            // 超时（最多等3秒）
+            if (checkCount >= 15) {
+                clearInterval(checkInterval);
+                console.log('⚠️ [诊断] 未检测到给分详情弹窗（可能未启用）');
+            }
+        }, 200);
     },
 
     async waitForNextPaper(oldImageUrl) {
@@ -262,29 +454,24 @@ const GuangdaAdapter = {
             const timer = setInterval(() => {
                 checkTimes++;
 
-                // 获取当前 Canvas 内容
-                const currentCanvas = document.querySelector('#painter canvas#1, #painter canvas#2');
-                let currentData = null;
-                try {
-                    currentData = currentCanvas?.toDataURL('image/png');
-                } catch (e) {
-                    // tainted, ignore
-                }
+                // 检测得分显示区域重置（新试卷加载时得分会变为0或消失）
+                const scoreDisplay = document.querySelector(GUANGDA_SELECTORS.SCORE_DISPLAY);
+                const currentScore = scoreDisplay?.textContent?.trim();
 
-                // 检测 Canvas 内容变化
-                if (oldImageUrl && currentData && currentData !== oldImageUrl) {
-                    clearInterval(timer);
-                    console.log('✅ 光大阅卷 — 新试卷已加载（Canvas 内容变化）');
-                    resolve(true);
+                // 检测二次确认弹窗是否还在
+                const dialog = document.querySelector('.dialog-btns .sure');
+                if (dialog) {
+                    // 弹窗还在，继续等待
                     return;
                 }
 
-                // 检测得分显示区域重置
-                const scoreDisplay = document.querySelector(GUANGDA_SELECTORS.SCORE_DISPLAY);
-                const currentScore = scoreDisplay?.textContent?.trim();
-                if (currentScore === '0' && checkTimes > 3) {
+                // 检测新试卷加载（得分重置或小题区域变化）
+                const xtList = document.querySelector(GUANGDA_SELECTORS.SUB_QUESTION_LIST);
+                const currentXtText = xtList?.textContent?.trim() || '';
+
+                if (checkTimes > 3 && (!scoreDisplay || currentScore === '' || currentScore === '0')) {
                     clearInterval(timer);
-                    console.log('✅ 光大阅卷 — 新试卷已加载（得分重置为0）');
+                    console.log('✅ 光大阅卷 — 新试卷已加载（得分重置）');
                     resolve(true);
                     return;
                 }
@@ -341,24 +528,35 @@ const GuangdaAdapter = {
     detectSubQuestions() {
         const subQuestions = [];
 
-        // 检查小题信息
-        const xtList = document.querySelector(GUANGDA_SELECTORS.SUB_QUESTION_LIST);
-        if (xtList && xtList.style.display !== 'none') {
-            const label = xtList.querySelector('label');
-            if (label) {
-                const text = label.textContent.trim();
-                // 解析 "2（4）" 格式
-                const match = text.match(/(\d+)（(\d+)）/);
-                if (match) {
-                    subQuestions.push({
-                        index: parseInt(match[1]) - 1,
-                        label: `第${match[1]}题`,
-                        maxScore: parseInt(match[2]),
-                    });
-                }
-            }
-        }
+        // 获取所有小题容器
+        const scoreWraps = document.querySelectorAll('.score.big-score');
+        console.log(`📝 [诊断] 找到 ${scoreWraps.length} 个小题容器`);
 
+        scoreWraps.forEach((container, i) => {
+            // 获取题号
+            const label = container.querySelector('.xtList label');
+            if (label) {
+                const questionNum = label.textContent.trim();
+
+                // 获取该小题的分数选项
+                const scoreItems = container.querySelectorAll('.scores li');
+                const scores = Array.from(scoreItems).map(li => parseInt(li.textContent.trim())).filter(n => !isNaN(n));
+
+                // 计算最大分数
+                const maxScore = scores.length > 0 ? Math.max(...scores) : 0;
+
+                console.log(`📝 [诊断] 小题 ${i + 1}: 题号=${questionNum}, 可选分数=[${scores.join(',')}], 最高分=${maxScore}`);
+
+                subQuestions.push({
+                    index: i,
+                    label: `第${questionNum}题`,
+                    maxScore: maxScore,
+                    scores: scores,
+                });
+            }
+        });
+
+        console.log(`📝 [诊断] 共识别 ${subQuestions.length} 个小题`);
         return subQuestions;
     },
 

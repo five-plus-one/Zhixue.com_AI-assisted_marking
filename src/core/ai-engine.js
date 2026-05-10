@@ -577,9 +577,28 @@ async function callDualEvaluation(base64DataArray, config, onStreamUpdate) {
     if (diff <= threshold) {
         const finalScore = Math.round((scoreA + scoreB) / 2);
         console.log(`✅ [双评] 分差在阈值内，取平均分: ${finalScore}`);
+
+        // 处理分小题分数：对每个小题分别取平均
+        let finalSubScores = detailA?.subScores || null;
+        if (detailA?.subScores && detailB?.subScores &&
+            detailA.subScores.length === detailB.subScores.length) {
+            finalSubScores = detailA.subScores.map((sqA, i) => {
+                const sqB = detailB.subScores[i];
+                const avgScore = (sqA.score !== null && sqB.score !== null)
+                    ? Math.round((sqA.score + sqB.score) / 2)
+                    : (sqA.score ?? sqB.score);
+                return {
+                    ...sqA,
+                    score: avgScore
+                };
+            });
+            console.log(`✅ [双评] 分小题平均: ${finalSubScores.map(s => s.label + '=' + s.score).join(', ')}`);
+        }
+
         return {
             ...detailA,
             score: finalScore,
+            subScores: finalSubScores,
             dualEval: {
                 scoreA, scoreB, diff, result: 'consensus',
                 detailA: detailA?._sections || null,

@@ -171,11 +171,13 @@ const GuangdaAdapter = {
         );
 
         if (uniqueUrls.length > 0) {
-            console.log(`🖼️ [诊断] 从 performance 找到 ${uniqueUrls.length} 张图片`);
-            uniqueUrls.forEach((url, i) => {
+            // 只返回最新的2张图片（当前试卷通常有1-2张，避免包含预加载的图片）
+            const latestUrls = uniqueUrls.slice(-2);
+            console.log(`🖼️ [诊断] 从 performance 找到 ${uniqueUrls.length} 张图片，使用最新的 ${latestUrls.length} 张`);
+            latestUrls.forEach((url, i) => {
                 console.log(`  📷 图片${i + 1}: ${url.substring(0, 80)}...`);
             });
-            return uniqueUrls;
+            return latestUrls;
         }
 
         console.log(`🖼️ [诊断] 未找到图片`);
@@ -423,6 +425,14 @@ const GuangdaAdapter = {
     _handleConfirmDialog() {
         console.log('⏳ [诊断] 等待给分详情弹窗...');
 
+        // 立即检查一次
+        const immediateBtn = document.querySelector('.dialog-btns .sure');
+        if (immediateBtn) {
+            console.log('✅ [诊断] 立即找到给分详情弹窗，自动点击确认');
+            immediateBtn.click();
+            return;
+        }
+
         // 等待弹窗出现并自动点击确认
         let checkCount = 0;
         const checkInterval = setInterval(() => {
@@ -437,8 +447,8 @@ const GuangdaAdapter = {
                 return;
             }
 
-            // 超时（最多等3秒）
-            if (checkCount >= 15) {
+            // 超时（最多等2秒，更快超时）
+            if (checkCount >= 10) {
                 clearInterval(checkInterval);
                 console.log('⚠️ [诊断] 未检测到给分详情弹窗（可能未启用）');
             }
@@ -448,28 +458,48 @@ const GuangdaAdapter = {
     async waitForNextPaper(oldImageUrl) {
         console.log('⏳ [诊断] 光大阅卷 — 等待下一份试卷...');
         let checkTimes = 0;
-        const maxChecks = 60; // 最多等待 30 秒（500ms * 60）
+        const maxChecks = 60; // 最多等待 30 秒
+
+        // 清空之前拦截的图片，准备接收新试卷的图片
+        _guangdaCurrentPaperImages = [];
+
+        // 先快速检查弹窗是否还在（不等待，只是检查）
+        const hasDialog = document.querySelector('.dialog-btns .sure');
+        if (hasDialog) {
+            console.log('⏳ [诊断] 检测到弹窗还在，等待弹窗消失...');
+            await new Promise(resolve => {
+                let waitCount = 0;
+                const waitInterval = setInterval(() => {
+                    const dialog = document.querySelector('.dialog-btns .sure');
+                    if (!dialog || waitCount >= 10) {
+                        clearInterval(waitInterval);
+                        resolve();
+                    }
+                    waitCount++;
+                }, 100);
+            });
+        }
+
+        console.log('⏳ [诊断] 开始检测新试卷...');
 
         return new Promise((resolve) => {
             const timer = setInterval(() => {
                 checkTimes++;
 
-                // 检测得分显示区域重置（新试卷加载时得分会变为0或消失）
-                const scoreDisplay = document.querySelector(GUANGDA_SELECTORS.SCORE_DISPLAY);
-                const currentScore = scoreDisplay?.textContent?.trim();
-
-                // 检测二次确认弹窗是否还在
-                const dialog = document.querySelector('.dialog-btns .sure');
-                if (dialog) {
-                    // 弹窗还在，继续等待
+                // 方法1: 检测 API 拦截到的新图片
+                if (_guangdaCurrentPaperImages.length > 0 && checkTimes > 2) {
+                    clearInterval(timer);
+                    console.log('✅ 光大阅卷 — 新试卷已加载（API拦截到新图片）');
+                    resolve(true);
                     return;
                 }
 
-                // 检测新试卷加载（得分重置或小题区域变化）
-                const xtList = document.querySelector(GUANGDA_SELECTORS.SUB_QUESTION_LIST);
-                const currentXtText = xtList?.textContent?.trim() || '';
+                // 方法2: 检测得分显示区域重置
+                const scoreDisplay = document.querySelector(GUANGDA_SELECTORS.SCORE_DISPLAY);
+                const currentScore = scoreDisplay?.textContent?.trim();
 
-                if (checkTimes > 3 && (!scoreDisplay || currentScore === '' || currentScore === '0')) {
+                // 得分区域消失或变为0，说明新试卷已加载
+                if (checkTimes > 3 && (!scoreDisplay || currentScore === '' || currentScore === '0' || currentScore === '—')) {
                     clearInterval(timer);
                     console.log('✅ 光大阅卷 — 新试卷已加载（得分重置）');
                     resolve(true);

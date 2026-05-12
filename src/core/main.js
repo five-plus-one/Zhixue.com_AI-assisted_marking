@@ -183,9 +183,18 @@ function initBatchProgress() {
     if (config.batchConfig && config.batchConfig.enabled) {
         window.aiGradingState.batchProgress.enabled = true;
         window.aiGradingState.batchProgress.targetCount = config.batchConfig.targetCount || 0;
+        window.aiGradingState.batchProgress.reached = false; // 重置达到标记
         // 从 sessionStorage 恢复当前批阅份数（同一会话内有效）
-        window.aiGradingState.batchProgress.currentCount = parseInt(sessionStorage.getItem('ai-batch-current-count') || '0');
-        console.log(`📊 [批阅份数] 已启用，目标: ${window.aiGradingState.batchProgress.targetCount}，当前: ${window.aiGradingState.batchProgress.currentCount}`);
+        const savedCount = parseInt(sessionStorage.getItem('ai-batch-current-count') || '0');
+        window.aiGradingState.batchProgress.currentCount = savedCount;
+
+        // 如果已经达到了目标，标记为已达到
+        if (window.aiGradingState.batchProgress.targetCount > 0 &&
+            savedCount >= window.aiGradingState.batchProgress.targetCount) {
+            window.aiGradingState.batchProgress.reached = true;
+        }
+
+        console.log(`📊 [批阅份数] 已启用，目标: ${window.aiGradingState.batchProgress.targetCount}，当前: ${savedCount}`);
     }
 }
 
@@ -201,11 +210,12 @@ function updateBatchProgress() {
     // 更新进度显示
     renderBatchProgress();
 
-    // 检查是否达到目标份数
-    if (batch.targetCount > 0 && batch.currentCount >= batch.targetCount) {
+    // 检查是否达到目标份数（只暂停一次，避免重复触发）
+    if (batch.targetCount > 0 && batch.currentCount >= batch.targetCount && !batch.reached) {
+        batch.reached = true; // 标记已达到，避免重复触发
         console.log('🎯 [批阅份数] 已达到目标份数，自动暂停');
         if (window.aiGradingState.isRunning) {
-            // 暂停批改
+            // 暂停批改（不刷新页面）
             window.aiGradingState.isPaused = true;
             window.aiGradingState.isRunning = false;
             if (window.aiGradingState.abortController) {
@@ -226,6 +236,7 @@ function updateBatchProgress() {
 
 function resetBatchProgress() {
     window.aiGradingState.batchProgress.currentCount = 0;
+    window.aiGradingState.batchProgress.reached = false;
     sessionStorage.setItem('ai-batch-current-count', '0');
     renderBatchProgress();
     console.log('📊 [批阅份数] 计数已重置');
@@ -394,18 +405,18 @@ setInterval(async () => {
         lastUrlId = currentUrlId;
 
         const adapter = window.__AI_MARKER_ADAPTER__;
-        if (adapter && adapter.isRegradeMode ? adapter.isRegradeMode() : window.aiGradingState.isRegrading) return;
+        // 如果没有适配器，直接返回（不在阅卷平台）
+        if (!adapter) return;
+
+        if (adapter.isRegradeMode ? adapter.isRegradeMode() : window.aiGradingState.isRegrading) return;
 
         if (!window.aiGradingState.isRunning) {
             // 非阅卷页面不弹窗，直接返回
-            const adapter = window.__AI_MARKER_ADAPTER__;
-            if (adapter) {
-                // 优先使用快速检查（不等待 DOM），回退到完整检测
-                const onMarkingPage = adapter.isMarkingPage
-                    ? adapter.isMarkingPage()
-                    : (adapter.detectMarkingPage ? await adapter.detectMarkingPage() : true);
-                if (!onMarkingPage) return;
-            }
+            // 优先使用快速检查（不等待 DOM），回退到完整检测
+            const onMarkingPage = adapter.isMarkingPage
+                ? adapter.isMarkingPage()
+                : (adapter.detectMarkingPage ? await adapter.detectMarkingPage() : true);
+            if (!onMarkingPage) return;
 
             const boundPreset = PresetManager.data.bindings[currentUrlId];
 

@@ -160,6 +160,100 @@ function clearUnsavedChanges() {
     }
 }
 
+// ========== 批阅份数进度显示 ==========
+function renderBatchProgress() {
+    const batch = window.aiGradingState.batchProgress;
+    if (!batch.enabled) {
+        // 如果未启用，移除进度条
+        const existing = document.getElementById('ai-batch-progress');
+        if (existing) existing.remove();
+        return;
+    }
+
+    let container = document.getElementById('ai-batch-progress');
+    if (!container) {
+        // 创建进度条容器
+        container = document.createElement('div');
+        container.id = 'ai-batch-progress';
+        document.body.appendChild(container);
+
+        // 注入样式
+        const style = document.createElement('style');
+        style.id = 'ai-batch-progress-style';
+        style.textContent = `
+            #ai-batch-progress {
+                position: fixed !important;
+                top: 0 !important;
+                left: 50% !important;
+                transform: translateX(-50%) !important;
+                z-index: 99998 !important;
+                background: rgba(255, 255, 255, 0.95) !important;
+                backdrop-filter: blur(12px) !important;
+                border-bottom: 1px solid rgba(0,0,0,0.08) !important;
+                box-shadow: 0 2px 12px rgba(0,0,0,0.06) !important;
+                padding: 8px 20px !important;
+                display: flex !important;
+                align-items: center !important;
+                gap: 12px !important;
+                font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Inter", sans-serif !important;
+                border-radius: 0 0 12px 12px !important;
+                min-width: 300px !important;
+            }
+            #ai-batch-progress .progress-text {
+                font-size: 13px !important;
+                font-weight: 500 !important;
+                color: #1a1a1a !important;
+                white-space: nowrap !important;
+            }
+            #ai-batch-progress .progress-bar {
+                flex: 1 !important;
+                height: 8px !important;
+                background: rgba(0,0,0,0.08) !important;
+                border-radius: 4px !important;
+                overflow: hidden !important;
+            }
+            #ai-batch-progress .progress-fill {
+                height: 100% !important;
+                background: #0052FF !important;
+                border-radius: 4px !important;
+                transition: width 0.3s ease !important;
+            }
+            #ai-batch-progress .progress-fill.complete {
+                background: #34A853 !important;
+            }
+            #ai-batch-progress .progress-btn {
+                padding: 4px 10px !important;
+                font-size: 11px !important;
+                font-weight: 500 !important;
+                border: 1px solid rgba(0,0,0,0.12) !important;
+                border-radius: 6px !important;
+                background: transparent !important;
+                color: #666 !important;
+                cursor: pointer !important;
+                transition: all 0.2s !important;
+            }
+            #ai-batch-progress .progress-btn:hover {
+                background: rgba(0,0,0,0.04) !important;
+                color: #1a1a1a !important;
+            }
+        `;
+        document.head.appendChild(style);
+    }
+
+    const current = batch.currentCount;
+    const target = batch.targetCount;
+    const percent = target > 0 ? Math.min((current / target) * 100, 100) : 0;
+    const isComplete = target > 0 && current >= target;
+
+    container.innerHTML = `
+        <span class="progress-text">📊 批阅进度: ${current}/${target} (${Math.round(percent)}%)</span>
+        <div class="progress-bar">
+            <div class="progress-fill${isComplete ? ' complete' : ''}" style="width: ${percent}%"></div>
+        </div>
+        <button class="progress-btn" onclick="resetBatchProgress()">重置</button>
+    `;
+}
+
 // ========== 主按钮点击逻辑 ==========
 function toggleAutoGrading() {
     const btn = document.querySelector('.ai-grade-btn');

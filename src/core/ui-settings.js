@@ -472,6 +472,22 @@ function createSettingsPanel() {
                 </div>
 
                 <div class="form-section collapsed">
+                    <div class="section-header"><h4>批阅份数</h4><svg class="section-arrow" viewBox="0 0 16 16" fill="none"><path d="M4 6l4 4 4-4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+                    <div class="section-body">
+                        <div class="checkbox-group">
+                            <input type="checkbox" id="batch-enabled-checkbox">
+                            <label for="batch-enabled-checkbox">启用批阅份数限制</label>
+                        </div>
+                        <div style="font-size:12px;color:#86868b;margin-top:4px;margin-bottom:12px;">达到目标份数后自动暂停批改</div>
+                        <div class="form-group" id="batch-count-group">
+                            <label>目标批阅份数</label>
+                            <input type="number" id="batch-target-count" min="1" max="9999" placeholder="例如：50" style="width:100%;">
+                        </div>
+                        <div id="batch-status" style="font-size:12px;color:#86868b;margin-top:8px;"></div>
+                    </div>
+                </div>
+
+                <div class="form-section collapsed">
                     <div class="section-header"><h4>配置管理</h4><svg class="section-arrow" viewBox="0 0 16 16" fill="none"><path d="M4 6l4 4 4-4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
                     <div class="section-body">
                         <div style="display:flex;gap:8px;">

@@ -176,6 +176,61 @@ async function startAutoGrading() {
     }
 }
 
+// ========== 批阅份数功能 ==========
+function initBatchProgress() {
+    // 从配置中加载批阅份数设置
+    const config = PresetManager.getCurrentConfig();
+    if (config.batchConfig && config.batchConfig.enabled) {
+        window.aiGradingState.batchProgress.enabled = true;
+        window.aiGradingState.batchProgress.targetCount = config.batchConfig.targetCount || 0;
+        // 从 sessionStorage 恢复当前批阅份数（同一会话内有效）
+        window.aiGradingState.batchProgress.currentCount = parseInt(sessionStorage.getItem('ai-batch-current-count') || '0');
+        console.log(`📊 [批阅份数] 已启用，目标: ${window.aiGradingState.batchProgress.targetCount}，当前: ${window.aiGradingState.batchProgress.currentCount}`);
+    }
+}
+
+function updateBatchProgress() {
+    const batch = window.aiGradingState.batchProgress;
+    if (!batch.enabled) return;
+
+    batch.currentCount++;
+    sessionStorage.setItem('ai-batch-current-count', batch.currentCount.toString());
+
+    console.log(`📊 [批阅份数] 已批阅: ${batch.currentCount}/${batch.targetCount}`);
+
+    // 更新进度显示
+    renderBatchProgress();
+
+    // 检查是否达到目标份数
+    if (batch.targetCount > 0 && batch.currentCount >= batch.targetCount) {
+        console.log('🎯 [批阅份数] 已达到目标份数，自动暂停');
+        if (window.aiGradingState.isRunning) {
+            // 暂停批改
+            window.aiGradingState.isPaused = true;
+            window.aiGradingState.isRunning = false;
+            if (window.aiGradingState.abortController) {
+                window.aiGradingState.abortController.abort();
+            }
+
+            const btn = document.querySelector('.ai-grade-btn');
+            if (btn) {
+                btn.textContent = '继续批改';
+                btn.classList.remove('running', 'unattended');
+                btn.classList.add('paused');
+            }
+
+            showToast(`🎯 已达到目标批阅份数 (${batch.targetCount}份)，自动暂停`);
+        }
+    }
+}
+
+function resetBatchProgress() {
+    window.aiGradingState.batchProgress.currentCount = 0;
+    sessionStorage.setItem('ai-batch-current-count', '0');
+    renderBatchProgress();
+    console.log('📊 [批阅份数] 计数已重置');
+}
+
 // ========== 工具页面模式检测 ==========
 function isToolsPageMode() {
     const hostname = window.location.hostname;
@@ -237,6 +292,9 @@ async function init() {
     console.log('✅ [诊断] 检测到批改页面，开始初始化UI');
     createMainButton();
     createSettingsPanel();
+
+    // 初始化批阅份数功能
+    initBatchProgress();
 
     // 首次启动或重置后显示新手引导
     const showOnboarding = GM_getValue('ai-grading-show-onboarding', true);

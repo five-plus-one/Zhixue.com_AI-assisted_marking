@@ -189,8 +189,37 @@ function createToolsPageUI() {
 // ========== 关于面板 ==========
 function showAboutPanel() {
     // 确保弹窗样式已注入
-    if (typeof initModalStyles === 'function') {
+    if (typeof G === 'function') {
+        G(); // 调用 initModalStyles 的别名
+    } else if (typeof initModalStyles === 'function') {
         initModalStyles();
+    } else {
+        // 手动注入弹窗样式
+        if (!document.getElementById('ai-modal-styles')) {
+            const modalStyle = document.createElement('style');
+            modalStyle.id = 'ai-modal-styles';
+            modalStyle.textContent = `
+                .ai-modal-overlay {
+                    position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+                    background: rgba(0,0,0,0.25); backdrop-filter: blur(6px);
+                    z-index: 1000010;
+                    display: flex; justify-content: center; align-items: center;
+                    animation: ai-modal-fadein 0.25s ease-out;
+                }
+                @keyframes ai-modal-fadein { from { opacity: 0; } to { opacity: 1; } }
+                .ai-modal-card {
+                    background: rgba(255, 255, 255, 0.96);
+                    backdrop-filter: blur(32px) saturate(180%);
+                    border: 1px solid rgba(255, 255, 255, 0.6);
+                    border-radius: 20px;
+                    box-shadow: 0 40px 80px rgba(0,0,0,0.12);
+                    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Inter", sans-serif;
+                    animation: ai-modal-scalein 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+                }
+                @keyframes ai-modal-scalein { from { transform: scale(0.96) translateY(8px); opacity: 0; } to { transform: scale(1) translateY(0); opacity: 1; } }
+            `;
+            document.head.appendChild(modalStyle);
+        }
     }
 
     // 创建弹窗
@@ -281,4 +310,12 @@ function showAboutPanel() {
     overlay.onclick = (e) => {
         if (e.target === overlay) overlay.remove();
     };
+}
+
+// 将函数暴露到全局作用域，以便 onclick 可以调用
+if (typeof window !== 'undefined') {
+    window.showAboutPanel = showAboutPanel;
+    window.showHistoryPanel = showHistoryPanel;
+    window.checkForUpdate = checkForUpdate;
+    window.resetBatchProgress = resetBatchProgress;
 }

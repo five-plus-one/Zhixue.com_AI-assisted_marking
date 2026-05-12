@@ -1678,6 +1678,22 @@ function saveAISettings() {
     const modeLabel = { normal: '普通模式', trial: '试改模式', unattended: '无人模式' }[gradingMode];
     safeAlert(`「${activeName}」已保存 — ${modeLabel}`);
 
+    // 重置批阅份数计数（配置更新后重新开始计数）
+    if (batchEnabled && batchTargetCount > 0) {
+        if (typeof resetBatchProgress === 'function') {
+            resetBatchProgress();
+            safeAlert('批阅份数计数已重置');
+        }
+    }
+
+    // 重新初始化批阅进度
+    if (typeof initBatchProgress === 'function') {
+        initBatchProgress();
+    }
+    if (typeof renderBatchProgress === 'function') {
+        renderBatchProgress();
+    }
+
     // 保存后自动关闭侧边栏
     closeSettingsPanel();
 }

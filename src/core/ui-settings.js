@@ -1008,6 +1008,40 @@ function fillFormFromActivePreset() {
         });
     }
 
+    // 批阅份数配置
+    const batchEnabledCheckbox = document.getElementById('batch-enabled-checkbox');
+    const batchTargetCount = document.getElementById('batch-target-count');
+    const batchCountGroup = document.getElementById('batch-count-group');
+    const batchStatus = document.getElementById('batch-status');
+
+    if (batchEnabledCheckbox && batchTargetCount) {
+        const currentConfig = PresetManager.getCurrentConfig();
+        const batchConfig = currentConfig.batchConfig || { enabled: false, targetCount: 0 };
+
+        batchEnabledCheckbox.checked = batchConfig.enabled;
+        batchTargetCount.value = batchConfig.targetCount || '';
+        batchCountGroup.style.display = batchConfig.enabled ? 'block' : 'none';
+
+        // 更新状态显示
+        function updateBatchStatus() {
+            if (batchStatus && window.aiGradingState.batchProgress.enabled) {
+                const current = window.aiGradingState.batchProgress.currentCount;
+                const target = window.aiGradingState.batchProgress.targetCount;
+                batchStatus.textContent = `当前已批阅: ${current}/${target} 份`;
+            }
+        }
+        updateBatchStatus();
+
+        batchEnabledCheckbox.addEventListener('change', () => {
+            batchCountGroup.style.display = batchEnabledCheckbox.checked ? 'block' : 'none';
+            markUnsavedChanges();
+        });
+
+        batchTargetCount.addEventListener('input', () => {
+            markUnsavedChanges();
+        });
+    }
+
     updateUIVisibility();
     clearUnsavedChanges();
 }
@@ -1608,6 +1642,10 @@ function saveAISettings() {
     const roundStep = parseFloat(document.getElementById('scoring-round-step')?.value) || 1;
     const roundMethod = document.getElementById('scoring-round-method')?.value || 'round';
 
+    // 保存批阅份数配置
+    const batchEnabled = document.getElementById('batch-enabled-checkbox')?.checked || false;
+    const batchTargetCount = parseInt(document.getElementById('batch-target-count')?.value) || 0;
+
     const config = {
         question: document.getElementById('question-content').value,
         answer: document.getElementById('standard-answer').value,
@@ -1615,7 +1653,11 @@ function saveAISettings() {
         workflowId: workflowId || 'fast',
         gradingMode,
         subQuestions: subQuestions.length > 0 ? subQuestions : undefined,
-        scoring: { roundStep, roundMethod }
+        scoring: { roundStep, roundMethod },
+        batchConfig: {
+            enabled: batchEnabled,
+            targetCount: batchTargetCount
+        }
     };
 
     const activeName = PresetManager.data.active;

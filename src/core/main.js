@@ -295,6 +295,7 @@ async function init() {
 
     // 初始化批阅份数功能
     initBatchProgress();
+    renderBatchProgress();
 
     // 首次启动或重置后显示新手引导
     const showOnboarding = GM_getValue('ai-grading-show-onboarding', true);

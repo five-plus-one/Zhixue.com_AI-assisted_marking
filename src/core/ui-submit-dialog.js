@@ -332,6 +332,11 @@ function showAutoSubmitDialog(score, comment, subScores, extraInfo) {
             dualEval: dualEval || null
         });
 
+        // 更新批阅份数进度
+        if (typeof updateBatchProgress === 'function') {
+            updateBatchProgress();
+        }
+
         const adapter = window.__AI_MARKER_ADAPTER__;
         const submitted = adapter && adapter.submitGrade ? adapter.submitGrade() : false;
 

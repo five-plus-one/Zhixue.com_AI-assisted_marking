@@ -515,6 +515,16 @@ function showHistoryPanel() {
             .hist-item-check { display:none; margin-right:8px; flex-shrink:0; }
             .hist-batch-mode .hist-item-check { display:block; }
             .hist-item-check input { width:15px; height:15px; cursor:pointer; accent-color:#0052FF; }
+
+            .hist-pagination { padding:10px 24px 14px; border-top:1px solid rgba(0,0,0,0.05); display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+            .hist-pagination button { padding:5px 10px; border:1px solid rgba(0,0,0,0.08); background:transparent; border-radius:6px; font-size:12px; cursor:pointer; transition:all 0.2s; min-width:32px; text-align:center; }
+            .hist-pagination button:hover:not(:disabled) { background:rgba(0,0,0,0.03); }
+            .hist-pagination button:disabled { opacity:0.35; cursor:not-allowed; }
+            .hist-pagination button.active { background:#1d1d1f; color:#fff !important; border-color:#1d1d1f; }
+            .hist-pagination .page-info { font-size:12px; color:#86868b; }
+            .hist-pagination select { padding:4px 6px; border:1px solid rgba(0,0,0,0.1); border-radius:6px; font-size:12px; font-family:inherit; background:rgba(0,0,0,0.02); }
+            .hist-pagination .page-jump { display:flex; align-items:center; gap:4px; margin-left:auto; }
+            .hist-pagination .page-jump input { width:40px; padding:4px 6px; border:1px solid rgba(0,0,0,0.1); border-radius:6px; font-size:12px; text-align:center; font-family:inherit; }
         </style>
         <div id="ai-history-panel-inner">
             <div class="hist-header">
@@ -561,6 +571,8 @@ function showHistoryPanel() {
     document.body.appendChild(panel);
 
     let filterState = { startDate: '', endDate: '', presetName: '' };
+    let paginationState = { page: 1, pageSize: 20 };
+    let currentFilteredRecords = HistoryManager.records; // 当前筛选结果缓存，供分页和导出共用
 
     const presetSelect = document.getElementById('hist-filter-preset');
     const presetNames = [...new Set(HistoryManager.records.map(r => r.presetName).filter(Boolean))];
@@ -587,7 +599,12 @@ function showHistoryPanel() {
         const el = document.getElementById('hist-count');
         if (!el) return;
         const total = HistoryManager.records.length;
-        el.textContent = filtered.length === total ? `共 ${total} 条` : `筛选结果 ${filtered.length} / 共 ${total} 条`;
+        const filteredCount = filtered.length;
+        const totalPages = Math.max(1, Math.ceil(filteredCount / paginationState.pageSize));
+        const prefix = filteredCount === total ? `共 ${total} 条` : `筛选结果 ${filteredCount} / 共 ${total} 条`;
+        el.textContent = filteredCount <= paginationState.pageSize
+            ? prefix
+            : `${prefix} · 第 ${paginationState.page}/${totalPages} 页`;
     }
 
     const close = () => { overlay.remove(); panel.remove(); };
@@ -603,17 +620,20 @@ function showHistoryPanel() {
         filterState.startDate = document.getElementById('hist-filter-start').value;
         filterState.endDate = document.getElementById('hist-filter-end').value;
         filterState.presetName = presetSelect.value;
-        const filtered = getFilteredRecords();
-        updateCount(filtered);
-        renderList(filtered);
+        currentFilteredRecords = getFilteredRecords();
+        paginationState.page = 1;
+        updateCount(currentFilteredRecords);
+        renderList(currentFilteredRecords);
     };
     document.getElementById('hist-filter-reset').onclick = () => {
         filterState = { startDate: '', endDate: '', presetName: '' };
         document.getElementById('hist-filter-start').value = '';
         document.getElementById('hist-filter-end').value = '';
         presetSelect.value = '';
-        updateCount(HistoryManager.records);
-        renderList(HistoryManager.records);
+        currentFilteredRecords = HistoryManager.records;
+        paginationState.page = 1;
+        updateCount(currentFilteredRecords);
+        renderList(currentFilteredRecords);
     };
 
     document.getElementById('hist-export-csv').onclick = () => HistoryManager.exportCSV(getFilteredRecords());
@@ -637,6 +657,7 @@ function showHistoryPanel() {
     };
 
     document.getElementById('hist-batch-select-all').onclick = () => {
+        // 全选当前页
         listContainer.querySelectorAll('.hist-item-check input').forEach(cb => {
             cb.checked = true;
             selectedIds.add(cb.dataset.id);
@@ -662,8 +683,12 @@ function showHistoryPanel() {
             HistoryManager.save();
             selectedIds.clear();
             updateBatchInfo();
-            updateCount(HistoryManager.records);
-            renderList(getFilteredRecords());
+            currentFilteredRecords = getFilteredRecords();
+            // 如果当前页已空且不在第一页，回退一页
+            const totalPagesAfter = Math.max(1, Math.ceil(currentFilteredRecords.length / paginationState.pageSize));
+            if (paginationState.page > totalPagesAfter) paginationState.page = totalPagesAfter;
+            updateCount(currentFilteredRecords);
+            renderList(currentFilteredRecords);
             loadStorageInfo();
             showToast('已删除选中记录');
         }
@@ -717,8 +742,11 @@ function showHistoryPanel() {
             }
             HistoryManager.records = HistoryManager.records.filter(r => r.timestamp >= cutoff);
             HistoryManager.save();
-            updateCount(HistoryManager.records);
-            renderList(HistoryManager.records);
+            currentFilteredRecords = getFilteredRecords();
+            const totalPagesAfter = Math.max(1, Math.ceil(currentFilteredRecords.length / paginationState.pageSize));
+            if (paginationState.page > totalPagesAfter) paginationState.page = totalPagesAfter;
+            updateCount(currentFilteredRecords);
+            renderList(currentFilteredRecords);
             loadStorageInfo();
             showToast(`已清理 ${oldRecords.length} 条旧记录`);
         }
@@ -730,6 +758,8 @@ function showHistoryPanel() {
             HistoryManager.records = [];
             HistoryManager.save();
             await ImageStore.clear().catch(() => {});
+            currentFilteredRecords = [];
+            paginationState.page = 1;
             updateCount([]);
             renderList([]);
             loadStorageInfo();
@@ -743,7 +773,17 @@ function showHistoryPanel() {
             listEl.innerHTML = '<div class="hist-empty">暂无评阅记录</div>';
             return;
         }
-        listEl.innerHTML = records.map(r => {
+
+        // 分页切片
+        const { page, pageSize } = paginationState;
+        const totalPages = Math.max(1, Math.ceil(records.length / pageSize));
+        const safePage = Math.min(Math.max(1, page), totalPages);
+        paginationState.page = safePage;
+        const startIdx = (safePage - 1) * pageSize;
+        const pageRecords = records.slice(startIdx, startIdx + pageSize);
+
+        // 渲染当前页记录
+        listEl.innerHTML = pageRecords.map(r => {
             const time = new Date(r.timestamp).toLocaleString('zh-CN');
             const modeLabel = { normal: '普通', unattended: '无人', trial: '试改' }[r.gradingMode] || r.gradingMode;
             const scoreHtml = r.isCorrected
@@ -751,7 +791,6 @@ function showHistoryPanel() {
                 : `<span>${r.finalScore}</span>`;
             const markedTag = r.status === 'marked' ? '<span class="marked-tag">&middot; 待回评</span>' : '';
             const correctedTag = r.isCorrected ? '<span style="color:#0052FF;font-size:11px;margin-left:8px;">&#10003;已纠错</span>' : '';
-            // 双评标识
             const dualTag = r.dualEval ? `<span style="font-size:10px;padding:1px 5px;border-radius:3px;margin-left:6px;background:${r.dualEval.result === 'consensus' ? 'rgba(52,168,83,0.1)' : r.dualEval.result === 'arbitration' ? 'rgba(124,58,237,0.1)' : 'rgba(0,0,0,0.05)'};color:${r.dualEval.result === 'consensus' ? '#34A853' : r.dualEval.result === 'arbitration' ? '#7c3aed' : '#86868b'};">双评</span>` : '';
             return `
                 <div class="hist-item ${r.status === 'marked' ? 'marked' : ''}" data-id="${r.id}">
@@ -774,12 +813,48 @@ function showHistoryPanel() {
             `;
         }).join('');
 
+        // 渲染分页控件
+        if (records.length > pageSize) {
+            const rangeStart = startIdx + 1;
+            const rangeEnd = Math.min(startIdx + pageSize, records.length);
+            // 页码按钮：最多显示 5 个页码
+            let pageButtons = '';
+            let pStart = Math.max(1, safePage - 2);
+            let pEnd = Math.min(totalPages, pStart + 4);
+            if (pEnd - pStart < 4) pStart = Math.max(1, pEnd - 4);
+            for (let p = pStart; p <= pEnd; p++) {
+                pageButtons += `<button class="hist-page-btn${p === safePage ? ' active' : ''}" data-page="${p}">${p}</button>`;
+            }
+            listEl.innerHTML += `
+                <div class="hist-pagination">
+                    <button class="hist-page-btn" data-page="1" ${safePage <= 1 ? 'disabled' : ''} title="首页">&laquo;</button>
+                    <button class="hist-page-btn" data-page="${safePage - 1}" ${safePage <= 1 ? 'disabled' : ''} title="上一页">&lsaquo;</button>
+                    ${pageButtons}
+                    <button class="hist-page-btn" data-page="${safePage + 1}" ${safePage >= totalPages ? 'disabled' : ''} title="下一页">&rsaquo;</button>
+                    <button class="hist-page-btn" data-page="${totalPages}" ${safePage >= totalPages ? 'disabled' : ''} title="末页">&raquo;</button>
+                    <span class="page-info">${rangeStart}-${rangeEnd} / ${records.length}</span>
+                    <select class="hist-page-size" title="每页条数">
+                        <option value="10"${pageSize === 10 ? ' selected' : ''}>10条/页</option>
+                        <option value="20"${pageSize === 20 ? ' selected' : ''}>20条/页</option>
+                        <option value="50"${pageSize === 50 ? ' selected' : ''}>50条/页</option>
+                        <option value="100"${pageSize === 100 ? ' selected' : ''}>100条/页</option>
+                    </select>
+                    <div class="page-jump">
+                        <span class="page-info">跳至</span>
+                        <input type="number" class="hist-page-jump" min="1" max="${totalPages}" value="${safePage}">
+                    </div>
+                </div>
+            `;
+        }
+
+        // 事件绑定：记录详情/标记
         listEl.querySelectorAll('.hist-detail-btn').forEach(btn => {
             btn.onclick = () => showHistoryDetail(HistoryManager.getById(btn.dataset.id));
         });
         listEl.querySelectorAll('.hist-mark-btn').forEach(btn => {
-            btn.onclick = () => { HistoryManager.markIncorrect(btn.dataset.id); renderList(getFilteredRecords()); showToast('已标记为不正确'); };
+            btn.onclick = () => { HistoryManager.markIncorrect(btn.dataset.id); renderList(currentFilteredRecords); showToast('已标记为不正确'); };
         });
+        // 事件绑定：checkbox
         listEl.querySelectorAll('.hist-item-check input').forEach(cb => {
             cb.onchange = () => {
                 if (cb.checked) selectedIds.add(cb.dataset.id);
@@ -787,9 +862,47 @@ function showHistoryPanel() {
                 updateBatchInfo();
             };
         });
+        // 事件绑定：分页按钮
+        listEl.querySelectorAll('.hist-page-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const p = parseInt(btn.dataset.page);
+                if (!isNaN(p) && p >= 1 && p <= totalPages) {
+                    paginationState.page = p;
+                    renderList(records);
+                    updateCount(records);
+                    listEl.scrollTop = 0;
+                }
+            });
+        });
+        // 事件绑定：每页条数
+        const pageSizeSelect = listEl.querySelector('.hist-page-size');
+        if (pageSizeSelect) {
+            pageSizeSelect.addEventListener('change', () => {
+                paginationState.pageSize = parseInt(pageSizeSelect.value) || 20;
+                paginationState.page = 1;
+                renderList(currentFilteredRecords);
+                updateCount(currentFilteredRecords);
+            });
+        }
+        // 事件绑定：页码跳转
+        const jumpInput = listEl.querySelector('.hist-page-jump');
+        if (jumpInput) {
+            jumpInput.addEventListener('keydown', e => {
+                if (e.key === 'Enter') {
+                    const p = parseInt(jumpInput.value);
+                    if (!isNaN(p) && p >= 1 && p <= totalPages) {
+                        paginationState.page = p;
+                        renderList(records);
+                        updateCount(records);
+                        listEl.scrollTop = 0;
+                    }
+                }
+            });
+        }
     }
 
-    renderList(HistoryManager.records);
+    currentFilteredRecords = HistoryManager.records;
+    renderList(currentFilteredRecords);
 }
 
 // ========== 历史详情（右侧抽屉） ==========

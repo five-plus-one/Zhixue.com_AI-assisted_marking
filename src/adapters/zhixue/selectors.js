@@ -19,5 +19,5 @@ const ZHIXUE_SELECTORS = {
 
     // 页面检测
     PAGE_DETECT_IMAGE: 'div[name="topicImg"]',
-    PAGE_DETECT_INPUT: 'input[type="number"]',
+    PAGE_DETECT_INPUT: 'input[placeholder*="分"]',
 };

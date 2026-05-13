@@ -241,6 +241,8 @@ function resetBatchProgress() {
     renderBatchProgress();
     console.log('📊 [批阅份数] 计数已重置');
 }
+// 在函数定义后立即暴露到全局作用域，确保 inline onclick 可调用
+window.resetBatchProgress = resetBatchProgress;
 
 // ========== 工具页面模式检测 ==========
 function isToolsPageMode() {

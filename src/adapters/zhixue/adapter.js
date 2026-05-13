@@ -37,7 +37,7 @@ const ZhixueAdapter = {
             }
 
             await new Promise(resolve => setTimeout(resolve, 3000));
-            const hasInput = document.querySelector(ZHIXUE_SELECTORS.SCORE_INPUT) || document.querySelector('input[type="text"]');
+            const hasInput = document.querySelector(ZHIXUE_SELECTORS.SCORE_INPUT_PLACEHOLDER) || document.querySelector(ZHIXUE_SELECTORS.SCORE_INPUT) || document.querySelector('input[type="text"]');
             const hasButton = Array.from(document.querySelectorAll('button')).some(btn => btn.textContent.includes('提交') || btn.textContent.includes('分数'));
             const detected = !!(hasInput && hasButton);
             console.log(`🔎 [诊断] 兜底检测结果 — 输入框: ${!!hasInput}, 提交按钮: ${hasButton}, 最终判断: ${detected}`);
@@ -102,13 +102,14 @@ const ZhixueAdapter = {
             }
         }
 
-        // 回退：填总分到第一个输入框
+        // 回退：填总分到分数输入框
         const allInputs = document.querySelectorAll('input');
         console.log(`🔎 [诊断] fillScore 调用 — 分数: ${total}, 页面上所有input数量: ${allInputs.length}`);
 
-        const scoreInput = document.querySelector(ZHIXUE_SELECTORS.SCORE_INPUT) ||
-                           document.querySelector(ZHIXUE_SELECTORS.SCORE_INPUT_PLACEHOLDER) ||
-                           Array.from(document.querySelectorAll('input[type="text"]')).find(i => i.placeholder?.includes('分') || i.name?.includes('score'));
+        // 优先使用 placeholder 包含"分"的选择器（更精确），避免误匹配批阅份数等无关输入框
+        const scoreInput = document.querySelector(ZHIXUE_SELECTORS.SCORE_INPUT_PLACEHOLDER) ||
+                           Array.from(document.querySelectorAll('input[type="text"]')).find(i => i.placeholder?.includes('分') || i.name?.includes('score')) ||
+                           document.querySelector(ZHIXUE_SELECTORS.SCORE_INPUT);
 
         if (scoreInput) {
             console.log(`✅ [诊断] 找到分数输入框: type=${scoreInput.type} placeholder=${scoreInput.placeholder} name=${scoreInput.name}`);
@@ -143,12 +144,28 @@ const ZhixueAdapter = {
         return new Promise((resolve) => {
             const checkNextTimer = setInterval(() => {
                 checkTimes++;
+
+                // 检测1：图片 src 变化
                 const currentImg = document.querySelector(ZHIXUE_SELECTORS.ANSWER_IMAGE);
                 if (currentImg && currentImg.src !== oldImageUrl) {
                     clearInterval(checkNextTimer);
-                    console.log('✅ 新试卷已加载完毕！');
+                    console.log('✅ 新试卷已加载完毕（图片变化）');
                     resolve(true);
-                } else if (checkTimes > 50) {
+                    return;
+                }
+
+                // 检测2：分数输入框被清空（新试卷加载时平台会重置输入框）
+                const scoreInput = document.querySelector(ZHIXUE_SELECTORS.SCORE_INPUT_PLACEHOLDER) ||
+                                   document.querySelector(ZHIXUE_SELECTORS.SCORE_INPUT);
+                const inputCleared = scoreInput && (scoreInput.value === '' || scoreInput.value === '0');
+                if (inputCleared && checkTimes > 3) {
+                    clearInterval(checkNextTimer);
+                    console.log('✅ 新试卷已加载完毕（输入框清空）');
+                    resolve(true);
+                    return;
+                }
+
+                if (checkTimes > 50) {
                     clearInterval(checkNextTimer);
                     console.warn('⚠️ 等待下一份试卷超时');
                     resolve(false);
@@ -173,9 +190,9 @@ const ZhixueAdapter = {
             });
             return inputs;
         }
-        // 回退到总分输入框
-        const scoreInput = document.querySelector(ZHIXUE_SELECTORS.SCORE_INPUT) ||
-                           document.querySelector(ZHIXUE_SELECTORS.SCORE_INPUT_PLACEHOLDER);
+        // 回退到总分输入框（优先 placeholder 匹配，避免误匹配批阅份数等输入框）
+        const scoreInput = document.querySelector(ZHIXUE_SELECTORS.SCORE_INPUT_PLACEHOLDER) ||
+                           document.querySelector(ZHIXUE_SELECTORS.SCORE_INPUT);
         if (scoreInput) {
             inputs.push({ element: scoreInput, label: '总分', index: 0 });
         }

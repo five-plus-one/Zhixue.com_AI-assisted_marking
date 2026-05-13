@@ -465,7 +465,7 @@ setInterval(async () => {
 function registerMenuCommands() {
     if (typeof GM_registerMenuCommand === 'undefined') return;
 
-    GM_registerMenuCommand('🛠️ 工具与设置', () => {
+    GM_registerMenuCommand('🛠️ 工具与评阅历史', () => {
         window.open('https://aimarking.five-plus-one.com/tools', '_blank');
     });
 }

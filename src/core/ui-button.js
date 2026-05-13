@@ -9,7 +9,7 @@ function createMainButton() {
     const style = document.createElement('style');
     style.textContent = `
         /* 样式隔离：重置可能被平台影响的属性 */
-        .ai-grade-btn, .ai-history-btn, .ai-settings-btn, .toast-notification {
+        .ai-grade-btn, .ai-history-btn, .ai-settings-btn {
             all: initial;
             position: fixed !important;
             z-index: 99999 !important;
@@ -53,32 +53,6 @@ function createMainButton() {
         @keyframes btn-pulse-amber { 0%,100% { box-shadow: 0 12px 32px rgba(0,0,0,0.18), 0 0 0 0 rgba(230,162,60,0.3); } 50% { box-shadow: 0 12px 32px rgba(0,0,0,0.18), 0 0 0 6px rgba(230,162,60,0); } }
         @keyframes btn-pulse-red { 0%,100% { box-shadow: 0 12px 32px rgba(0,0,0,0.18), 0 0 0 0 rgba(245,108,108,0.3); } 50% { box-shadow: 0 12px 32px rgba(0,0,0,0.18), 0 0 0 6px rgba(245,108,108,0); } }
         @keyframes btn-pulse-purple { 0%,100% { box-shadow: 0 12px 32px rgba(0,0,0,0.18), 0 0 0 0 rgba(124,58,237,0.3); } 50% { box-shadow: 0 12px 32px rgba(0,0,0,0.18), 0 0 0 6px rgba(124,58,237,0); } }
-
-        .toast-notification {
-            top: 24px !important; left: 50% !important; transform: translate(-50%, -20px) !important;
-            background: rgba(255,255,255,0.96) !important;
-            backdrop-filter: blur(16px) !important; -webkit-backdrop-filter: blur(16px) !important;
-            color: #1a1a1a !important;
-            padding: 12px 20px !important;
-            border-radius: 12px !important;
-            border: 1px solid rgba(0,0,0,0.06) !important;
-            box-shadow: 0 8px 28px rgba(0,0,0,0.1) !important;
-            z-index: 1000020 !important;
-            font-size: 13px !important; font-weight: 500 !important;
-            transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1) !important;
-            pointer-events: none !important; opacity: 0 !important;
-            align-items: center !important; gap: 8px !important; max-width: 400px !important;
-            line-height: 1.4 !important;
-        }
-        .toast-notification.show { opacity: 1 !important; transform: translate(-50%, 0) !important; pointer-events: auto !important; }
-        .toast-notification .toast-close {
-            background: none !important; border: none !important; color: #999 !important; cursor: pointer !important; font-size: 16px !important;
-            padding: 0 0 0 8px !important; line-height: 1 !important; pointer-events: auto !important;
-        }
-        .toast-notification .toast-close:hover { color: #1a1a1a !important; }
-        .toast-notification.success { border-left: 3px solid #34A853 !important; }
-        .toast-notification.error { border-left: 3px solid #D93025 !important; }
-        .toast-notification.info { border-left: 3px solid #0052FF !important; }
 
         .ai-history-btn, .ai-settings-btn {
             right: 40px !important;

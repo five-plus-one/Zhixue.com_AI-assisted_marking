@@ -229,6 +229,31 @@ function renderBatchProgress() {
     container.querySelector('.progress-btn').addEventListener('click', resetBatchProgress);
 }
 
+// ========== 恢复批改（从暂停状态） ==========
+function resumeGrading(btn) {
+    window.aiGradingState.isRunning = true;
+    window.aiGradingState.isPaused = false;
+    window.aiGradingState.errorRetryCount = 0;
+
+    const config = PresetManager.getCurrentConfig();
+    window.aiGradingState.gradingMode = config.gradingMode || 'normal';
+
+    btn.classList.remove('paused', 'unattended', 'trial');
+    btn.classList.add('running');
+    if (window.aiGradingState.gradingMode === 'unattended') {
+        btn.textContent = '自动批改中…';
+        btn.classList.add('unattended');
+    } else if (window.aiGradingState.gradingMode === 'trial') {
+        btn.textContent = '试改中…';
+        btn.classList.add('trial');
+    } else {
+        btn.textContent = '暂停';
+    }
+
+    closeSettingsPanel();
+    startAutoGrading();
+}
+
 // ========== 主按钮点击逻辑 ==========
 function toggleAutoGrading() {
     const btn = document.querySelector('.ai-grade-btn');
@@ -259,27 +284,20 @@ function toggleAutoGrading() {
         if (dialog) dialog.remove();
         hideStreamPanel();
     } else {
-        window.aiGradingState.isRunning = true;
-        window.aiGradingState.isPaused = false;
-        window.aiGradingState.errorRetryCount = 0;
+        const batch = window.aiGradingState.batchProgress;
 
-        const config = PresetManager.getCurrentConfig();
-        window.aiGradingState.gradingMode = config.gradingMode || 'normal';
-
-        btn.classList.remove('paused', 'unattended', 'trial');
-        btn.classList.add('running');
-        if (window.aiGradingState.gradingMode === 'unattended') {
-            btn.textContent = '自动批改中…';
-            btn.classList.add('unattended');
-        } else if (window.aiGradingState.gradingMode === 'trial') {
-            btn.textContent = '试改中…';
-            btn.classList.add('trial');
-        } else {
-            btn.textContent = '暂停';
+        // 批阅目标已达，弹窗询问用户意图
+        if (batch.enabled && batch.reached) {
+            showBatchTargetDialog(batch.targetCount).then(action => {
+                if (action === 'stop') return; // 不再批阅，保持暂停
+                if (action === 'reset') resetBatchProgress();
+                if (action === 'continue') batch.limitExempt = true;
+                resumeGrading(btn);
+            });
+            return;
         }
 
-        closeSettingsPanel();
-        startAutoGrading();
+        resumeGrading(btn);
     }
 }
 

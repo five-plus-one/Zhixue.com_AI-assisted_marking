@@ -184,6 +184,7 @@ function initBatchProgress() {
         window.aiGradingState.batchProgress.enabled = true;
         window.aiGradingState.batchProgress.targetCount = config.batchConfig.targetCount || 0;
         window.aiGradingState.batchProgress.reached = false; // 重置达到标记
+        window.aiGradingState.batchProgress.limitExempt = false; // 重置豁免标记
         // 从 sessionStorage 恢复当前批阅份数（同一会话内有效）
         const savedCount = parseInt(sessionStorage.getItem('ai-batch-current-count') || '0');
         window.aiGradingState.batchProgress.currentCount = savedCount;
@@ -201,6 +202,7 @@ function initBatchProgress() {
         window.aiGradingState.batchProgress.targetCount = 0;
         window.aiGradingState.batchProgress.currentCount = 0;
         window.aiGradingState.batchProgress.reached = false;
+        window.aiGradingState.batchProgress.limitExempt = false;
     }
 }
 
@@ -216,8 +218,8 @@ function updateBatchProgress() {
     // 更新进度显示
     renderBatchProgress();
 
-    // 检查是否达到目标份数（只暂停一次，避免重复触发）
-    if (batch.targetCount > 0 && batch.currentCount >= batch.targetCount && !batch.reached) {
+    // 检查是否达到目标份数（只暂停一次，避免重复触发；limitExempt 时跳过自动暂停）
+    if (batch.targetCount > 0 && batch.currentCount >= batch.targetCount && !batch.reached && !batch.limitExempt) {
         batch.reached = true; // 标记已达到，避免重复触发
         console.log('🎯 [批阅份数] 已达到目标份数，自动暂停');
         if (window.aiGradingState.isRunning) {
@@ -243,6 +245,7 @@ function updateBatchProgress() {
 function resetBatchProgress() {
     window.aiGradingState.batchProgress.currentCount = 0;
     window.aiGradingState.batchProgress.reached = false;
+    window.aiGradingState.batchProgress.limitExempt = false;
     sessionStorage.setItem('ai-batch-current-count', '0');
     renderBatchProgress();
     console.log('📊 [批阅份数] 计数已重置');

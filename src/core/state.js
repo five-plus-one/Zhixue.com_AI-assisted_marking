@@ -11,5 +11,6 @@ window.aiGradingState = {
         enabled: false,        // 是否启用批阅份数限制
         targetCount: 0,        // 目标批阅份数
         currentCount: 0,       // 当前已批阅份数
+        limitExempt: false,    // 用户主动选择继续批阅时为 true，跳过自动暂停
     }
 };

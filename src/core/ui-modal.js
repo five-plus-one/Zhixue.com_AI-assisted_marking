@@ -66,6 +66,13 @@ function ensureModalStyles() {
             background: #000; transform: translateY(-1px);
             box-shadow: 0 10px 24px rgba(0,0,0,0.18);
         }
+        .ai-modal-btn-secondary {
+            background: none; color: #999; font-size: 12px;
+            border: none; cursor: pointer; padding: 6px 0;
+            width: 100%; text-align: center;
+            transition: color 0.2s;
+        }
+        .ai-modal-btn-secondary:hover { color: #1a1a1a; }
     `;
     document.head.appendChild(style);
 }
@@ -140,5 +147,38 @@ function showPromptModal(message, defaultValue) {
         overlay.querySelector('.ai-modal-btn-cancel').onclick = e => { e.stopPropagation(); close(null); };
         overlay.querySelector('.ai-modal-btn-confirm').onclick = e => { e.stopPropagation(); close(input.value); };
         input.addEventListener('keydown', e => { if (e.key === 'Enter') close(input.value); if (e.key === 'Escape') close(null); });
+    });
+}
+
+/**
+ * 批阅目标达到后的三选项对话框
+ * @param {number} targetCount - 目标批阅份数
+ * @returns {Promise<'continue'|'stop'|'reset'>}
+ */
+function showBatchTargetDialog(targetCount) {
+    return new Promise(resolve => {
+        ensureModalStyles();
+        const overlay = document.createElement('div');
+        overlay.className = 'ai-modal-overlay';
+        overlay.innerHTML = `
+            <div class="ai-modal-card">
+                <div class="ai-modal-header">已达到批阅目标</div>
+                <div class="ai-modal-body">已达到您设置的批阅目标（${targetCount} 份），是否继续？</div>
+                <div class="ai-modal-footer" style="flex-direction:column;align-items:stretch;">
+                    <div style="display:flex;gap:10px;">
+                        <button class="ai-modal-btn-confirm" data-action="continue" style="flex:1;">继续批阅</button>
+                        <button class="ai-modal-btn-cancel" data-action="stop" style="flex:1;">不再批阅</button>
+                    </div>
+                    <button class="ai-modal-btn-secondary" data-action="reset">重置批阅进度（从 0 开始）</button>
+                </div>
+            </div>
+        `;
+        document.body.appendChild(overlay);
+        let closed = false;
+        const close = result => { if (closed) return; closed = true; overlay.remove(); resolve(result); };
+        overlay.querySelector('[data-action="continue"]').onclick = e => { e.stopPropagation(); close('continue'); };
+        overlay.querySelector('[data-action="stop"]').onclick = e => { e.stopPropagation(); close('stop'); };
+        overlay.querySelector('[data-action="reset"]').onclick = e => { e.stopPropagation(); close('reset'); };
+        overlay.querySelector('[data-action="continue"]').focus();
     });
 }

@@ -319,21 +319,16 @@ const HistoryManager = {
         records = records || this.records;
         const modeLabel = { normal: '普通', unattended: '无人', trial: '试改' };
 
-        // 分批加载图片，避免并发事务过多导致 IndexedDB 超时
+        // 加载可导出的图片（仅当前 origin 的 IndexedDB）
         const imageMap = {};
-        const BATCH_SIZE = 5;
-        for (let i = 0; i < records.length; i += BATCH_SIZE) {
-            const batch = records.slice(i, i + BATCH_SIZE);
-            const results = await Promise.allSettled(
-                batch.map(async r => {
-                    const base64s = await ImageStore.get(r.id);
-                    return { id: r.id, base64s };
-                })
-            );
-            for (const result of results) {
-                if (result.status === 'fulfilled' && result.value.base64s) {
-                    imageMap[result.value.id] = result.value.base64s;
-                }
+        let remoteCount = 0;
+        for (const r of records) {
+            const imgStatus = ImageStore.getImageStatus(r.id);
+            if (imgStatus.status === 'local') {
+                const base64s = await ImageStore.get(r.id);
+                if (base64s) imageMap[r.id] = base64s;
+            } else if (imgStatus.status === 'remote') {
+                remoteCount++;
             }
         }
 
@@ -403,6 +398,7 @@ const HistoryManager = {
 <body>
     <h1>评阅历史</h1>
     <div class="meta">导出时间：${new Date().toLocaleString('zh-CN')} · 共 ${records.length} 条记录</div>
+    ${remoteCount > 0 ? `<div style="background:#fff3cd;border:1px solid #ffc107;border-radius:8px;padding:12px;margin-bottom:16px;font-size:13px;color:#856404;">⚠ ${remoteCount} 条记录的图片存储在其他阅卷平台，如需包含图片请在对应平台导出。</div>` : ''}
     ${rows || '<div style="color:#aaa;text-align:center;padding:40px;">暂无记录</div>'}
 </body></html>`;
         this._download(html, '评阅历史_' + this._fileTimestamp() + '.html', 'text/html;charset=utf-8');
@@ -637,6 +633,7 @@ function showHistoryPanel() {
                 <span style="color:#aaa;font-size:12px;">~</span>
                 <input type="date" id="hist-filter-end" title="结束日期">
                 <select id="hist-filter-preset"><option value="">全部方案</option></select>
+                <select id="hist-filter-images"><option value="">全部图片</option><option value="local">有图·可导出</option><option value="remote">有图·需导出</option><option value="none">无图</option></select>
                 <button class="primary" id="hist-filter-apply">筛选</button>
                 <button id="hist-filter-reset">重置</button>
             </div>
@@ -665,6 +662,10 @@ function showHistoryPanel() {
             }
             if (filterState.endDate) {
                 if (r.timestamp > new Date(filterState.endDate).getTime() + 86400000) return false;
+            }
+            if (filterState.imageStatus) {
+                const status = ImageStore.getImageStatus(r.id).status;
+                if (status !== filterState.imageStatus) return false;
             }
             return true;
         });
@@ -695,16 +696,18 @@ function showHistoryPanel() {
         filterState.startDate = document.getElementById('hist-filter-start').value;
         filterState.endDate = document.getElementById('hist-filter-end').value;
         filterState.presetName = presetSelect.value;
+        filterState.imageStatus = document.getElementById('hist-filter-images').value;
         currentFilteredRecords = getFilteredRecords();
         paginationState.page = 1;
         updateCount(currentFilteredRecords);
         renderList(currentFilteredRecords);
     };
     document.getElementById('hist-filter-reset').onclick = () => {
-        filterState = { startDate: '', endDate: '', presetName: '' };
+        filterState = { startDate: '', endDate: '', presetName: '', imageStatus: '' };
         document.getElementById('hist-filter-start').value = '';
         document.getElementById('hist-filter-end').value = '';
         presetSelect.value = '';
+        document.getElementById('hist-filter-images').value = '';
         currentFilteredRecords = HistoryManager.records;
         paginationState.page = 1;
         updateCount(currentFilteredRecords);
@@ -784,15 +787,13 @@ function showHistoryPanel() {
         try {
             const imgInfo = await ImageStore.getSize();
             if (imgEl) {
-                if (imgInfo.quota) {
-                    // Storage Manager API 模式：显示已用 / 总配额
-                    const usedMB = (imgInfo.totalBytes / 1024 / 1024).toFixed(1);
-                    const quotaGB = (imgInfo.quota / 1024 / 1024 / 1024).toFixed(1);
-                    imgEl.textContent = `${usedMB} MB / ${quotaGB} GB`;
+                const imgBytes = imgInfo.totalBytes || 0;
+                const imgMB = (imgBytes / 1024 / 1024).toFixed(1);
+                const imgGB = (imgBytes / 1024 / 1024 / 1024).toFixed(2);
+                if (imgBytes > 1024 * 1024 * 1024) {
+                    imgEl.textContent = `${imgGB} GB`;
                 } else {
-                    // Fallback 模式：仅显示已用
-                    const imgKB = (imgInfo.totalBytes / 1024).toFixed(1);
-                    imgEl.textContent = imgKB > 1024 ? `${(imgKB / 1024).toFixed(1)} MB` : `${imgKB} KB`;
+                    imgEl.textContent = `${imgMB} MB`;
                 }
             }
         } catch (e) {

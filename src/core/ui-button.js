@@ -99,6 +99,51 @@ function createMainButton() {
     document.body.appendChild(settingsBtn);
 }
 
+// ========== 仅历史按钮（非阅卷页面） ==========
+function createHistoryOnlyButton() {
+    if (document.querySelector('.ai-history-btn')) return;
+    const style = document.createElement('style');
+    style.textContent = `
+        .ai-history-btn {
+            all: initial;
+            position: fixed !important;
+            bottom: 20px !important;
+            right: 20px !important;
+            z-index: 99999 !important;
+            width: 44px !important;
+            height: 44px !important;
+            border-radius: 50% !important;
+            background: rgba(255,255,255,0.92) !important;
+            backdrop-filter: blur(12px) !important; -webkit-backdrop-filter: blur(12px) !important;
+            border: 1px solid rgba(0,0,0,0.08) !important;
+            box-shadow: 0 4px 16px rgba(0,0,0,0.08) !important;
+            cursor: pointer !important;
+            display: flex !important;
+            align-items: center !important;
+            justify-content: center !important;
+            transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1) !important;
+            font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Inter", sans-serif !important;
+            box-sizing: border-box !important;
+            pointer-events: auto !important;
+            visibility: visible !important;
+            opacity: 1 !important;
+        }
+        .ai-history-btn:hover {
+            transform: translateY(-2px) scale(1.05) !important;
+            box-shadow: 0 8px 24px rgba(0,0,0,0.12) !important;
+            background: rgba(255,255,255,1) !important;
+        }
+        .ai-history-btn svg { width: 20px; height: 20px; color: #444; }
+    `;
+    document.head.appendChild(style);
+    const btn = document.createElement('button');
+    btn.className = 'ai-history-btn';
+    btn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 8v4l3 3"/><circle cx="12" cy="12" r="9"/><path d="M3 12h1"/><path d="M20 12h1"/><path d="M12 3v1"/><path d="M12 20v1"/></svg>';
+    btn.title = '评阅历史';
+    btn.onclick = () => showHistoryPanel();
+    document.body.appendChild(btn);
+}
+
 // ========== 未保存状态管理 ==========
 function markUnsavedChanges() {
     if (!window.aiGradingState.hasUnsavedChanges) {

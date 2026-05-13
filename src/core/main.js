@@ -304,6 +304,8 @@ async function init() {
         return;
     }
 
+    const adapter = window.__AI_MARKER_ADAPTER__;
+
     // 检测是否在批改页面，支持重试（SPA应用可能需要更长时间加载）
     let isMarkingPage = await detectMarkingPage();
     if (!isMarkingPage) {
@@ -311,7 +313,13 @@ async function init() {
         await new Promise(resolve => setTimeout(resolve, 2000));
         isMarkingPage = await detectMarkingPage();
         if (!isMarkingPage) {
-            console.log('🔎 [诊断] 未检测到批改页面，跳过初始化');
+            // 非阅卷页面：如果在阅卷平台上，仅注入历史按钮
+            if (adapter) {
+                console.log('📚 [诊断] 非阅卷页面，注入历史按钮');
+                createHistoryOnlyButton();
+            } else {
+                console.log('🔎 [诊断] 未检测到批改页面，跳过初始化');
+            }
             return;
         }
     }

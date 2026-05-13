@@ -418,8 +418,14 @@ setInterval(async () => {
         const adapter = window.__AI_MARKER_ADAPTER__;
         // 如果没有适配器，检测是否通过 SPA 导航进入了工具页面
         if (!adapter) {
-            if (isToolsPageMode() && !document.getElementById('ai-tools-page')) {
-                await initToolsPageMode();
+            if (isToolsPageMode()) {
+                // 等待 VitePress SPA 完成渲染（VitePress 主题自身用 300ms，
+                // 这里给更充裕的时间确保 #ai-tools-root 已挂载）
+                await new Promise(resolve => setTimeout(resolve, 1500));
+                // 延迟后重新检查条件（页面可能已再次切换）
+                if (isToolsPageMode() && !document.getElementById('ai-tools-page')) {
+                    await initToolsPageMode();
+                }
             }
             return;
         }

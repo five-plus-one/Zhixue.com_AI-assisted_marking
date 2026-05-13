@@ -300,6 +300,168 @@ function createSettingsPanel() {
             }
             .changelog-version.collapsed .changelog-toggle { transform: rotate(-90deg); }
             .changelog-version.collapsed .changelog-items { display: none; }
+
+            /* UI refresh: explicit light theme and contrast-safe controls */
+            #ai-grading-settings {
+                background: #f7f8fa !important;
+                border-left: 1px solid #e1e6ef !important;
+                box-shadow: -24px 0 70px rgba(18,28,45,0.18) !important;
+                font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Inter", sans-serif !important;
+                color: #172033 !important;
+                color-scheme: light only !important;
+            }
+            #ai-grading-settings,
+            #ai-grading-settings * { color: #172033 !important; }
+            #ai-grading-settings .sidebar-header,
+            #ai-grading-settings .save-btn-container,
+            #ai-grading-settings .sidebar-footer {
+                background: #fff !important;
+                border-color: #e1e6ef !important;
+            }
+            #ai-grading-settings .sidebar-header h3 {
+                font-size: 20px !important;
+                font-weight: 750 !important;
+                letter-spacing: 0 !important;
+            }
+            #ai-grading-settings .header-btn,
+            #ai-grading-settings .preset-btn,
+            #ai-grading-settings .footer-btn {
+                background: #fff !important;
+                border: 1px solid #d8dee8 !important;
+                border-radius: 7px !important;
+                color: #344054 !important;
+                font-weight: 700 !important;
+                box-shadow: none !important;
+            }
+            #ai-grading-settings .header-btn:hover,
+            #ai-grading-settings .preset-btn:hover,
+            #ai-grading-settings .footer-btn:hover {
+                background: #f3f6fa !important;
+                border-color: #c9d2df !important;
+            }
+            #ai-grading-settings .preset-btn.danger,
+            #ai-grading-settings .footer-btn.danger,
+            #ai-grading-settings .preset-btn.danger:hover,
+            #ai-grading-settings .footer-btn.danger:hover {
+                color: #c2352b !important;
+                border-color: #efc5c1 !important;
+            }
+            #ai-grading-settings .save-btn,
+            #ai-grading-settings .mode-segmented input[type="radio"]:checked + label {
+                background: #172033 !important;
+                color: #fff !important;
+                border-color: #172033 !important;
+                box-shadow: none !important;
+            }
+            #ai-grading-settings .save-btn:hover {
+                background: #0f1726 !important;
+                box-shadow: 0 8px 18px rgba(18,28,45,0.18) !important;
+            }
+            #ai-grading-settings .save-btn.highlight-save {
+                background: #c2352b !important;
+                color: #fff !important;
+            }
+            #ai-grading-settings .settings-tabs {
+                background: #fff !important;
+                border-bottom: 1px solid #e1e6ef !important;
+                padding: 0 16px !important;
+            }
+            #ai-grading-settings .settings-tab {
+                color: #667085 !important;
+                font-weight: 700 !important;
+                border-bottom-width: 3px !important;
+            }
+            #ai-grading-settings .settings-tab.active {
+                color: #172033 !important;
+                border-bottom-color: #287047 !important;
+            }
+            #ai-grading-settings .group-title {
+                color: #667085 !important;
+                letter-spacing: 0.8px !important;
+            }
+            #ai-grading-settings .form-section {
+                background: #fff !important;
+                border-bottom: 1px solid #e1e6ef !important;
+            }
+            #ai-grading-settings .section-header:hover { background: #f3f6fa !important; }
+            #ai-grading-settings .section-header h4 {
+                color: #344054 !important;
+                letter-spacing: 0.4px !important;
+            }
+            #ai-grading-settings .section-arrow { color: #667085 !important; }
+            #ai-grading-settings .form-group label,
+            #ai-grading-settings .checkbox-group label,
+            #ai-grading-settings .about-section-title,
+            #ai-grading-settings .changelog-date,
+            #ai-grading-settings .about-version,
+            #ai-grading-settings .about-link-desc,
+            #ai-grading-settings .mode-desc,
+            #ai-grading-settings .about-copyright {
+                color: #667085 !important;
+            }
+            #ai-grading-settings .form-group input,
+            #ai-grading-settings .form-group select,
+            #ai-grading-settings .form-group textarea,
+            #ai-grading-settings .preset-controls select {
+                background: #fff !important;
+                border: 1px solid #d8dee8 !important;
+                border-radius: 7px !important;
+                color: #172033 !important;
+            }
+            #ai-grading-settings .form-group input:focus,
+            #ai-grading-settings .form-group select:focus,
+            #ai-grading-settings .form-group textarea:focus,
+            #ai-grading-settings .preset-controls select:focus {
+                border-color: #2166ad !important;
+                box-shadow: 0 0 0 3px rgba(33,102,173,0.12) !important;
+                outline: none !important;
+            }
+            #ai-grading-settings .mode-segmented {
+                background: #eef2f7 !important;
+                border: 1px solid #d8dee8 !important;
+                border-radius: 8px !important;
+            }
+            #ai-grading-settings .mode-segmented label {
+                color: #475467 !important;
+                border-radius: 6px !important;
+                font-weight: 700 !important;
+            }
+            #ai-grading-settings .mode-segmented input[value="trial"]:checked + label,
+            #ai-grading-settings .mode-segmented input[value="unattended"]:checked + label {
+                color: #fff !important;
+            }
+            #ai-grading-settings .api-key-link,
+            #ai-grading-settings .changelog-version-header:hover .changelog-ver {
+                color: #2166ad !important;
+            }
+            #ai-grading-settings .api-key-warning {
+                background: #fff4f3 !important;
+                border-color: #efc5c1 !important;
+                color: #c2352b !important;
+            }
+            #ai-grading-settings .about-logo {
+                background: #172033 !important;
+                color: #fff !important;
+                border-radius: 12px !important;
+            }
+            #ai-grading-settings .about-link {
+                background: #fff !important;
+                border-color: #e1e6ef !important;
+                border-radius: 8px !important;
+            }
+            #ai-grading-settings .about-link:hover {
+                background: #f3f6fa !important;
+                border-color: #cbd5e1 !important;
+            }
+            #ai-grading-settings .about-support {
+                background: #fff7e6 !important;
+                border-color: #f4d49a !important;
+            }
+            #ai-grading-settings .about-support-desc,
+            #ai-grading-settings .about-qrcode-label,
+            #ai-grading-settings .changelog-items {
+                color: #475467 !important;
+            }
         </style>
 
         <div class="sidebar-header">
@@ -468,6 +630,22 @@ function createSettingsPanel() {
                             <label for="save-images-checkbox">保存答题卡图片</label>
                         </div>
                         <div style="font-size:12px;color:#86868b;margin-top:4px;">关闭后不再保存图片到本地，可节省存储空间</div>
+                    </div>
+                </div>
+
+                <div class="form-section collapsed">
+                    <div class="section-header"><h4>批阅份数</h4><svg class="section-arrow" viewBox="0 0 16 16" fill="none"><path d="M4 6l4 4 4-4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+                    <div class="section-body">
+                        <div class="checkbox-group">
+                            <input type="checkbox" id="batch-enabled-checkbox">
+                            <label for="batch-enabled-checkbox">启用批阅份数限制</label>
+                        </div>
+                        <div style="font-size:12px;color:#86868b;margin-top:4px;margin-bottom:12px;">达到目标份数后自动暂停批改</div>
+                        <div class="form-group" id="batch-count-group">
+                            <label>目标批阅份数</label>
+                            <input type="number" id="batch-target-count" min="1" max="9999" placeholder="例如：50" style="width:100%;">
+                        </div>
+                        <div id="batch-status" style="font-size:12px;color:#86868b;margin-top:8px;"></div>
                     </div>
                 </div>
 
@@ -989,6 +1167,40 @@ function fillFormFromActivePreset() {
             window.aiGradingState.saveImages = saveImagesCheckbox.checked;
             GM_setValue('ai-grading-save-images', saveImagesCheckbox.checked);
             showToast(saveImagesCheckbox.checked ? '已开启答题卡图片保存' : '已关闭答题卡图片保存');
+        });
+    }
+
+    // 批阅份数配置
+    const batchEnabledCheckbox = document.getElementById('batch-enabled-checkbox');
+    const batchTargetCount = document.getElementById('batch-target-count');
+    const batchCountGroup = document.getElementById('batch-count-group');
+    const batchStatus = document.getElementById('batch-status');
+
+    if (batchEnabledCheckbox && batchTargetCount) {
+        const currentConfig = PresetManager.getCurrentConfig();
+        const batchConfig = currentConfig.batchConfig || { enabled: false, targetCount: 0 };
+
+        batchEnabledCheckbox.checked = batchConfig.enabled;
+        batchTargetCount.value = batchConfig.targetCount || '';
+        batchCountGroup.style.display = batchConfig.enabled ? 'block' : 'none';
+
+        // 更新状态显示
+        function updateBatchStatus() {
+            if (batchStatus && window.aiGradingState.batchProgress.enabled) {
+                const current = window.aiGradingState.batchProgress.currentCount;
+                const target = window.aiGradingState.batchProgress.targetCount;
+                batchStatus.textContent = `当前已批阅: ${current}/${target} 份`;
+            }
+        }
+        updateBatchStatus();
+
+        batchEnabledCheckbox.addEventListener('change', () => {
+            batchCountGroup.style.display = batchEnabledCheckbox.checked ? 'block' : 'none';
+            markUnsavedChanges();
+        });
+
+        batchTargetCount.addEventListener('input', () => {
+            markUnsavedChanges();
         });
     }
 
@@ -1592,6 +1804,10 @@ function saveAISettings() {
     const roundStep = parseFloat(document.getElementById('scoring-round-step')?.value) || 1;
     const roundMethod = document.getElementById('scoring-round-method')?.value || 'round';
 
+    // 保存批阅份数配置
+    const batchEnabled = document.getElementById('batch-enabled-checkbox')?.checked || false;
+    const batchTargetCount = parseInt(document.getElementById('batch-target-count')?.value) || 0;
+
     const config = {
         question: document.getElementById('question-content').value,
         answer: document.getElementById('standard-answer').value,
@@ -1599,10 +1815,20 @@ function saveAISettings() {
         workflowId: workflowId || 'fast',
         gradingMode,
         subQuestions: subQuestions.length > 0 ? subQuestions : undefined,
-        scoring: { roundStep, roundMethod }
+        scoring: { roundStep, roundMethod },
+        batchConfig: {
+            enabled: batchEnabled,
+            targetCount: batchTargetCount
+        }
     };
 
     const activeName = PresetManager.data.active;
+
+    // 保存前读取旧的批阅份数配置，用于判断是否变化
+    const oldConfig = PresetManager.data.list[activeName];
+    const oldBatchEnabled = oldConfig?.batchConfig?.enabled || false;
+    const oldBatchTargetCount = oldConfig?.batchConfig?.targetCount || 0;
+
     PresetManager.data.list[activeName] = config;
 
     const currentUrlId = PresetManager.getTaskIdentifier();
@@ -1619,6 +1845,27 @@ function saveAISettings() {
     clearUnsavedChanges();
     const modeLabel = { normal: '普通模式', trial: '试改模式', unattended: '无人模式' }[gradingMode];
     safeAlert(`「${activeName}」已保存 — ${modeLabel}`);
+
+    // 仅当批阅份数配置发生变化时才重置计数
+    const batchConfigChanged = (batchEnabled !== oldBatchEnabled) || (batchTargetCount !== oldBatchTargetCount);
+    if (batchConfigChanged) {
+        if (typeof resetBatchProgress === 'function') {
+            resetBatchProgress();
+        }
+        if (batchEnabled && batchTargetCount > 0) {
+            showToast(`📊 批阅份数已更新，计数已重置`);
+        } else if (!batchEnabled && oldBatchEnabled) {
+            showToast(`📊 已关闭按份数批改`);
+        }
+    }
+
+    // 重新初始化批阅进度
+    if (typeof initBatchProgress === 'function') {
+        initBatchProgress();
+    }
+    if (typeof renderBatchProgress === 'function') {
+        renderBatchProgress();
+    }
 
     // 保存后自动关闭侧边栏
     closeSettingsPanel();

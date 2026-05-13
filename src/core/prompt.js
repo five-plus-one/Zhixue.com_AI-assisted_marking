@@ -274,7 +274,7 @@ function buildSubQuestionPrompt(config) {
 （写出各小题计算公式）`;
 
     for (const sq of config.subQuestions) {
-        prompt += `\n\n${sq.label}分数：（一个数字）`;
+        prompt += `\n\n${sq.label}分数：（一个整数）`;
         prompt += `\n${sq.label}评语：（简短评语）`;
     }
 
@@ -415,7 +415,7 @@ function callAIGrading(base64DataArray, config, onStreamUpdate) {
 
 // ========== 应用取整规则 ==========
 function applyScoringRules(score, scoringConfig) {
-    if (!score || !scoringConfig) return score;
+    if (score === null || score === undefined || !scoringConfig) return score;
 
     const step = scoringConfig.roundStep || 1;
     const method = scoringConfig.roundMethod || 'round';

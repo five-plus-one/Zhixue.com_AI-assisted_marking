@@ -9,7 +9,7 @@ function createMainButton() {
     const style = document.createElement('style');
     style.textContent = `
         /* 样式隔离：重置可能被平台影响的属性 */
-        .ai-grade-btn, .ai-history-btn, .ai-settings-btn, .toast-notification {
+        .ai-grade-btn, .ai-history-btn, .ai-settings-btn {
             all: initial;
             position: fixed !important;
             z-index: 99999 !important;
@@ -53,32 +53,6 @@ function createMainButton() {
         @keyframes btn-pulse-amber { 0%,100% { box-shadow: 0 12px 32px rgba(0,0,0,0.18), 0 0 0 0 rgba(230,162,60,0.3); } 50% { box-shadow: 0 12px 32px rgba(0,0,0,0.18), 0 0 0 6px rgba(230,162,60,0); } }
         @keyframes btn-pulse-red { 0%,100% { box-shadow: 0 12px 32px rgba(0,0,0,0.18), 0 0 0 0 rgba(245,108,108,0.3); } 50% { box-shadow: 0 12px 32px rgba(0,0,0,0.18), 0 0 0 6px rgba(245,108,108,0); } }
         @keyframes btn-pulse-purple { 0%,100% { box-shadow: 0 12px 32px rgba(0,0,0,0.18), 0 0 0 0 rgba(124,58,237,0.3); } 50% { box-shadow: 0 12px 32px rgba(0,0,0,0.18), 0 0 0 6px rgba(124,58,237,0); } }
-
-        .toast-notification {
-            top: 24px !important; left: 50% !important; transform: translate(-50%, -20px) !important;
-            background: rgba(255,255,255,0.96) !important;
-            backdrop-filter: blur(16px) !important; -webkit-backdrop-filter: blur(16px) !important;
-            color: #1a1a1a !important;
-            padding: 12px 20px !important;
-            border-radius: 12px !important;
-            border: 1px solid rgba(0,0,0,0.06) !important;
-            box-shadow: 0 8px 28px rgba(0,0,0,0.1) !important;
-            z-index: 1000020 !important;
-            font-size: 13px !important; font-weight: 500 !important;
-            transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1) !important;
-            pointer-events: none !important; opacity: 0 !important;
-            align-items: center !important; gap: 8px !important; max-width: 400px !important;
-            line-height: 1.4 !important;
-        }
-        .toast-notification.show { opacity: 1 !important; transform: translate(-50%, 0) !important; pointer-events: auto !important; }
-        .toast-notification .toast-close {
-            background: none !important; border: none !important; color: #999 !important; cursor: pointer !important; font-size: 16px !important;
-            padding: 0 0 0 8px !important; line-height: 1 !important; pointer-events: auto !important;
-        }
-        .toast-notification .toast-close:hover { color: #1a1a1a !important; }
-        .toast-notification.success { border-left: 3px solid #34A853 !important; }
-        .toast-notification.error { border-left: 3px solid #D93025 !important; }
-        .toast-notification.info { border-left: 3px solid #0052FF !important; }
 
         .ai-history-btn, .ai-settings-btn {
             right: 40px !important;
@@ -125,6 +99,51 @@ function createMainButton() {
     document.body.appendChild(settingsBtn);
 }
 
+// ========== 仅历史按钮（非阅卷页面） ==========
+function createHistoryOnlyButton() {
+    if (document.querySelector('.ai-history-btn')) return;
+    const style = document.createElement('style');
+    style.textContent = `
+        .ai-history-btn {
+            all: initial;
+            position: fixed !important;
+            bottom: 20px !important;
+            right: 20px !important;
+            z-index: 99999 !important;
+            width: 44px !important;
+            height: 44px !important;
+            border-radius: 50% !important;
+            background: rgba(255,255,255,0.92) !important;
+            backdrop-filter: blur(12px) !important; -webkit-backdrop-filter: blur(12px) !important;
+            border: 1px solid rgba(0,0,0,0.08) !important;
+            box-shadow: 0 4px 16px rgba(0,0,0,0.08) !important;
+            cursor: pointer !important;
+            display: flex !important;
+            align-items: center !important;
+            justify-content: center !important;
+            transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1) !important;
+            font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Inter", sans-serif !important;
+            box-sizing: border-box !important;
+            pointer-events: auto !important;
+            visibility: visible !important;
+            opacity: 1 !important;
+        }
+        .ai-history-btn:hover {
+            transform: translateY(-2px) scale(1.05) !important;
+            box-shadow: 0 8px 24px rgba(0,0,0,0.12) !important;
+            background: rgba(255,255,255,1) !important;
+        }
+        .ai-history-btn svg { width: 20px; height: 20px; color: #444; }
+    `;
+    document.head.appendChild(style);
+    const btn = document.createElement('button');
+    btn.className = 'ai-history-btn';
+    btn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 8v4l3 3"/><circle cx="12" cy="12" r="9"/><path d="M3 12h1"/><path d="M20 12h1"/><path d="M12 3v1"/><path d="M12 20v1"/></svg>';
+    btn.title = '评阅历史';
+    btn.onclick = () => showHistoryPanel();
+    document.body.appendChild(btn);
+}
+
 // ========== 未保存状态管理 ==========
 function markUnsavedChanges() {
     if (!window.aiGradingState.hasUnsavedChanges) {
@@ -160,6 +179,126 @@ function clearUnsavedChanges() {
     }
 }
 
+// ========== 批阅份数进度显示 ==========
+function renderBatchProgress() {
+    const batch = window.aiGradingState.batchProgress;
+    if (!batch.enabled) {
+        // 如果未启用，移除进度条
+        const existing = document.getElementById('ai-batch-progress');
+        if (existing) existing.remove();
+        return;
+    }
+
+    let container = document.getElementById('ai-batch-progress');
+    if (!container) {
+        // 创建进度条容器
+        container = document.createElement('div');
+        container.id = 'ai-batch-progress';
+        document.body.appendChild(container);
+
+        // 注入样式
+        const style = document.createElement('style');
+        style.id = 'ai-batch-progress-style';
+        style.textContent = `
+            #ai-batch-progress {
+                position: fixed !important;
+                top: 0 !important;
+                left: 50% !important;
+                transform: translateX(-50%) !important;
+                z-index: 99998 !important;
+                background: rgba(255, 255, 255, 0.95) !important;
+                backdrop-filter: blur(12px) !important;
+                border-bottom: 1px solid rgba(0,0,0,0.08) !important;
+                box-shadow: 0 2px 12px rgba(0,0,0,0.06) !important;
+                padding: 8px 20px !important;
+                display: flex !important;
+                align-items: center !important;
+                gap: 12px !important;
+                font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Inter", sans-serif !important;
+                border-radius: 0 0 12px 12px !important;
+                min-width: 300px !important;
+            }
+            #ai-batch-progress .progress-text {
+                font-size: 13px !important;
+                font-weight: 500 !important;
+                color: #1a1a1a !important;
+                white-space: nowrap !important;
+            }
+            #ai-batch-progress .progress-bar {
+                flex: 1 !important;
+                height: 8px !important;
+                background: rgba(0,0,0,0.08) !important;
+                border-radius: 4px !important;
+                overflow: hidden !important;
+            }
+            #ai-batch-progress .progress-fill {
+                height: 100% !important;
+                background: #0052FF !important;
+                border-radius: 4px !important;
+                transition: width 0.3s ease !important;
+            }
+            #ai-batch-progress .progress-fill.complete {
+                background: #34A853 !important;
+            }
+            #ai-batch-progress .progress-btn {
+                padding: 4px 10px !important;
+                font-size: 11px !important;
+                font-weight: 500 !important;
+                border: 1px solid rgba(0,0,0,0.12) !important;
+                border-radius: 6px !important;
+                background: transparent !important;
+                color: #666 !important;
+                cursor: pointer !important;
+                transition: all 0.2s !important;
+            }
+            #ai-batch-progress .progress-btn:hover {
+                background: rgba(0,0,0,0.04) !important;
+                color: #1a1a1a !important;
+            }
+        `;
+        document.head.appendChild(style);
+    }
+
+    const current = batch.currentCount;
+    const target = batch.targetCount;
+    const percent = target > 0 ? Math.min((current / target) * 100, 100) : 0;
+    const isComplete = target > 0 && current >= target;
+
+    container.innerHTML = `
+        <span class="progress-text">📊 批阅进度: ${current}/${target} (${Math.round(percent)}%)</span>
+        <div class="progress-bar">
+            <div class="progress-fill${isComplete ? ' complete' : ''}" style="width: ${percent}%"></div>
+        </div>
+        <button class="progress-btn">重置</button>
+    `;
+    container.querySelector('.progress-btn').addEventListener('click', resetBatchProgress);
+}
+
+// ========== 恢复批改（从暂停状态） ==========
+function resumeGrading(btn) {
+    window.aiGradingState.isRunning = true;
+    window.aiGradingState.isPaused = false;
+    window.aiGradingState.errorRetryCount = 0;
+
+    const config = PresetManager.getCurrentConfig();
+    window.aiGradingState.gradingMode = config.gradingMode || 'normal';
+
+    btn.classList.remove('paused', 'unattended', 'trial');
+    btn.classList.add('running');
+    if (window.aiGradingState.gradingMode === 'unattended') {
+        btn.textContent = '自动批改中…';
+        btn.classList.add('unattended');
+    } else if (window.aiGradingState.gradingMode === 'trial') {
+        btn.textContent = '试改中…';
+        btn.classList.add('trial');
+    } else {
+        btn.textContent = '暂停';
+    }
+
+    closeSettingsPanel();
+    startAutoGrading();
+}
+
 // ========== 主按钮点击逻辑 ==========
 function toggleAutoGrading() {
     const btn = document.querySelector('.ai-grade-btn');
@@ -182,6 +321,10 @@ function toggleAutoGrading() {
         window.aiGradingState.isRunning = false;
         if (window.aiGradingState.abortController) window.aiGradingState.abortController.abort();
 
+        // 清除无人值守模式的自动刷新标记，防止暂停后页面被自动重载
+        sessionStorage.removeItem('ai-grading-auto-resume');
+        sessionStorage.removeItem('ai-grading-retry-count');
+
         btn.textContent = '继续批改';
         btn.classList.remove('running', 'unattended');
         btn.classList.add('paused');
@@ -190,27 +333,20 @@ function toggleAutoGrading() {
         if (dialog) dialog.remove();
         hideStreamPanel();
     } else {
-        window.aiGradingState.isRunning = true;
-        window.aiGradingState.isPaused = false;
-        window.aiGradingState.errorRetryCount = 0;
+        const batch = window.aiGradingState.batchProgress;
 
-        const config = PresetManager.getCurrentConfig();
-        window.aiGradingState.gradingMode = config.gradingMode || 'normal';
-
-        btn.classList.remove('paused', 'unattended', 'trial');
-        btn.classList.add('running');
-        if (window.aiGradingState.gradingMode === 'unattended') {
-            btn.textContent = '自动批改中…';
-            btn.classList.add('unattended');
-        } else if (window.aiGradingState.gradingMode === 'trial') {
-            btn.textContent = '试改中…';
-            btn.classList.add('trial');
-        } else {
-            btn.textContent = '暂停';
+        // 批阅目标已达，弹窗询问用户意图
+        if (batch.enabled && batch.reached) {
+            showBatchTargetDialog(batch.targetCount).then(action => {
+                if (action === 'stop') return; // 不再批阅，保持暂停
+                if (action === 'reset') resetBatchProgress();
+                if (action === 'continue') batch.limitExempt = true;
+                resumeGrading(btn);
+            });
+            return;
         }
 
-        closeSettingsPanel();
-        startAutoGrading();
+        resumeGrading(btn);
     }
 }
 

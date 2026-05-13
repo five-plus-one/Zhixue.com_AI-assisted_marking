@@ -127,12 +127,17 @@ async function startAutoGrading() {
             window.aiGradingState.currentStudentAnswer = result.studentAnswer || '未能识别';
             window.aiGradingState.errorRetryCount = 0;
             console.log(`✏️ [诊断] 准备填入分数: ${finalScore}，调用 fillScore...`);
+            // 对分小题分数也应用取整规则
+            const roundedSubScores = result.subScores?.map(sq => ({
+                ...sq,
+                score: sq.score !== null ? applyScoringRules(sq.score, scoringConfig) : null
+            }));
             const adapter = window.__AI_MARKER_ADAPTER__;
             if (adapter && adapter.fillScore) {
-                adapter.fillScore({ total: finalScore, subScores: result.subScores });
+                adapter.fillScore({ total: finalScore, subScores: roundedSubScores });
             }
             // 传递结构化评分详情和双评信息到提交对话框
-            showAutoSubmitDialog(finalScore, result.comment, result.subScores, {
+            showAutoSubmitDialog(finalScore, result.comment, roundedSubScores, {
                 scoringDetails: result._sections || null,
                 dualEval: result.dualEval || null,
                 rawScore: result.rawScore || result.score
@@ -140,7 +145,7 @@ async function startAutoGrading() {
         } else {
             // 分数解析失败（"未能识别"），自动重试
             window.aiGradingState.errorRetryCount++;
-            if (window.aiGradingState.errorRetryCount <= window.aiGradingState.maxRetries) {
+            if (window.aiGradingState.errorRetryCount <= window.aiGradingState.maxRetries && !window.aiGradingState.isPaused) {
                 console.warn(`⚠️ AI未能识别分数，第 ${window.aiGradingState.errorRetryCount} 次重试...`);
                 safeAlert(`⚠️ AI未能识别分数，正在重试 (${window.aiGradingState.errorRetryCount}/${window.aiGradingState.maxRetries})...`);
                 setTimeout(() => startAutoGrading(), 1500);
@@ -155,7 +160,7 @@ async function startAutoGrading() {
             console.log('⏸️ 请求已被暂停');
         } else {
             console.error('❌ 打分失败:', error);
-            if (window.aiGradingState.gradingMode === 'unattended') {
+            if (window.aiGradingState.gradingMode === 'unattended' && !window.aiGradingState.isPaused) {
                 window.aiGradingState.errorRetryCount++;
                 if (window.aiGradingState.errorRetryCount <= window.aiGradingState.maxRetries) {
                     sessionStorage.setItem('ai-grading-auto-resume', 'true');
@@ -176,9 +181,131 @@ async function startAutoGrading() {
     }
 }
 
+// ========== 批阅份数功能 ==========
+function initBatchProgress() {
+    // 从配置中加载批阅份数设置
+    const config = PresetManager.getCurrentConfig();
+    if (config.batchConfig && config.batchConfig.enabled) {
+        window.aiGradingState.batchProgress.enabled = true;
+        window.aiGradingState.batchProgress.targetCount = config.batchConfig.targetCount || 0;
+        window.aiGradingState.batchProgress.reached = false; // 重置达到标记
+        window.aiGradingState.batchProgress.limitExempt = false; // 重置豁免标记
+        // 从 sessionStorage 恢复当前批阅份数（同一会话内有效）
+        const savedCount = parseInt(sessionStorage.getItem('ai-batch-current-count') || '0');
+        window.aiGradingState.batchProgress.currentCount = savedCount;
+
+        // 如果已经达到了目标，标记为已达到
+        if (window.aiGradingState.batchProgress.targetCount > 0 &&
+            savedCount >= window.aiGradingState.batchProgress.targetCount) {
+            window.aiGradingState.batchProgress.reached = true;
+        }
+
+        console.log(`📊 [批阅份数] 已启用，目标: ${window.aiGradingState.batchProgress.targetCount}，当前: ${savedCount}`);
+    } else {
+        // 批阅份数未启用，重置状态并移除进度条
+        window.aiGradingState.batchProgress.enabled = false;
+        window.aiGradingState.batchProgress.targetCount = 0;
+        window.aiGradingState.batchProgress.currentCount = 0;
+        window.aiGradingState.batchProgress.reached = false;
+        window.aiGradingState.batchProgress.limitExempt = false;
+    }
+}
+
+function updateBatchProgress() {
+    const batch = window.aiGradingState.batchProgress;
+    if (!batch.enabled) return;
+
+    batch.currentCount++;
+    sessionStorage.setItem('ai-batch-current-count', batch.currentCount.toString());
+
+    console.log(`📊 [批阅份数] 已批阅: ${batch.currentCount}/${batch.targetCount}`);
+
+    // 更新进度显示
+    renderBatchProgress();
+
+    // 检查是否达到目标份数（只暂停一次，避免重复触发；limitExempt 时跳过自动暂停）
+    if (batch.targetCount > 0 && batch.currentCount >= batch.targetCount && !batch.reached && !batch.limitExempt) {
+        batch.reached = true; // 标记已达到，避免重复触发
+        console.log('🎯 [批阅份数] 已达到目标份数，自动暂停');
+        if (window.aiGradingState.isRunning) {
+            // 暂停批改（不刷新页面）
+            window.aiGradingState.isPaused = true;
+            window.aiGradingState.isRunning = false;
+            if (window.aiGradingState.abortController) {
+                window.aiGradingState.abortController.abort();
+            }
+
+            const btn = document.querySelector('.ai-grade-btn');
+            if (btn) {
+                btn.textContent = '继续批改';
+                btn.classList.remove('running', 'unattended');
+                btn.classList.add('paused');
+            }
+
+            showToast(`🎯 已达到目标批阅份数 (${batch.targetCount}份)，自动暂停`);
+        }
+    }
+}
+
+function resetBatchProgress() {
+    window.aiGradingState.batchProgress.currentCount = 0;
+    window.aiGradingState.batchProgress.reached = false;
+    window.aiGradingState.batchProgress.limitExempt = false;
+    sessionStorage.setItem('ai-batch-current-count', '0');
+    renderBatchProgress();
+    console.log('📊 [批阅份数] 计数已重置');
+}
+// 在函数定义后立即暴露到全局作用域，确保 inline onclick 可调用
+window.resetBatchProgress = resetBatchProgress;
+
+// ========== 工具页面模式检测 ==========
+function isToolsPageMode() {
+    const hostname = window.location.hostname;
+    const pathname = window.location.pathname;
+    return (hostname === 'aimarking.five-plus-one.com' ||
+            hostname === 'five-plus-one.github.io') &&
+           pathname.includes('/tools');
+}
+
+async function initToolsPageMode() {
+    console.log('📚 [工具页面] 初始化');
+
+    // 显示加载提示
+    const container = document.getElementById('ai-tools-root');
+    if (container) {
+        container.innerHTML = `
+            <div style="text-align:center;padding:60px 20px;color:#86868b;">
+                <div style="font-size:48px;margin-bottom:16px;">🛠️</div>
+                <h2 style="font-size:18px;font-weight:600;color:#1a1a1a;margin-bottom:8px;">正在加载工具页面...</h2>
+                <p style="font-size:13px;color:#aaa;margin-top:8px;">请稍候</p>
+            </div>
+        `;
+    }
+
+    // 初始化管理器
+    await HistoryManager.init();
+    ProviderManager.init();
+    WorkflowManager.init();
+
+    // 注入工具页面 UI
+    createToolsPageUI();
+
+    // 检查更新（延迟）
+    setTimeout(() => checkForUpdate(), 3000);
+}
+
 // ========== 初始化 ==========
 async function init() {
+    if (window !== window.top) return; // 跳过 iframe
     await new Promise(resolve => setTimeout(resolve, 2000));
+
+    // 检测是否在工具页面
+    if (isToolsPageMode()) {
+        await initToolsPageMode();
+        return;
+    }
+
+    const adapter = window.__AI_MARKER_ADAPTER__;
 
     // 检测是否在批改页面，支持重试（SPA应用可能需要更长时间加载）
     let isMarkingPage = await detectMarkingPage();
@@ -187,7 +314,13 @@ async function init() {
         await new Promise(resolve => setTimeout(resolve, 2000));
         isMarkingPage = await detectMarkingPage();
         if (!isMarkingPage) {
-            console.log('🔎 [诊断] 未检测到批改页面，跳过初始化');
+            // 非阅卷页面：如果在阅卷平台上，仅注入历史按钮
+            if (adapter) {
+                console.log('📚 [诊断] 非阅卷页面，注入历史按钮');
+                createHistoryOnlyButton();
+            } else {
+                console.log('🔎 [诊断] 未检测到批改页面，跳过初始化');
+            }
             return;
         }
     }
@@ -195,6 +328,10 @@ async function init() {
     console.log('✅ [诊断] 检测到批改页面，开始初始化UI');
     createMainButton();
     createSettingsPanel();
+
+    // 初始化批阅份数功能
+    initBatchProgress();
+    renderBatchProgress();
 
     // 首次启动或重置后显示新手引导
     const showOnboarding = GM_getValue('ai-grading-show-onboarding', true);
@@ -293,18 +430,29 @@ setInterval(async () => {
         lastUrlId = currentUrlId;
 
         const adapter = window.__AI_MARKER_ADAPTER__;
-        if (adapter && adapter.isRegradeMode ? adapter.isRegradeMode() : window.aiGradingState.isRegrading) return;
+        // 如果没有适配器，检测是否通过 SPA 导航进入了工具页面
+        if (!adapter) {
+            if (isToolsPageMode()) {
+                // 等待 VitePress SPA 完成渲染（VitePress 主题自身用 300ms，
+                // 这里给更充裕的时间确保 #ai-tools-root 已挂载）
+                await new Promise(resolve => setTimeout(resolve, 1500));
+                // 延迟后重新检查条件（页面可能已再次切换）
+                if (isToolsPageMode() && !document.getElementById('ai-tools-page')) {
+                    await initToolsPageMode();
+                }
+            }
+            return;
+        }
+
+        if (adapter.isRegradeMode ? adapter.isRegradeMode() : window.aiGradingState.isRegrading) return;
 
         if (!window.aiGradingState.isRunning) {
             // 非阅卷页面不弹窗，直接返回
-            const adapter = window.__AI_MARKER_ADAPTER__;
-            if (adapter) {
-                // 优先使用快速检查（不等待 DOM），回退到完整检测
-                const onMarkingPage = adapter.isMarkingPage
-                    ? adapter.isMarkingPage()
-                    : (adapter.detectMarkingPage ? await adapter.detectMarkingPage() : true);
-                if (!onMarkingPage) return;
-            }
+            // 优先使用快速检查（不等待 DOM），回退到完整检测
+            const onMarkingPage = adapter.isMarkingPage
+                ? adapter.isMarkingPage()
+                : (adapter.detectMarkingPage ? await adapter.detectMarkingPage() : true);
+            if (!onMarkingPage) return;
 
             const boundPreset = PresetManager.data.bindings[currentUrlId];
 
@@ -340,3 +488,18 @@ setInterval(async () => {
         setTimeout(init, 1000);
     }
 }, 1000);
+
+// ========== 油猴菜单注册 ==========
+function registerMenuCommands() {
+    if (typeof GM_registerMenuCommand === 'undefined' || window !== window.top) return;
+
+    GM_registerMenuCommand('🛠️ 工具栏', () => {
+        window.open('https://aimarking.five-plus-one.com/tools', '_blank');
+    });
+
+    GM_registerMenuCommand('📊 历史记录', () => {
+        showHistoryPanel();
+    });
+}
+
+registerMenuCommands();

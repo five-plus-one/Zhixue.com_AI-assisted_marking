@@ -33,6 +33,7 @@ const CORE_MODULES = [
     'image.js',
     'correction.js',
     'history.js',
+    'ui-tools.js',  // 工具页面UI（/tools）
     'updater.js',
     'main.js',
 ];
@@ -61,12 +62,13 @@ const BUILD_CONFIGS = [
         ],
         header: {
             name: 'AI-Marker-Suite',
-            namespace: 'http://tampermonkey.net/',
+            namespace: 'https://aimarking.five-plus-one.com/',
             description: 'AI自动批改助手，支持智学网、七天网络、好分数、五岳阅卷、华翰云、光大阅卷等平台。自动识别答案、智能评分、自动提交！',
             author: '5plus1',
             match: [
-                'https://www.zhixue.com/webmarking/*',
-                'https://*.zhixue.com/webmarking/*',
+                'https://www.zhixue.com/*',
+                'https://zhixue.com/*',
+                'https://*.zhixue.com/*',
                 '*://*.7net.cc/*',
                 '*://yj5.7net.cc/*',
                 '*://*.qt7.net/*',
@@ -74,9 +76,11 @@ const BUILD_CONFIGS = [
                 '*://*.wylkyj.com/*',
                 '*://*.yunyuejuan.net/*',
                 '*://pj.yixx.cn/*',
+                'https://aimarking.five-plus-one.com/*',
+                'https://five-plus-one.github.io/*',
             ],
             icon: 'https://www.zhixue.com/favicon.ico',
-            grant: ['GM_xmlhttpRequest', 'GM_setValue', 'GM_getValue'],
+            grant: ['GM_xmlhttpRequest', 'GM_setValue', 'GM_getValue', 'GM_registerMenuCommand'],
             connect: [
                 'api.ai.five-plus-one.com',
                 'zhixue-sc.oss-cn-hangzhou.aliyuncs.com',
@@ -150,7 +154,7 @@ function generateHeader(config, version) {
     const h = config.header;
     const lines = ['// ==UserScript=='];
     lines.push(`// @name         ${h.name}`);
-    lines.push(`// @namespace    ${h.namespace || 'http://tampermonkey.net/'}`);
+    lines.push(`// @namespace    ${h.namespace || 'https://aimarking.five-plus-one.com/'}`);
     lines.push(`// @version      ${version}`);
     lines.push(`// @description  ${h.description}`);
     lines.push(`// @author       ${h.author || '5plus1'}`);
@@ -159,6 +163,7 @@ function generateHeader(config, version) {
     for (const g of h.grant) lines.push(`// @grant        ${g}`);
     for (const c of h.connect) lines.push(`// @connect      ${c}`);
     if (h.runAt) lines.push(`// @run-at       ${h.runAt}`);
+    lines.push('// @noframes');
     lines.push('// ==/UserScript==');
     return lines.join('\n') + '\n';
 }

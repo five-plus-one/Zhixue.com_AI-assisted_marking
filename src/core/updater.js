@@ -238,8 +238,8 @@ function fallbackCheckFullScript(force, btn, restoreBtn, now) {
  * - 无人值守模式下完全跳过
  */
 function checkForUpdate(force = false, btn) {
-    // 无人值守模式：不提醒
-    if (window.aiGradingState && window.aiGradingState.gradingMode === 'unattended') return;
+    // 无人值守模式：自动检查跳过，手动检查（force）仍然执行
+    if (!force && window.aiGradingState && window.aiGradingState.gradingMode === 'unattended') return;
 
     if (!force) {
         const now = Date.now();

@@ -1,15 +1,21 @@
 // ========== 填充分数及弹窗 ==========
 function fillScore(score, comment, subScores) {
     const adapter = window.__AI_MARKER_ADAPTER__;
+    // 对分小题分数应用取整规则（纠错/回评路径）
+    const scoringConfig = PresetManager.getCurrentConfig().scoring || { roundStep: 1, roundMethod: 'round' };
+    const roundedSubScores = subScores?.map(sq => ({
+        ...sq,
+        score: sq.score !== null ? applyScoringRules(sq.score, scoringConfig) : null
+    }));
     let filled = false;
     if (adapter && adapter.fillScore) {
-        filled = adapter.fillScore({ total: score, subScores: subScores });
+        filled = adapter.fillScore({ total: score, subScores: roundedSubScores });
     }
     if (!filled) {
         console.warn('未找到分数输入框，将直接弹出确认窗口');
         safeAlert(`AI打分结果：\n分数：${score}\n请手动输入分数！`);
     }
-    showAutoSubmitDialog(score, comment, subScores);
+    showAutoSubmitDialog(score, comment, roundedSubScores);
 }
 
 function showAutoSubmitDialog(score, comment, subScores, extraInfo) {
@@ -113,6 +119,94 @@ function showAutoSubmitDialog(score, comment, subScores, extraInfo) {
             .asd-confirm-btn:hover { background: #000; transform: translateY(-1px); box-shadow: 0 10px 24px rgba(0,0,0,0.18); }
             .asd-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.25); backdrop-filter: blur(6px); z-index: -1; animation: asd-overlay-in 0.3s ease-out; }
             @keyframes asd-overlay-in { from { opacity: 0; } to { opacity: 1; } }
+
+            #auto-submit-dialog {
+                background: #fff;
+                border: 1px solid #e1e6ef;
+                border-radius: 16px;
+                box-shadow: 0 28px 80px rgba(18,28,45,0.22), 0 2px 8px rgba(18,28,45,0.08);
+                font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Inter", sans-serif;
+                color: #172033;
+                color-scheme: light only;
+            }
+            #auto-submit-dialog,
+            #auto-submit-dialog * { box-sizing: border-box; }
+            #auto-submit-dialog .asd-header {
+                padding: 18px 24px;
+                background: #fff;
+                border-bottom: 1px solid #e1e6ef;
+                color: #172033;
+                font-size: 18px;
+                font-weight: 750;
+            }
+            #auto-submit-dialog .asd-grid {
+                grid-template-columns: minmax(360px, 1.05fr) minmax(340px, 0.95fr);
+                background: #f7f8fa;
+            }
+            #auto-submit-dialog .asd-images {
+                background: #f7f8fa;
+                border-right: 1px solid #e1e6ef;
+                padding: 20px;
+            }
+            #auto-submit-dialog .asd-images img {
+                border-radius: 8px;
+                border: 1px solid #e1e6ef;
+                box-shadow: 0 8px 22px rgba(18,28,45,0.08);
+            }
+            #auto-submit-dialog .asd-result {
+                background: #fff;
+                padding: 22px 24px;
+                gap: 16px;
+            }
+            #auto-submit-dialog .asd-score-ring { width: 92px; height: 92px; }
+            #auto-submit-dialog .asd-score-num {
+                color: ${scoreColor};
+                font-size: 30px;
+            }
+            #auto-submit-dialog .asd-score-label,
+            #auto-submit-dialog .asd-info-label {
+                color: #667085;
+                letter-spacing: 0.4px;
+            }
+            #auto-submit-dialog .asd-info-content {
+                background: #f7f8fa;
+                border: 1px solid #e1e6ef;
+                border-radius: 8px;
+                color: #344054;
+                font-family: "SF Mono", "JetBrains Mono", Consolas, monospace;
+            }
+            #auto-submit-dialog .asd-footer {
+                padding: 14px 24px 18px;
+                background: #fff;
+                border-top: 1px solid #e1e6ef;
+            }
+            #auto-submit-dialog .asd-buttons button {
+                min-height: 36px;
+                border-radius: 7px;
+                font-weight: 700;
+            }
+            #auto-submit-dialog .asd-cancel-btn {
+                background: #fff;
+                border: 1px solid #d8dee8;
+                color: #344054;
+            }
+            #auto-submit-dialog .asd-cancel-btn:hover { background: #f3f6fa; }
+            #auto-submit-dialog .asd-confirm-btn {
+                background: #172033;
+                color: #fff;
+                box-shadow: none;
+            }
+            #auto-submit-dialog .asd-confirm-btn:hover {
+                background: #0f1726;
+                box-shadow: 0 8px 18px rgba(18,28,45,0.18);
+            }
+            #auto-submit-dialog .asd-countdown-num { color: #172033; }
+            @media (max-width: 760px) {
+                #auto-submit-dialog { width: calc(100vw - 20px); max-height: calc(100vh - 20px); }
+                #auto-submit-dialog .asd-grid { grid-template-columns: 1fr; }
+                #auto-submit-dialog .asd-images { max-height: 34vh; border-right: none; border-bottom: 1px solid #e1e6ef; }
+                #auto-submit-dialog .asd-result { max-height: 42vh; }
+            }
         </style>
         <div class="asd-overlay"></div>
         <div class="asd-header">
@@ -331,6 +425,11 @@ function showAutoSubmitDialog(score, comment, subScores, extraInfo) {
             subScores: subScores,
             dualEval: dualEval || null
         });
+
+        // 更新批阅份数进度
+        if (typeof updateBatchProgress === 'function') {
+            updateBatchProgress();
+        }
 
         const adapter = window.__AI_MARKER_ADAPTER__;
         const submitted = adapter && adapter.submitGrade ? adapter.submitGrade() : false;

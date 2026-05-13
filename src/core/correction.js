@@ -119,6 +119,135 @@ function showCorrectionPanel(context) {
                 to { opacity: 1; transform: translateX(0); }
             }
             .cor-step-enter { animation: cor-slidein 0.25s ease-out; }
+
+            #correction-panel { color-scheme: light only; }
+            #correction-panel,
+            #correction-panel * { box-sizing: border-box; color: #172033; }
+            #correction-panel .cor-container {
+                background: #fff;
+                border: 1px solid #e1e6ef;
+                border-radius: 16px;
+                box-shadow: 0 28px 80px rgba(18,28,45,0.22), 0 2px 8px rgba(18,28,45,0.08);
+                font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Inter", sans-serif;
+                grid-template-columns: 340px minmax(0, 1fr);
+            }
+            #correction-panel .cor-left {
+                background: #f7f8fa;
+                border-right: 1px solid #e1e6ef;
+                padding: 20px;
+            }
+            #correction-panel .cor-left-label,
+            #correction-panel .cor-score-label,
+            #correction-panel .cor-field-label {
+                color: #667085;
+                letter-spacing: 0.4px;
+            }
+            #correction-panel .cor-left img {
+                border: 1px solid #e1e6ef;
+                border-radius: 8px;
+                box-shadow: 0 8px 22px rgba(18,28,45,0.08);
+            }
+            #correction-panel .cor-header,
+            #correction-panel .cor-footer {
+                background: #fff;
+                border-color: #e1e6ef;
+            }
+            #correction-panel .cor-header-title {
+                color: #172033;
+                font-size: 18px;
+                font-weight: 750;
+            }
+            #correction-panel .cor-header-close {
+                width: 32px;
+                height: 32px;
+                padding: 0;
+                border: 1px solid #d8dee8;
+                background: #fff;
+                color: #667085;
+                border-radius: 7px;
+            }
+            #correction-panel .cor-header-close:hover {
+                background: #f3f6fa;
+                color: #172033;
+            }
+            #correction-panel .cor-steps {
+                background: #fff;
+                border-bottom: 1px solid #e1e6ef;
+            }
+            #correction-panel .cor-step-item { color: #667085; font-weight: 700; }
+            #correction-panel .cor-step-item.active { color: #2166ad; }
+            #correction-panel .cor-step-item.done { color: #287047; }
+            #correction-panel .cor-step-num {
+                border-color: #d8dee8;
+                background: #fff;
+            }
+            #correction-panel .cor-step-item.active .cor-step-num {
+                border-color: #2166ad;
+                background: #2166ad;
+                color: #fff;
+            }
+            #correction-panel .cor-step-item.done .cor-step-num {
+                border-color: #287047;
+                background: #287047;
+                color: #fff;
+            }
+            #correction-panel .cor-step-line { background: #d8dee8; }
+            #correction-panel .cor-step-line.done { background: #287047; }
+            #correction-panel .cor-body { background: #fff; }
+            #correction-panel .cor-score-value { color: #172033; }
+            #correction-panel .cor-answer-block,
+            #correction-panel .cor-stream-box {
+                background: #f7f8fa;
+                border: 1px solid #e1e6ef;
+                border-radius: 8px;
+                color: #344054;
+            }
+            #correction-panel .cor-input {
+                background: #fff;
+                border: 1px solid #d8dee8;
+                border-radius: 7px;
+                color: #172033;
+            }
+            #correction-panel .cor-input:focus {
+                border-color: #2166ad;
+                box-shadow: 0 0 0 3px rgba(33,102,173,0.12);
+            }
+            #correction-panel .cor-footer button,
+            #correction-panel .ai-modal-btn-cancel,
+            #correction-panel .ai-modal-btn-confirm {
+                min-height: 36px;
+                border-radius: 7px;
+                font-weight: 700;
+            }
+            #correction-panel .ai-modal-btn-cancel {
+                background: #fff;
+                border: 1px solid #d8dee8;
+                color: #344054;
+            }
+            #correction-panel .ai-modal-btn-cancel:hover { background: #f3f6fa; }
+            #correction-panel .ai-modal-btn-confirm {
+                background: #172033;
+                color: #fff;
+                border: 1px solid #172033;
+                box-shadow: none;
+            }
+            #correction-panel .ai-modal-btn-confirm:hover {
+                background: #0f1726;
+                box-shadow: 0 8px 18px rgba(18,28,45,0.18);
+            }
+            @media (max-width: 760px) {
+                #correction-panel .cor-container {
+                    width: calc(100vw - 20px);
+                    max-height: calc(100vh - 20px);
+                    grid-template-columns: 1fr;
+                }
+                #correction-panel .cor-left {
+                    max-height: 30vh;
+                    border-right: none;
+                    border-bottom: 1px solid #e1e6ef;
+                }
+                #correction-panel .cor-right { max-height: calc(70vh - 20px); }
+            }
         </style>
         <div class="cor-container">
             <div class="cor-left">

@@ -279,13 +279,23 @@ const HistoryManager = {
         records = records || this.records;
         const modeLabel = { normal: '普通', unattended: '无人', trial: '试改' };
 
+        // 分批加载图片，避免并发事务过多导致 IndexedDB 超时
         const imageMap = {};
-        await Promise.all(records.map(async r => {
-            try {
-                const base64s = await ImageStore.get(r.id);
-                if (base64s) imageMap[r.id] = base64s;
-            } catch (e) { console.warn('IndexedDB 图片加载失败:', r.id); }
-        }));
+        const BATCH_SIZE = 5;
+        for (let i = 0; i < records.length; i += BATCH_SIZE) {
+            const batch = records.slice(i, i + BATCH_SIZE);
+            const results = await Promise.allSettled(
+                batch.map(async r => {
+                    const base64s = await ImageStore.get(r.id);
+                    return { id: r.id, base64s };
+                })
+            );
+            for (const result of results) {
+                if (result.status === 'fulfilled' && result.value.base64s) {
+                    imageMap[result.value.id] = result.value.base64s;
+                }
+            }
+        }
 
         const rows = records.map(r => {
             const time = new Date(r.timestamp).toLocaleString('zh-CN');

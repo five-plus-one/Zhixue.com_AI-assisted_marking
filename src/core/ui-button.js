@@ -224,8 +224,9 @@ function renderBatchProgress() {
         <div class="progress-bar">
             <div class="progress-fill${isComplete ? ' complete' : ''}" style="width: ${percent}%"></div>
         </div>
-        <button class="progress-btn" onclick="resetBatchProgress()">重置</button>
+        <button class="progress-btn">重置</button>
     `;
+    container.querySelector('.progress-btn').addEventListener('click', resetBatchProgress);
 }
 
 // ========== 主按钮点击逻辑 ==========

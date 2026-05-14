@@ -415,20 +415,27 @@ function showAutoSubmitDialog(score, comment, subScores, extraInfo) {
         if (dialog.countdownTimer) clearInterval(dialog.countdownTimer);
         dialog.remove();
 
-        HistoryManager.add({
-            presetName: PresetManager.data.active,
-            gradingMode: mode,
-            imageUrls, studentAnswer,
-            aiScore: score, aiComment: comment,
-            finalScore: score, isCorrected: false, correctionReason: '',
-            imageBase64s: window.aiGradingState.currentBase64DataArray || [],
-            subScores: subScores,
-            dualEval: dualEval || null
-        });
+        console.log('📊 [诊断] confirmSubmitFn 调用');
 
-        // 更新批阅份数进度
+        // 更新批阅份数进度（在历史记录之前，避免存储异常导致计数丢失）
         if (typeof updateBatchProgress === 'function') {
+            console.log('📊 [诊断] 调用 updateBatchProgress');
             updateBatchProgress();
+        }
+
+        try {
+            HistoryManager.add({
+                presetName: PresetManager.data.active,
+                gradingMode: mode,
+                imageUrls, studentAnswer,
+                aiScore: score, aiComment: comment,
+                finalScore: score, isCorrected: false, correctionReason: '',
+                imageBase64s: window.aiGradingState.currentBase64DataArray || [],
+                subScores: subScores,
+                dualEval: dualEval || null
+            });
+        } catch (e) {
+            console.error('⚠️ [诊断] 历史记录保存失败（不影响批阅进度）:', e);
         }
 
         const adapter = window.__AI_MARKER_ADAPTER__;

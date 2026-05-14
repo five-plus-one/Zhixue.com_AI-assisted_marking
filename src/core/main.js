@@ -185,6 +185,7 @@ async function startAutoGrading() {
 function initBatchProgress() {
     // 从配置中加载批阅份数设置
     const config = PresetManager.getCurrentConfig();
+    console.log(`📊 [诊断] initBatchProgress — batchConfig:`, config.batchConfig);
     if (config.batchConfig && config.batchConfig.enabled) {
         window.aiGradingState.batchProgress.enabled = true;
         window.aiGradingState.batchProgress.targetCount = config.batchConfig.targetCount || 0;
@@ -213,10 +214,14 @@ function initBatchProgress() {
 
 function updateBatchProgress() {
     const batch = window.aiGradingState.batchProgress;
-    if (!batch.enabled) return;
+    if (!batch.enabled) {
+        console.log('📊 [诊断] updateBatchProgress — batch.enabled=false，跳过');
+        return;
+    }
 
     batch.currentCount++;
     sessionStorage.setItem('ai-batch-current-count', batch.currentCount.toString());
+    console.log(`📊 [诊断] updateBatchProgress — 已批阅: ${batch.currentCount}/${batch.targetCount}`);
 
     console.log(`📊 [批阅份数] 已批阅: ${batch.currentCount}/${batch.targetCount}`);
 
@@ -484,8 +489,10 @@ setInterval(async () => {
                 select.value = PresetManager.data.active;
                 select.dispatchEvent(new Event('change'));
             }
+
+            // SPA 导航到阅卷页面时重新初始化 UI（仅在未运行时）
+            setTimeout(init, 1000);
         }
-        setTimeout(init, 1000);
     }
 }, 1000);
 

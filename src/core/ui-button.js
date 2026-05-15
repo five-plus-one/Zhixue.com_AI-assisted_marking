@@ -310,9 +310,13 @@ function setupDraggable(element) {
     let isDragging = false;
     let startX, startY, startLeft, startTop;
 
+    console.log('🔧 [调试] setupDraggable 已调用，绑定容器:', element.id);
+
     // 使用事件委托，检查点击的元素或其父元素是否是拖动手柄
     element.addEventListener('mousedown', (e) => {
+        console.log('🔧 [调试] mousedown 触发, target:', e.target.tagName, e.target.className);
         const handle = e.target.closest('.progress-drag-handle');
+        console.log('🔧 [调试] 查找拖动手柄:', handle ? '找到' : '未找到');
         if (!handle) return;
 
         isDragging = true;
@@ -324,6 +328,8 @@ function setupDraggable(element) {
         const rect = element.getBoundingClientRect();
         startLeft = rect.left;
         startTop = rect.top;
+
+        console.log('🔧 [调试] 开始拖动, 初始位置:', startLeft, startTop);
 
         // 移除 transform，使用绝对定位
         element.style.transform = 'none';
@@ -359,6 +365,8 @@ function setupDraggable(element) {
         if (!isDragging) return;
         isDragging = false;
         element.classList.remove('dragging');
+
+        console.log('🔧 [调试] 拖动结束, 最终位置:', element.style.left, element.style.top);
 
         // 保存位置
         try {

@@ -312,8 +312,6 @@ function setupDraggable(element) {
         // 检查是否点击了拖动手柄
         if (!e.target.classList.contains('progress-drag-handle')) return;
 
-        console.log('🔧 [拖动] mousedown 触发');
-
         e.preventDefault();
         e.stopPropagation();
 
@@ -325,23 +323,15 @@ function setupDraggable(element) {
         const startLeft = rect.left;
         const startTop = rect.top;
 
-        console.log('🔧 [拖动] 初始位置:', startLeft, startTop);
-
-        // 移除 transform，使用绝对定位
-        element.style.transform = 'none';
-        element.style.left = startLeft + 'px';
-        element.style.top = startTop + 'px';
+        // 移除 transform，使用绝对定位（必须用 setProperty + important 覆盖 CSS !important）
+        element.style.setProperty('transform', 'none', 'important');
+        element.style.setProperty('left', startLeft + 'px', 'important');
+        element.style.setProperty('top', startTop + 'px', 'important');
 
         element.classList.add('dragging');
 
         // mousemove 处理器
-        let moveCount = 0;
         const onMouseMove = (moveE) => {
-            moveCount++;
-            if (moveCount <= 3) {
-                console.log('🔧 [拖动] mousemove 触发, 次数:', moveCount);
-            }
-
             const deltaX = moveE.clientX - startX;
             const deltaY = moveE.clientY - startY;
 
@@ -354,13 +344,12 @@ function setupDraggable(element) {
             newLeft = Math.max(0, Math.min(newLeft, maxLeft));
             newTop = Math.max(0, Math.min(newTop, maxTop));
 
-            element.style.left = newLeft + 'px';
-            element.style.top = newTop + 'px';
+            element.style.setProperty('left', newLeft + 'px', 'important');
+            element.style.setProperty('top', newTop + 'px', 'important');
         };
 
         // mouseup 处理器
         const onMouseUp = () => {
-            console.log('🔧 [拖动] mouseup 触发, moveCount:', moveCount);
             element.classList.remove('dragging');
 
             // 移除事件监听器
@@ -376,8 +365,7 @@ function setupDraggable(element) {
             } catch (e) {}
         };
 
-        // 绑定事件到 window（避免油猴沙箱问题）
-        console.log('🔧 [拖动] 绑定 mousemove 和 mouseup 到 window');
+        // 绑定事件到 window
         window.addEventListener('mousemove', onMouseMove);
         window.addEventListener('mouseup', onMouseUp);
     });

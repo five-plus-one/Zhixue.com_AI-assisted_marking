@@ -2076,13 +2076,13 @@ function showOnboardingDialog(forceShow, mode) {
 
                 const btn = overlay.querySelector('#ob-next');
                 btn.disabled = true;
-                btn.innerHTML = '<span class="upd-spinner"></span> 验证中...';
+                btn.innerHTML = '<span class="upd-spinner-light"></span> 验证中...';
 
-                // 确保 spinner 样式存在
-                if (!document.getElementById('upd-spinner-style')) {
+                // 确保 spinner 样式存在（浅色版本用于深色背景）
+                if (!document.getElementById('upd-spinner-light-style')) {
                     const s = document.createElement('style');
-                    s.id = 'upd-spinner-style';
-                    s.textContent = '.upd-spinner{display:inline-block;width:12px;height:12px;border:2px solid rgba(0,0,0,0.15);border-top-color:#1a1a1a;border-radius:50%;animation:upd-spin .6s linear infinite;vertical-align:middle;margin-right:4px}@keyframes upd-spin{to{transform:rotate(360deg)}}';
+                    s.id = 'upd-spinner-light-style';
+                    s.textContent = '.upd-spinner-light{display:inline-block;width:12px;height:12px;border:2px solid rgba(255,255,255,0.3);border-top-color:#ffffff;border-radius:50%;animation:upd-spin .6s linear infinite;vertical-align:middle;margin-right:4px}@keyframes upd-spin{to{transform:rotate(360deg)}}';
                     document.head.appendChild(s);
                 }
 

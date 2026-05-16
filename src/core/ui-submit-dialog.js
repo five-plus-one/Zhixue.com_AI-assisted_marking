@@ -48,6 +48,7 @@ function showAutoSubmitDialog(score, comment, subScores, extraInfo) {
         ? `<button class="asd-cancel-btn" id="correction-btn" style="color:#D93025;border-color:rgba(217,48,37,0.2);">分数有误</button>` : '';
     const pauseBtnHtml = isTrial ? '' : `<button class="asd-cancel-btn" id="pause-cancel-btn">暂停</button>`;
     const confirmLabel = isTrial ? '确认提交' : '立即提交';
+    const cancelBtnHtml = `<button class="asd-cancel-btn" id="cancel-submit-btn">取消</button>`;
 
     // 环形分数显示 — 根据分数计算百分比和颜色
     const maxScore = subScores && subScores.length > 0
@@ -209,8 +210,11 @@ function showAutoSubmitDialog(score, comment, subScores, extraInfo) {
             }
         </style>
         <div class="asd-overlay"></div>
-        <div class="asd-header">
+        <div class="asd-header" id="asd-drag-handle" style="cursor:move;">
             <span>${headerLabel} ${modeTag}</span>
+            <div style="display:flex;gap:6px;margin-left:auto;">
+                <button id="minimize-btn" style="background:none;border:1px solid #d8dee8;border-radius:6px;width:28px;height:28px;cursor:pointer;font-size:14px;color:#666;display:flex;align-items:center;justify-content:center;" title="最小化">—</button>
+            </div>
         </div>
         <div class="asd-grid">
             <div class="asd-images">${imagesHtml}</div>
@@ -334,10 +338,18 @@ function showAutoSubmitDialog(score, comment, subScores, extraInfo) {
         <div class="asd-footer">
             ${countdownHtml}
             <div class="asd-buttons">
+                ${cancelBtnHtml}
                 ${correctionBtnHtml}
                 ${pauseBtnHtml}
                 <button class="asd-confirm-btn" id="confirm-submit-btn">${confirmLabel}</button>
             </div>
+        </div>
+        <!-- 最小化后的浮动条 -->
+        <div id="asd-minimized-bar" style="display:none; position:fixed; bottom:20px; left:50%; transform:translateX(-50%); z-index:999999; background:#fff; border:1px solid #e1e6ef; border-radius:12px; box-shadow:0 8px 24px rgba(0,0,0,0.12); padding:10px 20px; display:none; align-items:center; gap:12px; font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','Inter',sans-serif;">
+            <span style="font-size:18px;font-weight:700;color:${scoreColor};">${score}分</span>
+            <span style="font-size:12px;color:#86868b;">${headerLabel}</span>
+            <button id="restore-btn" style="background:#172033;color:#fff;border:none;border-radius:6px;padding:6px 14px;font-size:12px;font-weight:600;cursor:pointer;">恢复</button>
+            <button id="minimized-cancel-btn" style="background:#fff;color:#344054;border:1px solid #d8dee8;border-radius:6px;padding:6px 14px;font-size:12px;font-weight:600;cursor:pointer;">取消</button>
         </div>
     `;
     document.body.appendChild(dialog);
@@ -408,6 +420,121 @@ function showAutoSubmitDialog(score, comment, subScores, extraInfo) {
                 dialog.remove();
                 stopAutoGrading();
             }
+        });
+    }
+
+    // "取消" 按钮 — 关闭对话框，不提交，恢复按钮状态
+    dialog.querySelector('#cancel-submit-btn').addEventListener('click', () => {
+        if (dialog.countdownTimer) clearInterval(dialog.countdownTimer);
+        dialog.remove();
+        window.aiGradingState.isRunning = false;
+        window.aiGradingState.countdownPaused = false;
+        const btn = document.querySelector('.ai-grade-btn');
+        if (btn) {
+            btn.textContent = 'AI 批改';
+            btn.classList.remove('running', 'paused', 'unattended', 'trial');
+        }
+        showToast('已取消本次批改');
+    });
+
+    // 最小化/恢复
+    const minimizedBar = dialog.querySelector('#asd-minimized-bar');
+    const overlay = dialog.querySelector('.asd-overlay');
+    const grid = dialog.querySelector('.asd-grid');
+    const footer = dialog.querySelector('.asd-footer');
+
+    dialog.querySelector('#minimize-btn').addEventListener('click', () => {
+        // 隐藏主对话框内容
+        overlay.style.display = 'none';
+        dialog.querySelector('.asd-header').style.display = 'none';
+        if (grid) grid.style.display = 'none';
+        if (footer) footer.style.display = 'none';
+        dialog.style.width = 'auto';
+        dialog.style.maxWidth = 'none';
+        dialog.style.borderRadius = '16px';
+        dialog.style.overflow = 'visible';
+        dialog.style.top = 'auto';
+        dialog.style.left = '50%';
+        dialog.style.transform = 'translateX(-50%)';
+        dialog.style.bottom = '20px';
+        dialog.style.animation = 'none';
+        dialog.style.boxShadow = '0 8px 24px rgba(0,0,0,0.12)';
+        // 显示最小化浮动条
+        if (minimizedBar) {
+            minimizedBar.style.display = 'flex';
+        }
+    });
+
+    if (minimizedBar) {
+        minimizedBar.querySelector('#restore-btn').addEventListener('click', () => {
+            // 恢复主对话框
+            overlay.style.display = '';
+            dialog.querySelector('.asd-header').style.display = '';
+            if (grid) grid.style.display = '';
+            if (footer) footer.style.display = '';
+            dialog.style.width = '';
+            dialog.style.maxWidth = '';
+            dialog.style.borderRadius = '';
+            dialog.style.overflow = '';
+            dialog.style.top = '';
+            dialog.style.left = '';
+            dialog.style.transform = '';
+            dialog.style.bottom = '';
+            dialog.style.animation = '';
+            dialog.style.boxShadow = '';
+            minimizedBar.style.display = 'none';
+        });
+
+        minimizedBar.querySelector('#minimized-cancel-btn').addEventListener('click', () => {
+            if (dialog.countdownTimer) clearInterval(dialog.countdownTimer);
+            dialog.remove();
+            window.aiGradingState.isRunning = false;
+            window.aiGradingState.countdownPaused = false;
+            const btn = document.querySelector('.ai-grade-btn');
+            if (btn) {
+                btn.textContent = 'AI 批改';
+                btn.classList.remove('running', 'paused', 'unattended', 'trial');
+            }
+            showToast('已取消本次批改');
+        });
+    }
+
+    // 拖动功能
+    const dragHandle = dialog.querySelector('#asd-drag-handle');
+    if (dragHandle) {
+        let isDragging = false;
+        let dragOffsetX = 0;
+        let dragOffsetY = 0;
+
+        dragHandle.addEventListener('mousedown', (e) => {
+            if (e.target.id === 'minimize-btn' || e.target.closest('#minimize-btn')) return;
+            isDragging = true;
+            const rect = dialog.getBoundingClientRect();
+            dragOffsetX = e.clientX - rect.left;
+            dragOffsetY = e.clientY - rect.top;
+            // 移除居中定位，使用绝对定位
+            dialog.style.transform = 'none';
+            dialog.style.left = rect.left + 'px';
+            dialog.style.top = rect.top + 'px';
+            document.body.style.userSelect = 'none';
+        });
+
+        document.addEventListener('mousemove', (e) => {
+            if (!isDragging) return;
+            let newLeft = e.clientX - dragOffsetX;
+            let newTop = e.clientY - dragOffsetY;
+            // 边界限制
+            const maxLeft = window.innerWidth - dialog.offsetWidth;
+            const maxTop = window.innerHeight - dialog.offsetHeight;
+            newLeft = Math.max(0, Math.min(newLeft, maxLeft));
+            newTop = Math.max(0, Math.min(newTop, maxTop));
+            dialog.style.left = newLeft + 'px';
+            dialog.style.top = newTop + 'px';
+        });
+
+        document.addEventListener('mouseup', () => {
+            isDragging = false;
+            document.body.style.userSelect = '';
         });
     }
 

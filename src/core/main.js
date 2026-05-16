@@ -459,6 +459,11 @@ setInterval(async () => {
                 : (adapter.detectMarkingPage ? await adapter.detectMarkingPage() : true);
             if (!onMarkingPage) return;
 
+            // SPA 导航到阅卷页面时，先确保 UI 已创建（按钮 + 设置面板）
+            // 必须在 early return 之前调用，否则新题目引导/无 API Key 时面板不会出现
+            // init 内部有防重复创建的 guard，不会产生重复 UI
+            setTimeout(init, 1000);
+
             const boundPreset = PresetManager.data.bindings[currentUrlId];
 
             if (boundPreset && PresetManager.data.list[boundPreset]) {
@@ -489,9 +494,6 @@ setInterval(async () => {
                 select.value = PresetManager.data.active;
                 select.dispatchEvent(new Event('change'));
             }
-
-            // SPA 导航到阅卷页面时重新初始化 UI（仅在未运行时）
-            setTimeout(init, 1000);
         }
     }
 }, 1000);

@@ -4,13 +4,16 @@
 // 平台特征：Vue 3 + Ant Design，Canvas 渲染答题卡，API 拦截获取图片
 
 // ========== XHR 拦截（考试 + 作业） ==========
-const _xinjiaoyuOrigOpen = XMLHttpRequest.prototype.open;
-const _xinjiaoyuOrigSend = XMLHttpRequest.prototype.send;
+// 仅在新教育平台上执行 XHR 拦截，避免影响其他平台
 let _xinjiaoyuCurrentImageUrl = null;
 let _xinjiaoyuNextImageUrl = null;
 let _xinjiaoyuCurrentQuestionNumber = null;
 let _xinjiaoyuCurrentTotalScore = null;
 let _xinjiaoyuIsHomework = false; // 是否是作业系统
+
+if (window.location.hostname.includes('xinjiaoyu.com')) {
+const _xinjiaoyuOrigOpen = XMLHttpRequest.prototype.open;
+const _xinjiaoyuOrigSend = XMLHttpRequest.prototype.send;
 
 XMLHttpRequest.prototype.open = function(method, url, ...args) {
     this._xinjiaoyuUrl = url;
@@ -82,6 +85,7 @@ XMLHttpRequest.prototype.send = function(...args) {
     });
     return _xinjiaoyuOrigSend.call(this, ...args);
 };
+} // end if xinjiaoyu.com
 
 // ========== 适配器定义 ==========
 const XinjiaoyuAdapter = {

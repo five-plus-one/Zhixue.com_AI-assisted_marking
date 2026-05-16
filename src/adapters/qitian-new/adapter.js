@@ -9,6 +9,8 @@ let _qitianPrefetchImageUrl = null;  // 最新拦截到的 start=1 图片 URL
 let _qitianNextStudentUrl = null;    // waitForNextPaper 保存的下一张图片 URL
 const _qitianUsedImageUrls = new Set(); // 已发送给 AI 的图片 URL
 
+// 仅在七天网络新UI平台上执行 XHR 拦截，避免影响其他平台
+if (location.hostname.includes('yj5.7net.cc')) {
 (function installApiInterceptor() {
     const origOpen = XMLHttpRequest.prototype.open;
     const origSend = XMLHttpRequest.prototype.send;
@@ -43,6 +45,7 @@ const _qitianUsedImageUrls = new Set(); // 已发送给 AI 的图片 URL
         return origSend.call(this, ...args);
     };
 })();
+} // end if yj5.7net.cc
 
 const QitianNewAdapter = {
     name: '七天网络(新UI)',

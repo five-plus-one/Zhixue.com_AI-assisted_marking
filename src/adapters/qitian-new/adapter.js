@@ -1,13 +1,10 @@
 // ========== 七天网络新 UI 适配器 ==========
 // yj5.7net.cc — Vue SPA + Element UI + Canvas 渲染答题卡
 
-// 拦截 XMLHttpRequest 响应，从 Review/ReviewData API 提取图片 URL
-// Vue 页面加载时会发两次请求：start=0（当前学生）和 start=1（预取下一个）
-// 提交后可能只发 start=0，也可能复用预取数据不发新请求
-let _qitianApiImageUrl = null;       // 最新拦截到的 start=0 图片 URL
-let _qitianPrefetchImageUrl = null;  // 最新拦截到的 start=1 图片 URL
-let _qitianNextStudentUrl = null;    // waitForNextPaper 保存的下一张图片 URL
-const _qitianUsedImageUrls = new Set(); // 已发送给 AI 的图片 URL
+// 图片池：试题ID → 图片URL 的映射
+// Review/ReviewData API 返回当前试卷的 id 和 image.url
+// 通过页面上显示的"试题ID"精确匹配当前试卷的图片
+let _qitianImagePool = {};
 
 // 仅在七天网络新UI平台上执行 XHR 拦截，避免影响其他平台
 if (location.hostname.includes('yj5.7net.cc')) {
@@ -26,21 +23,27 @@ if (location.hostname.includes('yj5.7net.cc')) {
                 const url = this._interceptUrl || '';
                 if (!url.includes('Review/ReviewData')) return;
 
-                const params = new URL(url, location.origin).searchParams;
-                const start = params.get('start');
-
                 const json = JSON.parse(this.responseText);
-                const imageUrl = json?.data?.list?.[0]?.image?.url;
-                if (!imageUrl) return;
+                const list = json?.data?.list;
+                if (!list || list.length === 0) return;
 
-                if (start === '0') {
-                    _qitianApiImageUrl = imageUrl;
-                    console.log(`🎯 [API拦截] 当前学生图片: ${imageUrl.slice(0, 80)}...`);
-                } else if (start === '1') {
-                    _qitianPrefetchImageUrl = imageUrl;
-                    console.log(`📦 [API拦截] 预取学生图片: ${imageUrl.slice(0, 80)}...`);
+                // 遍历列表中的所有试卷，提取试题ID和图片URL
+                for (const paper of list) {
+                    const id = paper?.id;
+                    const imageUrl = paper?.image?.url;
+                    if (id && imageUrl) {
+                        _qitianImagePool[id] = imageUrl;
+                    }
                 }
-            } catch (e) {}
+
+                const poolSize = Object.keys(_qitianImagePool).length;
+                console.log(`🎯 [API拦截] 更新图片池，共 ${poolSize} 份试卷`);
+                Object.keys(_qitianImagePool).forEach((id, i) => {
+                    console.log(`  📋 试题ID${i + 1}: ${id}`);
+                });
+            } catch (e) {
+                // 忽略解析错误
+            }
         });
         return origSend.call(this, ...args);
     };
@@ -94,38 +97,80 @@ const QitianNewAdapter = {
         return `qitian_new_${km}_${tz}`;
     },
 
-    async gatherAnswerImages() {
-        // 等待 Vue 更新 Canvas（可能触发新的 API 请求或图片加载）
-        await new Promise(r => setTimeout(r, 1500));
+    // 从 DOM 读取当前显示的试题ID（如 "558"）
+    _getCurrentId() {
+        const el = document.querySelector(QITIAN_NEW_SELECTORS.ID_CONTAINER);
+        if (el) {
+            const match = el.textContent.match(/试题ID[：:]\s*(\d+)/);
+            if (match) return match[1];
+        }
+        return '';
+    },
 
-        // 优先使用 waitForNextPaper 保存的下一张学生图片 URL
-        if (_qitianNextStudentUrl && !_qitianUsedImageUrls.has(_qitianNextStudentUrl)) {
-            const url = _qitianNextStudentUrl;
-            _qitianNextStudentUrl = null;
-            _qitianApiImageUrl = url;
-            console.log(`🖼️ [诊断] 使用预取保存的下一张图片 URL`);
-            _qitianUsedImageUrls.add(url);
+    // 从图片池中获取当前试题ID对应的图片
+    _getImageUrlsFromPool() {
+        const id = this._getCurrentId();
+        if (!id) {
+            console.log('🖼️ [诊断] 未找到当前试题ID');
+            return [];
+        }
+
+        const url = _qitianImagePool[id];
+        if (url) {
+            console.log(`🖼️ [诊断] 从图片池找到试题ID ${id} 的图片`);
+            console.log(`  📷 图片: ${url.substring(0, 80)}...`);
             return [url];
         }
 
-        // 次选：API 拦截到的、且未使用过的图片 URL（首名学生场景）
-        if (_qitianApiImageUrl && !_qitianUsedImageUrls.has(_qitianApiImageUrl)) {
-            console.log(`🖼️ [诊断] 使用 API 拦截的图片 URL (新)`);
-            _qitianUsedImageUrls.add(_qitianApiImageUrl);
-            return [_qitianApiImageUrl];
+        return [];
+    },
+
+    // 从 performance API 获取图片 URL（备用方案，取最新一张）
+    _getImageUrlsFromPerformance() {
+        const entries = performance.getEntriesByType('resource');
+        const imageUrls = entries
+            .filter(e => e.name.includes('yjimage.oss'))
+            .map(e => e.name);
+
+        const uniqueUrls = [...new Set(imageUrls)].filter(url =>
+            url.includes('.jpg') || url.includes('.png') || url.includes('.jpeg')
+        );
+
+        if (uniqueUrls.length > 0) {
+            const latestUrl = uniqueUrls[uniqueUrls.length - 1];
+            console.log(`🖼️ [诊断] 从 performance 找到 ${uniqueUrls.length} 张图片，使用最新的 1 张`);
+            console.log(`  📷 图片: ${latestUrl.substring(0, 80)}...`);
+            return [latestUrl];
         }
 
-        // 兜底：performance API 中找未使用过的图片
-        const allImgUrls = performance.getEntriesByType('resource')
-            .filter(r => r.name.includes('yjimage.oss'))
-            .map(r => r.name);
-        const newUrls = [...new Set(allImgUrls)].filter(u => !_qitianUsedImageUrls.has(u));
-        console.log(`🖼️ [诊断] performance 回退: ${newUrls.length} 张新图片 (共 ${allImgUrls.length} 条记录, 已用 ${_qitianUsedImageUrls.size})`);
-        newUrls.forEach((url, i) => {
-            console.log(`  📷 新图片${i + 1}: ${url.slice(0, 100)}...`);
-            _qitianUsedImageUrls.add(url);
-        });
-        return newUrls;
+        return [];
+    },
+
+    async gatherAnswerImages() {
+        console.log('🖼️ [诊断] 七天网络新UI — 开始获取答题卡图片...');
+
+        const startTime = Date.now();
+        const maxWait = 8000;
+
+        // 等待图片池中有当前试题ID的数据（最多 8 秒）
+        while (Date.now() - startTime < maxWait) {
+            const imageUrls = this._getImageUrlsFromPool();
+            if (imageUrls.length > 0) {
+                return imageUrls;
+            }
+            await new Promise(r => setTimeout(r, 300));
+        }
+
+        // 超时：尝试用 performance API 回退
+        console.warn('⚠️ [诊断] 等待图片池超时，尝试回退方案');
+        const perfUrls = this._getImageUrlsFromPerformance();
+        if (perfUrls.length > 0) {
+            console.log(`🖼️ [诊断] 从 performance 回退找到 ${perfUrls.length} 张图片`);
+            return perfUrls;
+        }
+
+        console.warn('⚠️ [诊断] 未找到答题卡图片');
+        return [];
     },
 
     async fetchImageAsBase64(url) {
@@ -151,6 +196,23 @@ const QitianNewAdapter = {
                         console.log(`✅ [诊断] 小题 ${sq.label} 分数 ${sq.score} 已填入`);
                     }
                 }
+
+                // 完整性校验：遍历所有检测到的输入框，对值仍为空的填入 0
+                // 防止平台"题号X未填写分数"验证错误
+                let unfilledCount = 0;
+                for (const d of detected) {
+                    if (!d.element.value || d.element.value === '') {
+                        setter.call(d.element, 0);
+                        d.element.dispatchEvent(new Event('input', { bubbles: true }));
+                        d.element.dispatchEvent(new Event('change', { bubbles: true }));
+                        unfilledCount++;
+                        console.warn(`⚠️ [诊断] 小题 ${d.label} 未匹配到AI分数，已填入0`);
+                    }
+                }
+                if (unfilledCount > 0) {
+                    console.warn(`⚠️ [诊断] 共 ${unfilledCount} 个小题未匹配，已填入0防止平台验证失败`);
+                }
+
                 return true;
             }
         }
@@ -185,30 +247,35 @@ const QitianNewAdapter = {
     },
 
     async waitForNextPaper() {
-        // 等待输入框被清空（Vue 表单重置信号）
-        // 在输入清空前保存预取 URL，避免被新的 start=1 响应覆盖
-        const savedPrefetchUrl = _qitianPrefetchImageUrl;
-        let checkTimes = 0;
+        console.log('⏳ [诊断] 七天网络新UI — 等待下一份试卷...');
+
+        // 记录当前试题ID
+        const oldId = this._getCurrentId();
+        console.log(`⏳ [诊断] 当前试题ID: ${oldId || '(未找到)'}`);
+
+        // 等待试题ID变化（最可靠的信号）
+        const startTime = Date.now();
+        const maxWait = 30000; // 最多等待 30 秒
+
         return new Promise((resolve) => {
             const timer = setInterval(() => {
-                checkTimes++;
-                const input = document.querySelector(QITIAN_NEW_SELECTORS.SCORE_INPUT);
-                const inputCleared = input && (input.value === '' || input.value === '0');
+                const currentId = this._getCurrentId();
 
-                if (inputCleared && checkTimes > 3) {
+                // 试题ID变化 = 新试卷已加载
+                if (currentId && currentId !== oldId) {
                     clearInterval(timer);
-                    // 保存下一张学生的图片 URL（来自预取响应）
-                    if (savedPrefetchUrl && !_qitianUsedImageUrls.has(savedPrefetchUrl)) {
-                        _qitianNextStudentUrl = savedPrefetchUrl;
-                    }
-                    console.log(`✅ 七天网络新UI — 新试卷已加载 (nextUrl=${!!_qitianNextStudentUrl}, usedCount=${_qitianUsedImageUrls.size})`);
+                    console.log(`✅ 七天网络新UI — 新试卷已加载（试题ID: ${oldId} → ${currentId}）`);
                     resolve(true);
-                } else if (checkTimes > 50) {
+                    return;
+                }
+
+                // 超时检测
+                if (Date.now() - startTime > maxWait) {
                     clearInterval(timer);
                     console.warn('⚠️ 七天网络新UI — 等待下一份试卷超时');
                     resolve(false);
                 }
-            }, 200);
+            }, 500);
         });
     },
 

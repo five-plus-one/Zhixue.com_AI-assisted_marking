@@ -14,6 +14,9 @@ const QITIAN_NEW_SELECTORS = {
     // 题号标识
     TOPIC_LABEL: 'div.TZ',
 
+    // 试题ID容器（显示如"试题ID: 558"）
+    ID_CONTAINER: '.id-container',
+
     // 页面检测
     PAGE_DETECT_CANVAS: '#canvas',
     PAGE_DETECT_INPUT: 'input[id^="inputScoreRef_"]',

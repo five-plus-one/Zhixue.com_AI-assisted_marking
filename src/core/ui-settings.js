@@ -702,7 +702,7 @@ function createSettingsPanel() {
                     </div>
                 </div>
 
-                <div class="form-section collapsed">
+                <div class="form-section">
                     <div class="section-header"><h4>分小题评分</h4><svg class="section-arrow" viewBox="0 0 16 16" fill="none"><path d="M4 6l4 4 4-4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
                     <div class="section-body">
                         <div class="checkbox-group">
@@ -771,7 +771,7 @@ function createSettingsPanel() {
                 </div>
 
                 <!-- 取整配置 -->
-                <div class="form-section collapsed">
+                <div class="form-section">
                     <div class="section-header"><h4>取整规则</h4><svg class="section-arrow" viewBox="0 0 16 16" fill="none"><path d="M4 6l4 4 4-4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
                     <div class="section-body">
                         <div class="form-group">
@@ -794,7 +794,7 @@ function createSettingsPanel() {
                 </div>
 
                 <!-- 勤勉加分 -->
-                <div class="form-section collapsed">
+                <div class="form-section">
                     <div class="section-header"><h4>勤勉加分</h4><svg class="section-arrow" viewBox="0 0 16 16" fill="none"><path d="M4 6l4 4 4-4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
                     <div class="section-body">
                         <div class="checkbox-group">
@@ -827,7 +827,7 @@ function createSettingsPanel() {
                 <!-- ===== 其他 ===== -->
                 <div class="group-title" id="group-other">其他</div>
 
-                <div class="form-section collapsed">
+                <div class="form-section">
                     <div class="section-header"><h4>历史记录</h4><svg class="section-arrow" viewBox="0 0 16 16" fill="none"><path d="M4 6l4 4 4-4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
                     <div class="section-body">
                         <div class="checkbox-group">
@@ -838,7 +838,7 @@ function createSettingsPanel() {
                     </div>
                 </div>
 
-                <div class="form-section collapsed">
+                <div class="form-section">
                     <div class="section-header"><h4>批阅份数</h4><svg class="section-arrow" viewBox="0 0 16 16" fill="none"><path d="M4 6l4 4 4-4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
                     <div class="section-body">
                         <div class="checkbox-group">
@@ -854,7 +854,7 @@ function createSettingsPanel() {
                     </div>
                 </div>
 
-                <div class="form-section collapsed">
+                <div class="form-section">
                     <div class="section-header"><h4>配置管理</h4><svg class="section-arrow" viewBox="0 0 16 16" fill="none"><path d="M4 6l4 4 4-4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
                     <div class="section-body">
                         <div style="display:flex;gap:8px;">

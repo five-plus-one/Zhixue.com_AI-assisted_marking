@@ -203,14 +203,13 @@ const XinjiaoyuAdapter = {
     },
 
     fillScore(request) {
-        const { total, subScores, diligenceBonus } = request;
-        const scoresToFill = (subScores && diligenceBonus > 0) ? distributeDiligenceBonus(subScores, diligenceBonus) : subScores;
+        const { total, subScores } = request;
 
         // 分小题填入（仅考试系统支持）
-        if (scoresToFill && scoresToFill.length > 0) {
+        if (subScores && subScores.length > 0) {
             const detected = this.detectSubQuestions();
             if (detected.length > 0) {
-                for (const sq of scoresToFill) {
+                for (const sq of subScores) {
                     const target = detected.find(d =>
                         d.label === sq.label || sq.label.includes(d.label) || d.label.includes(sq.label)
                     );

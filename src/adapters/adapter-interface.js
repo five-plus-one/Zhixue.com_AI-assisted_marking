@@ -5,10 +5,9 @@
 
 /**
  * @typedef {Object} ScoreFillRequest
- * @property {number} total - 总分（已含勤勉加分）
- * @property {Array<{id: string, label: string, score: number}>} [subScores] - 各小题分数（纯准确性分数，不含勤勉加分）
+ * @property {number} total - 总分（已含勤勉加分和取整）
+ * @property {Array<{id: string, label: string, score: number}>} [subScores] - 各小题分数（已含勤勉加分分配和取整）
  * @property {string} [comment] - AI 评语（可选）
- * @property {number} [diligenceBonus] - 勤勉加分值（可选，>0 时 adapter 可按需分配到小题）
  */
 
 /**

@@ -220,9 +220,8 @@ const GuangdaAdapter = {
     },
 
     fillScore(request) {
-        const { total, subScores, diligenceBonus } = request;
-        const scoresToFill = (subScores && diligenceBonus > 0) ? distributeDiligenceBonus(subScores, diligenceBonus) : subScores;
-        console.log(`📝 [诊断] 光大阅卷 fillScore — 总分: ${total}, 小题分数:`, scoresToFill);
+        const { total, subScores } = request;
+        console.log(`📝 [诊断] 光大阅卷 fillScore — 总分: ${total}, 小题分数:`, subScores);
 
         // 获取所有小题容器
         const scoreWraps = document.querySelectorAll('.score.big-score');
@@ -233,9 +232,9 @@ const GuangdaAdapter = {
             return this._fillSingleScore(total);
         }
 
-        if (scoresToFill && scoresToFill.length > 0) {
+        if (subScores && subScores.length > 0) {
             // 有小题分数，为每个小题填入对应分数
-            return this._fillSubScores(scoresToFill, scoreWraps);
+            return this._fillSubScores(subScores, scoreWraps);
         } else {
             // 没有小题分数，将总分填入第一个小题
             console.log('📝 [诊断] 没有小题分数，将总分填入第一个小题');

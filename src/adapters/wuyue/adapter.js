@@ -81,14 +81,13 @@ const WuyueAdapter = {
     },
 
     fillScore(request) {
-        const { total, subScores, diligenceBonus } = request;
-        const scoresToFill = (subScores && diligenceBonus > 0) ? distributeDiligenceBonus(subScores, diligenceBonus) : subScores;
+        const { total, subScores } = request;
 
         // 分小题填入
         const subQuestions = this.detectSubQuestions();
-        if (subQuestions.length > 0 && scoresToFill && scoresToFill.length > 0) {
+        if (subQuestions.length > 0 && subScores && subScores.length > 0) {
             const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set;
-            for (const sq of scoresToFill) {
+            for (const sq of subScores) {
                 const target = subQuestions.find(d =>
                     d.label === sq.label || sq.label.includes(d.label) || d.label.includes(sq.label)
                 );

@@ -303,6 +303,7 @@ function createSettingsPanel() {
 
             /* UI refresh: explicit light theme and contrast-safe controls */
             #ai-grading-settings {
+                width: min(100vw, 560px) !important;
                 background: #f7f8fa !important;
                 border-left: 1px solid #e1e6ef !important;
                 box-shadow: -24px 0 70px rgba(18,28,45,0.18) !important;
@@ -322,6 +323,173 @@ function createSettingsPanel() {
                 font-size: 20px !important;
                 font-weight: 750 !important;
                 letter-spacing: 0 !important;
+            }
+            #ai-grading-settings .header-title-wrap {
+                min-width: 0 !important;
+            }
+            #ai-grading-settings .settings-current-line {
+                margin-top: 3px !important;
+                font-size: 12px !important;
+                color: #667085 !important;
+                white-space: nowrap !important;
+                overflow: hidden !important;
+                text-overflow: ellipsis !important;
+            }
+            #ai-grading-settings .settings-unsaved-chip {
+                display: none !important;
+                margin-left: 6px !important;
+                padding: 1px 6px !important;
+                border-radius: 999px !important;
+                background: #fff4f3 !important;
+                color: #c2352b !important;
+                font-size: 11px !important;
+                font-weight: 700 !important;
+            }
+            #ai-grading-settings .settings-unsaved-chip.visible {
+                display: inline-flex !important;
+            }
+            #ai-grading-settings .settings-body {
+                overflow: hidden !important;
+                display: flex !important;
+                min-height: 0 !important;
+            }
+            #ai-grading-settings .settings-tabs {
+                display: none !important;
+            }
+            #ai-grading-settings .settings-shell {
+                flex: 1 !important;
+                min-height: 0 !important;
+                display: grid !important;
+                grid-template-columns: 112px minmax(0, 1fr) !important;
+                background: #fff !important;
+            }
+            #ai-grading-settings .settings-nav {
+                padding: 12px 10px !important;
+                border-right: 1px solid #e1e6ef !important;
+                background: #f7f8fa !important;
+                display: flex !important;
+                flex-direction: column !important;
+                gap: 4px !important;
+                overflow-y: auto !important;
+            }
+            #ai-grading-settings .settings-nav-item {
+                position: relative !important;
+                width: 100% !important;
+                min-height: 36px !important;
+                padding: 0 26px 0 12px !important;
+                border: 1px solid transparent !important;
+                border-radius: 7px !important;
+                background: transparent !important;
+                color: #475467 !important;
+                cursor: pointer !important;
+                font-size: 13px !important;
+                font-weight: 700 !important;
+                text-align: left !important;
+                transition: background 0.16s, color 0.16s, border-color 0.16s !important;
+            }
+            #ai-grading-settings .settings-nav-item:hover {
+                background: #eef2f7 !important;
+                color: #172033 !important;
+            }
+            #ai-grading-settings .settings-nav-item.active {
+                background: #eaf2fb !important;
+                border-color: #c9d9eb !important;
+                color: #172033 !important;
+            }
+            #ai-grading-settings .settings-nav-item.active::before {
+                content: '' !important;
+                position: absolute !important;
+                left: 0 !important;
+                top: 8px !important;
+                bottom: 8px !important;
+                width: 3px !important;
+                border-radius: 0 3px 3px 0 !important;
+                background: #2166ad !important;
+            }
+            #ai-grading-settings .settings-nav-dot {
+                display: none !important;
+                position: absolute !important;
+                right: 10px !important;
+                top: 50% !important;
+                width: 7px !important;
+                height: 7px !important;
+                margin-top: -3.5px !important;
+                border-radius: 50% !important;
+                background: #d93025 !important;
+                box-shadow: 0 0 0 2px #fff !important;
+            }
+            #ai-grading-settings .settings-nav-item.has-missing .settings-nav-dot {
+                display: block !important;
+            }
+            #ai-grading-settings .settings-pages {
+                min-width: 0 !important;
+                overflow-y: auto !important;
+                overflow-x: hidden !important;
+                scrollbar-width: thin !important;
+                scrollbar-color: rgba(0,0,0,0.14) transparent !important;
+                background: #fff !important;
+            }
+            #ai-grading-settings .settings-page {
+                display: none !important;
+                padding: 18px 20px 22px !important;
+            }
+            #ai-grading-settings .settings-page.active {
+                display: block !important;
+            }
+            #ai-grading-settings .settings-page-title {
+                margin: 0 0 14px !important;
+                font-size: 15px !important;
+                font-weight: 800 !important;
+                color: #172033 !important;
+            }
+            #ai-grading-settings .settings-page-desc {
+                margin: -8px 0 16px !important;
+                font-size: 12px !important;
+                color: #667085 !important;
+                line-height: 1.55 !important;
+            }
+            #ai-grading-settings .settings-page .form-section {
+                margin-bottom: 14px !important;
+                border: 1px solid #e1e6ef !important;
+                border-radius: 8px !important;
+                overflow: hidden !important;
+            }
+            #ai-grading-settings .settings-page .section-header {
+                padding: 12px 14px !important;
+            }
+            #ai-grading-settings .settings-page .section-body {
+                padding: 0 14px 14px !important;
+            }
+            #ai-grading-settings .settings-page .about-page {
+                padding: 0 !important;
+            }
+            #ai-grading-settings .sidebar-footer {
+                align-items: center !important;
+            }
+            #ai-grading-settings .sidebar-footer .save-btn {
+                flex: 1.45 !important;
+                min-height: 36px !important;
+                padding: 9px 12px !important;
+                border-radius: 7px !important;
+            }
+            @media (max-width: 520px) {
+                #ai-grading-settings .settings-shell {
+                    grid-template-columns: 92px minmax(0, 1fr) !important;
+                }
+                #ai-grading-settings .settings-nav {
+                    padding: 10px 8px !important;
+                }
+                #ai-grading-settings .settings-nav-item {
+                    padding-left: 9px !important;
+                    padding-right: 20px !important;
+                    font-size: 12px !important;
+                }
+                #ai-grading-settings .settings-page {
+                    padding: 14px 14px 18px !important;
+                }
+                #ai-grading-settings .sidebar-footer {
+                    padding: 10px 12px 12px !important;
+                }
             }
             #ai-grading-settings .header-btn,
             #ai-grading-settings .preset-btn,
@@ -465,7 +633,13 @@ function createSettingsPanel() {
         </style>
 
         <div class="sidebar-header">
-            <h3>AI 批改助手</h3>
+            <div class="header-title-wrap">
+                <h3>AI 批改助手</h3>
+                <div class="settings-current-line">
+                    当前方案：<span id="settings-current-preset">默认配置</span>
+                    <span class="settings-unsaved-chip" id="settings-unsaved-chip">未保存</span>
+                </div>
+            </div>
             <div class="header-buttons">
                 <button class="header-btn close-btn" title="关闭">×</button>
             </div>
@@ -801,6 +975,7 @@ function createSettingsPanel() {
         </div>
     `;
     document.body.appendChild(panel);
+    setupSettingsMenuLayout(panel);
 
     // 遮罩层点击关闭
     overlay.onclick = () => closeSettingsPanel();
@@ -826,6 +1001,8 @@ function createSettingsPanel() {
     panel.querySelector('#preset-select').onchange = handlePresetChange;
     panel.querySelector('#save-config-btn').onclick = saveAISettings;
     panel.querySelector('#btn-history').onclick = () => showHistoryPanel();
+    const pageHistoryBtn = panel.querySelector('#btn-history-page');
+    if (pageHistoryBtn) pageHistoryBtn.onclick = () => showHistoryPanel();
     panel.querySelector('#btn-check-update').onclick = function() { checkForUpdate(true, this); };
     panel.querySelector('#btn-new-provider').onclick = handleNewProvider;
     panel.querySelector('#btn-del-provider').onclick = handleDeleteProvider;
@@ -922,8 +1099,8 @@ function createSettingsPanel() {
 
     const inputs = panel.querySelectorAll('input:not([name="grading-mode"]), textarea, select:not(#preset-select)');
     inputs.forEach(input => {
-        input.addEventListener('input', markUnsavedChanges);
-        input.addEventListener('change', markUnsavedChanges);
+        input.addEventListener('input', () => { markUnsavedChanges(); updateSettingsNavBadges(); updateSettingsHeaderStatus(); });
+        input.addEventListener('change', () => { markUnsavedChanges(); updateSettingsNavBadges(); updateSettingsHeaderStatus(); });
     });
 
     // API 密钥实时监听：输入变化时更新警告状态
@@ -962,6 +1139,7 @@ function createSettingsPanel() {
                     });
                     showToast(`已自动识别 ${detected.length} 个小题，请为每题填写满分`);
                     markUnsavedChanges();
+                    updateSettingsNavBadges();
                     return;
                 }
             }
@@ -971,6 +1149,7 @@ function createSettingsPanel() {
         }
         subContainer.style.display = 'none';
         markUnsavedChanges();
+        updateSettingsNavBadges();
     });
     panel.querySelector('#btn-add-sub-question').onclick = () => addSubQuestionItem();
 
@@ -979,6 +1158,114 @@ function createSettingsPanel() {
 
     // 初始化后打开侧边栏
     requestAnimationFrame(() => openSettingsPanel());
+}
+
+function setupSettingsMenuLayout(panel) {
+    if (!panel || panel.dataset.menuLayout === 'ready') return;
+    panel.dataset.menuLayout = 'ready';
+
+    const oldTabs = panel.querySelector('.settings-tabs');
+    if (oldTabs) oldTabs.remove();
+
+    const body = panel.querySelector('.settings-body');
+    const configTab = panel.querySelector('#tab-config');
+    const aboutTab = panel.querySelector('#tab-about');
+    const footer = panel.querySelector('.sidebar-footer');
+    if (!body || !configTab) return;
+
+    const saveContainer = panel.querySelector('.save-btn-container');
+    const saveBtn = panel.querySelector('#save-config-btn');
+    if (footer && saveBtn) {
+        footer.appendChild(saveBtn);
+        if (saveContainer) saveContainer.remove();
+    }
+
+    const navItems = [
+        { id: 'plan', label: '方案', title: '方案', desc: '选择当前配置方案，并决定是否绑定到当前试题。' },
+        { id: 'grading', label: '批改', title: '批改', desc: '设置运行模式、题目上下文和分小题评分。' },
+        { id: 'scoring', label: '评分', title: '评分', desc: '设置分数取整和勤勉加分规则。' },
+        { id: 'ai', label: 'AI', title: 'AI', desc: '管理批改工作流、服务供应商、密钥和模型。' },
+        { id: 'automation', label: '自动化', title: '自动化', desc: '设置批阅份数限制和自动暂停边界。' },
+        { id: 'data', label: '数据', title: '数据', desc: '管理历史、图片保存、配置备份和恢复默认设置。' },
+        { id: 'about', label: '关于', title: '关于', desc: '查看版本、帮助入口、社区链接和更新日志。' },
+    ];
+
+    const shell = document.createElement('div');
+    shell.className = 'settings-shell';
+
+    const nav = document.createElement('div');
+    nav.className = 'settings-nav';
+    navItems.forEach((item, idx) => {
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'settings-nav-item' + (idx === 0 ? ' active' : '');
+        btn.dataset.page = item.id;
+        btn.innerHTML = `<span>${item.label}</span><span class="settings-nav-dot"></span>`;
+        nav.appendChild(btn);
+    });
+
+    const pagesRoot = document.createElement('div');
+    pagesRoot.className = 'settings-pages';
+    const pages = {};
+    navItems.forEach((item, idx) => {
+        const page = document.createElement('div');
+        page.className = 'settings-page' + (idx === 0 ? ' active' : '');
+        page.dataset.page = item.id;
+        page.innerHTML = `<h4 class="settings-page-title">${item.title}</h4><div class="settings-page-desc">${item.desc}</div>`;
+        pages[item.id] = page;
+        pagesRoot.appendChild(page);
+    });
+
+    function findSection(title) {
+        return Array.from(configTab.querySelectorAll('.form-section')).find(section => {
+            const heading = section.querySelector('.section-header h4');
+            return heading && heading.textContent.trim().startsWith(title);
+        });
+    }
+
+    function moveSection(pageId, title) {
+        const section = findSection(title);
+        if (section) pages[pageId].appendChild(section);
+    }
+
+    moveSection('plan', '场景方案');
+    moveSection('grading', '运行模式');
+    moveSection('grading', '批改上下文');
+    moveSection('grading', '分小题评分');
+    moveSection('scoring', '取整规则');
+    moveSection('scoring', '勤勉加分');
+    moveSection('ai', '批改工作流');
+    moveSection('ai', '供应商与模型');
+    const apiWarning = configTab.querySelector('#api-key-warning');
+    if (apiWarning) pages.ai.appendChild(apiWarning);
+    moveSection('automation', '批阅份数');
+    moveSection('data', '历史记录');
+    const historyShortcut = document.createElement('div');
+    historyShortcut.className = 'form-section';
+    historyShortcut.innerHTML = `
+        <div class="section-header"><h4>评阅历史</h4></div>
+        <div class="section-body">
+            <button class="footer-btn" id="btn-history-page" style="width:100%;">打开评阅历史</button>
+        </div>
+    `;
+    pages.data.appendChild(historyShortcut);
+    moveSection('data', '配置管理');
+
+    const aboutPage = aboutTab?.querySelector('.about-page');
+    if (aboutPage) pages.about.appendChild(aboutPage);
+
+    shell.appendChild(nav);
+    shell.appendChild(pagesRoot);
+    body.replaceChildren(shell);
+
+    nav.querySelectorAll('.settings-nav-item').forEach(btn => {
+        btn.onclick = () => {
+            nav.querySelectorAll('.settings-nav-item').forEach(item => item.classList.remove('active'));
+            pagesRoot.querySelectorAll('.settings-page').forEach(page => page.classList.remove('active'));
+            btn.classList.add('active');
+            pagesRoot.querySelector(`.settings-page[data-page="${btn.dataset.page}"]`)?.classList.add('active');
+        };
+    });
 }
 
 // ========== 渲染 CHANGELOG ==========
@@ -1278,10 +1565,10 @@ function addSubQuestionItem(data) {
         <div style="margin-bottom:8px;"><label style="font-size:11px;color:#86868b;display:block;margin-bottom:4px;">参考答案</label><textarea class="sq-answer" placeholder="该小题的参考答案" style="width:100%;padding:6px 8px;border:1px solid rgba(0,0,0,0.08);border-radius:6px;font-size:12px;min-height:50px;resize:vertical;box-sizing:border-box;font-family:inherit;">${data?.answer || ''}</textarea></div>
         <div><label style="font-size:11px;color:#86868b;display:block;margin-bottom:4px;">评分标准</label><textarea class="sq-rubric" placeholder="该小题的评分标准" style="width:100%;padding:6px 8px;border:1px solid rgba(0,0,0,0.08);border-radius:6px;font-size:12px;min-height:50px;resize:vertical;box-sizing:border-box;font-family:inherit;">${data?.rubric || ''}</textarea></div>
     `;
-    item.querySelector('.sq-del-btn').onclick = () => { item.remove(); markUnsavedChanges(); };
+    item.querySelector('.sq-del-btn').onclick = () => { item.remove(); markUnsavedChanges(); updateSettingsNavBadges(); };
     item.querySelectorAll('input, textarea').forEach(el => {
-        el.addEventListener('input', markUnsavedChanges);
-        el.addEventListener('change', markUnsavedChanges);
+        el.addEventListener('input', () => { markUnsavedChanges(); updateSettingsNavBadges(); });
+        el.addEventListener('change', () => { markUnsavedChanges(); updateSettingsNavBadges(); });
     });
     list.appendChild(item);
 }
@@ -1340,6 +1627,8 @@ function updateUIVisibility() {
 
     // 分组标题提示
     updateGroupHints();
+    updateSettingsNavBadges();
+    updateSettingsHeaderStatus();
 }
 
 function updateGroupHints() {
@@ -1379,6 +1668,56 @@ function updateGroupHints() {
         } else if (existingWarn) {
             existingWarn.remove();
         }
+    }
+
+    updateSettingsNavBadges();
+    updateSettingsHeaderStatus();
+}
+
+function updateSettingsHeaderStatus() {
+    const presetLabel = document.getElementById('settings-current-preset');
+    const presetSelect = document.getElementById('preset-select');
+    if (presetLabel && presetSelect) {
+        presetLabel.textContent = presetSelect.value || '默认配置';
+    }
+
+    const chip = document.getElementById('settings-unsaved-chip');
+    if (chip) {
+        chip.classList.toggle('visible', !!window.aiGradingState?.hasUnsavedChanges);
+    }
+}
+
+function updateSettingsNavBadges() {
+    const nav = document.querySelector('#ai-grading-settings .settings-nav');
+    if (!nav) return;
+
+    const apiKeyInput = document.getElementById('api-key');
+    const endpointInput = document.getElementById('api-endpoint');
+    const providerSelect = document.getElementById('ai-provider');
+    const workflowSelect = document.getElementById('workflow-select');
+    const questionEl = document.getElementById('question-content');
+    const answerEl = document.getElementById('standard-answer');
+    const rubricEl = document.getElementById('grading-rubric');
+    const subQuestions = getSubQuestionsFromForm();
+    const batchEnabled = document.getElementById('batch-enabled-checkbox')?.checked;
+    const batchTarget = parseInt(document.getElementById('batch-target-count')?.value, 10) || 0;
+    const currentProvider = ProviderManager.getProvider(providerSelect?.value);
+    const hasModels = currentProvider && Object.keys(currentProvider.models || {}).length > 0;
+
+    const missing = {
+        plan: !document.getElementById('preset-select')?.value,
+        grading: !questionEl?.value.trim() || !answerEl?.value.trim() || !rubricEl?.value.trim() ||
+            subQuestions.some(sq => !sq.maxScore || sq.maxScore <= 0),
+        scoring: false,
+        ai: !apiKeyInput?.value.trim() || !endpointInput?.value.trim() || !workflowSelect?.value || !hasModels,
+        automation: !!batchEnabled && batchTarget <= 0,
+        data: false,
+        about: false,
+    };
+
+    for (const [page, isMissing] of Object.entries(missing)) {
+        const item = nav.querySelector(`.settings-nav-item[data-page="${page}"]`);
+        if (item) item.classList.toggle('has-missing', !!isMissing);
     }
 }
 

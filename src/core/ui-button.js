@@ -160,6 +160,8 @@ function markUnsavedChanges() {
             saveBtn.classList.add('highlight-save');
             saveBtn.innerHTML = '保存修改 <span style="font-size:11px;opacity:0.6;font-weight:normal;margin-left:6px;">未保存</span>';
         }
+
+        if (typeof updateSettingsHeaderStatus === 'function') updateSettingsHeaderStatus();
     }
 }
 
@@ -177,6 +179,8 @@ function clearUnsavedChanges() {
         saveBtn.classList.remove('highlight-save');
         saveBtn.innerHTML = '保存并启用';
     }
+
+    if (typeof updateSettingsHeaderStatus === 'function') updateSettingsHeaderStatus();
 }
 
 // ========== 批阅份数进度显示（支持拖动） ==========

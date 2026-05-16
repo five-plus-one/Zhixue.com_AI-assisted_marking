@@ -10,7 +10,7 @@ function buildDiligencePromptSection(config) {
     return `
 
 【勤勉度】
-等级：（1-5的整数，1=态度敷衍，3=中等，5=非常认真）
+等级：（1-5的整数，1=无勤勉/态度敷衍/未作答，2=一般，3=中等，4=较好，5=非常认真）
 依据：（简述理由，参考标准：${criteria}）
 注意：学生答案字数不超过15字或未作答时，必须给等级1`;
 }
@@ -475,7 +475,8 @@ function applyDiligenceBonus(accuracyScore, diligenceLevel, maxScore, diligenceC
 
     const ratio = Math.min(accuracyScore / maxScore, 1);
     const decayFactor = Math.pow(1 - ratio, decayPower);
-    const rawBonus = Math.min(diligenceLevel * perLevel, maxBonus);
+    // 等级1=无勤勉(0分)，等级2起才加分
+    const rawBonus = Math.min(Math.max(0, diligenceLevel - 1) * perLevel, maxBonus);
     const bonus = Math.round(rawBonus * decayFactor * 100) / 100;
     const finalScore = Math.min(accuracyScore + bonus, maxScore);
 

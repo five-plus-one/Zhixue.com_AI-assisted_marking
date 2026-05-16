@@ -512,6 +512,8 @@ const GuangdaAdapter = {
                 // 方法1: 检测 API 拦截到的新图片（版本号变化）
                 if (_guangdaImageVersion !== versionBefore && checkTimes > 2) {
                     clearInterval(timer);
+                    // 清空旧图片，让 gatherAnswerImages 等待新图片
+                    _guangdaCurrentPaperImages = [];
                     console.log(`✅ 光大阅卷 — 新试卷已加载（API拦截到新图片 v${versionBefore}→v${_guangdaImageVersion}）`);
                     resolve(true);
                     return;
@@ -524,6 +526,8 @@ const GuangdaAdapter = {
                 // 得分区域消失或变为0，说明新试卷已加载
                 if (checkTimes > 3 && (!scoreDisplay || currentScore === '' || currentScore === '0' || currentScore === '—')) {
                     clearInterval(timer);
+                    // 清空旧图片，让 gatherAnswerImages 等待新图片
+                    _guangdaCurrentPaperImages = [];
                     console.log('✅ 光大阅卷 — 新试卷已加载（得分重置）');
                     resolve(true);
                     return;

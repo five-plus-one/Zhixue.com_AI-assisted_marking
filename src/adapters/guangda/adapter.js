@@ -5,6 +5,7 @@
 // 仅在光大平台 (pj.yixx.cn) 上执行 XHR 拦截，避免影响其他平台
 let _guangdaCurrentPaperImages = [];
 let _guangdaNextPaperImages = [];
+let _guangdaImageVersion = 0; // 每次拦截到新图片时递增，用于检测图片更新
 
 if (window.location.hostname.includes('pj.yixx.cn')) {
     const _guangdaOrigOpen = XMLHttpRequest.prototype.open;
@@ -30,7 +31,8 @@ if (window.location.hostname.includes('pj.yixx.cn')) {
                             _guangdaCurrentPaperImages = currentPaper.imageData.vUrl.filter(url =>
                                 url && (url.startsWith('http://') || url.startsWith('https://'))
                             );
-                            console.log(`🎯 [API拦截] 当前试卷图片: ${_guangdaCurrentPaperImages.length} 张`);
+                            _guangdaImageVersion++;
+                            console.log(`🎯 [API拦截] 当前试卷图片: ${_guangdaCurrentPaperImages.length} 张 (v${_guangdaImageVersion})`);
                             _guangdaCurrentPaperImages.forEach((url, i) => {
                                 console.log(`  📷 图片${i + 1}: ${url.substring(0, 80)}...`);
                             });
@@ -130,18 +132,36 @@ const GuangdaAdapter = {
     async gatherAnswerImages() {
         console.log('🖼️ [诊断] 光大阅卷 — 开始获取答题卡图片...');
 
-        // 等待页面加载完成
-        await new Promise(r => setTimeout(r, 2000));
+        // 记录当前版本号，等待新版本（表示新图片到达）
+        const versionBefore = _guangdaImageVersion;
+        const maxWait = 5000;
+        const startTime = Date.now();
 
-        // 优先从网络请求获取图片 URL（Canvas 被跨域污染，无法导出）
+        // 等待版本号变化（新图片到达）或图片数组非空
+        while (_guangdaImageVersion === versionBefore && _guangdaCurrentPaperImages.length === 0 && Date.now() - startTime < maxWait) {
+            await new Promise(r => setTimeout(r, 200));
+        }
+
+        const elapsed = Date.now() - startTime;
+        if (elapsed > 300) {
+            console.log(`🖼️ [诊断] 等待 API 拦截耗时: ${elapsed}ms (v${versionBefore}→v${_guangdaImageVersion})`);
+        }
+
+        // 第一优先：API 拦截（精确匹配当前试卷）
         const imageUrls = this._getImageUrlsFromNetwork();
-
         if (imageUrls.length > 0) {
-            console.log(`🖼️ [诊断] 从网络请求找到 ${imageUrls.length} 张图片`);
+            console.log(`🖼️ [诊断] 从 API 拦截找到 ${imageUrls.length} 张图片`);
             return imageUrls;
         }
 
-        // 备用方案：尝试从 Vue 组件获取图片 URL
+        // 第二优先：performance API（回退方案，取最新一张避免预加载干扰）
+        const perfUrls = this._getImageUrlsFromPerformance();
+        if (perfUrls.length > 0) {
+            console.log(`🖼️ [诊断] 从 performance 回退找到 ${perfUrls.length} 张图片`);
+            return perfUrls;
+        }
+
+        // 第三优先：Vue 组件
         const vueUrls = this._getImageUrlsFromVue();
         if (vueUrls.length > 0) {
             console.log(`🖼️ [诊断] 从 Vue 组件找到 ${vueUrls.length} 张图片`);
@@ -152,9 +172,22 @@ const GuangdaAdapter = {
         return [];
     },
 
-    // 从网络请求中获取图片 URL
+    // 从网络请求中获取图片 URL（仅 API 拦截）
     _getImageUrlsFromNetwork() {
-        // 最优先：从 performance 获取（实际加载的图片，更可靠）
+        if (_guangdaCurrentPaperImages.length > 0) {
+            console.log(`🖼️ [诊断] 从 API 拦截获取当前试卷图片: ${_guangdaCurrentPaperImages.length} 张`);
+            _guangdaCurrentPaperImages.forEach((url, i) => {
+                console.log(`  📷 图片${i + 1}: ${url.substring(0, 80)}...`);
+            });
+            return [..._guangdaCurrentPaperImages];
+        }
+
+        console.log(`🖼️ [诊断] API 拦截暂未捕获图片`);
+        return [];
+    },
+
+    // 从 performance API 获取图片 URL（备用方案，取最新一张）
+    _getImageUrlsFromPerformance() {
         const entries = performance.getEntriesByType('resource');
         const imageUrls = entries
             .filter(e => e.initiatorType === 'img' || e.name.includes('.jpg') || e.name.includes('.png'))
@@ -166,23 +199,13 @@ const GuangdaAdapter = {
         );
 
         if (uniqueUrls.length > 0) {
-            // 只返回最新的1张图片（当前试卷，避免预加载的图片）
+            // 只返回最新的 1 张图片（避免预加载图片干扰）
             const latestUrl = uniqueUrls[uniqueUrls.length - 1];
             console.log(`🖼️ [诊断] 从 performance 找到 ${uniqueUrls.length} 张图片，使用最新的 1 张`);
             console.log(`  📷 图片: ${latestUrl.substring(0, 80)}...`);
             return [latestUrl];
         }
 
-        // 备用：从 getDdb API 拦截获取当前试卷图片
-        if (_guangdaCurrentPaperImages.length > 0) {
-            console.log(`🖼️ [诊断] 从 API 拦截获取当前试卷图片: ${_guangdaCurrentPaperImages.length} 张`);
-            _guangdaCurrentPaperImages.forEach((url, i) => {
-                console.log(`  📷 图片${i + 1}: ${url.substring(0, 80)}...`);
-            });
-            return [..._guangdaCurrentPaperImages];
-        }
-
-        console.log(`🖼️ [诊断] 未找到图片`);
         return [];
     },
 
@@ -461,9 +484,7 @@ const GuangdaAdapter = {
         console.log('⏳ [诊断] 光大阅卷 — 等待下一份试卷...');
         let checkTimes = 0;
         const maxChecks = 60; // 最多等待 30 秒
-
-        // 清空之前拦截的图片，准备接收新试卷的图片
-        _guangdaCurrentPaperImages = [];
+        const versionBefore = _guangdaImageVersion;
 
         // 先快速检查弹窗是否还在（不等待，只是检查）
         const hasDialog = document.querySelector('.dialog-btns .sure');
@@ -482,16 +503,16 @@ const GuangdaAdapter = {
             });
         }
 
-        console.log('⏳ [诊断] 开始检测新试卷...');
+        console.log(`⏳ [诊断] 开始检测新试卷 (当前版本: v${versionBefore})...`);
 
         return new Promise((resolve) => {
             const timer = setInterval(() => {
                 checkTimes++;
 
-                // 方法1: 检测 API 拦截到的新图片
-                if (_guangdaCurrentPaperImages.length > 0 && checkTimes > 2) {
+                // 方法1: 检测 API 拦截到的新图片（版本号变化）
+                if (_guangdaImageVersion !== versionBefore && checkTimes > 2) {
                     clearInterval(timer);
-                    console.log('✅ 光大阅卷 — 新试卷已加载（API拦截到新图片）');
+                    console.log(`✅ 光大阅卷 — 新试卷已加载（API拦截到新图片 v${versionBefore}→v${_guangdaImageVersion}）`);
                     resolve(true);
                     return;
                 }

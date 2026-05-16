@@ -960,7 +960,7 @@ function createSettingsPanel() {
                     detected.forEach(sq => {
                         addSubQuestionItem({ label: sq.label, maxScore: '', answer: '', rubric: '' });
                     });
-                    showToast(`已自动识别 ${detected.length} 个小题`);
+                    showToast(`已自动识别 ${detected.length} 个小题，请为每题填写满分`);
                     markUnsavedChanges();
                     return;
                 }

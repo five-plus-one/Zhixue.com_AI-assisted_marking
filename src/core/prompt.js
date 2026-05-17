@@ -421,25 +421,31 @@ function parseLegacySubQuestionResponse(text, config) {
 
 // ========== 打分专用函数 ==========
 function callAIGrading(base64DataArray, config, onStreamUpdate) {
-    const hasSub = config.subQuestions && config.subQuestions.length > 0;
-    // 优先使用结构化 Prompt
-    const prompt = hasSub ? buildSubQuestionPrompt(config) : buildStructuredPrompt(config);
+    // 从 scoring.units 派生 subQuestions（唯一数据源）
+    const units = config.scoring?.units || [];
+    const subQuestions = units.length > 1
+        ? units.map((u, i) => ({ id: String.fromCharCode(97 + i), label: u.label, maxScore: u.maxScore }))
+        : [];
+    const hasSub = subQuestions.length > 0;
 
-    // 计算总满分（从子题配置或默认 100）
-    const maxScore = hasSub
-        ? config.subQuestions.reduce((sum, sq) => sum + (sq.maxScore || 0), 0)
-        : (config.maxScore || 100);
+    // 将派生的 subQuestions 注入 config 供 prompt 函数使用
+    const callConfig = { ...config, subQuestions: hasSub ? subQuestions : undefined };
+
+    const prompt = hasSub ? buildSubQuestionPrompt(callConfig) : buildStructuredPrompt(callConfig);
+
+    // 计算总满分
+    const maxScore = PresetManager.getMaxScore();
 
     if (hasSub) {
-        console.log(`📋 [诊断] 分小题配置 — 共 ${config.subQuestions.length} 题: ${config.subQuestions.map(sq => `${sq.label}(满分${sq.maxScore ?? '未设置'})`).join(', ')}`);
+        console.log(`📋 [诊断] 评分单元配置 — 共 ${subQuestions.length} 个: ${subQuestions.map(sq => `${sq.label}(满分${sq.maxScore ?? '未设置'})`).join(', ')}`);
     }
 
-    return callAIWithRetry(prompt, base64DataArray, config, onStreamUpdate)
+    return callAIWithRetry(prompt, base64DataArray, callConfig, onStreamUpdate)
         .then(fullText => {
             console.log('📝 [诊断] AI原始返回内容：\n' + fullText);
 
             const parsed = hasSub
-                ? parseSubQuestionResponse(fullText, config)
+                ? parseSubQuestionResponse(fullText, callConfig)
                 : parseStructuredResponse(fullText, maxScore);
             console.log(`🧠 [诊断] AI响应解析结果 — 分数: ${parsed.score}, 满分: ${maxScore}, 识别答案长度: ${(parsed.studentAnswer || '').length}字, 原始文本长度: ${fullText.length}字`);
             if (parsed.score === null) {

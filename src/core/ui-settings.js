@@ -1554,6 +1554,7 @@ function addScoringUnitItem(data) {
     const item = document.createElement('div');
     item.className = 'scoring-unit-item';
     item.style.cssText = 'padding:12px;margin-bottom:8px;background:rgba(0,0,0,0.02);border:1px solid rgba(0,0,0,0.06);border-radius:8px;';
+    const stepVal = data?.roundStep || 1;
     item.innerHTML = `
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
             <input type="text" class="su-label" placeholder="标签 (如: 第1题)" value="${data?.label || ''}" style="flex:1;padding:6px 8px;border:1px solid rgba(0,0,0,0.08);border-radius:6px;font-size:12px;">
@@ -1561,10 +1562,11 @@ function addScoringUnitItem(data) {
         </div>
         <div style="display:flex;gap:8px;">
             <div style="flex:1;"><label style="font-size:11px;color:#86868b;display:block;margin-bottom:4px;">满分 <span style="color:#D93025;">*</span></label><input type="number" class="su-max-score" min="1" placeholder="满分(必填)" value="${data?.maxScore || ''}" style="width:100%;padding:6px 8px;border:1px solid rgba(0,0,0,0.08);border-radius:6px;font-size:12px;box-sizing:border-box;"></div>
+            <div style="flex:0.6;"><label style="font-size:11px;color:#86868b;display:block;margin-bottom:4px;">步长</label><select class="su-round-step" style="width:100%;padding:6px 8px;border:1px solid rgba(0,0,0,0.08);border-radius:6px;font-size:12px;box-sizing:border-box;"><option value="1" ${stepVal===1?'selected':''}>整数</option><option value="0.5" ${stepVal===0.5?'selected':''}>0.5分</option><option value="0.1" ${stepVal===0.1?'selected':''}>0.1分</option></select></div>
         </div>
     `;
     item.querySelector('.su-del-btn').onclick = () => { item.remove(); markUnsavedChanges(); updateSettingsNavBadges(); };
-    item.querySelectorAll('input').forEach(el => {
+    item.querySelectorAll('input, select').forEach(el => {
         el.addEventListener('input', () => { markUnsavedChanges(); updateSettingsNavBadges(); });
         el.addEventListener('change', () => { markUnsavedChanges(); updateSettingsNavBadges(); });
     });
@@ -1577,10 +1579,12 @@ function getScoringUnitsFromForm() {
     items.forEach((item, i) => {
         const label = item.querySelector('.su-label')?.value?.trim() || `第${i + 1}题`;
         const maxScore = parseFloat(item.querySelector('.su-max-score')?.value);
+        const roundStep = parseFloat(item.querySelector('.su-round-step')?.value) || 1;
         units.push({
             label,
             maxScore: isNaN(maxScore) ? 0 : maxScore,
-            index: i
+            index: i,
+            roundStep
         });
     });
     return units;
@@ -2221,7 +2225,6 @@ function saveAISettings() {
         rubric: document.getElementById('grading-rubric').value,
         workflowId: workflowId || 'fast',
         gradingMode,
-        subQuestions: scoringUnits.length > 1 ? scoringUnits.map((u, i) => ({ id: String.fromCharCode(97 + i), label: u.label, maxScore: u.maxScore, answer: '', rubric: '' })) : undefined,
         scoring: {
             roundStep, roundMethod,
             maxScore: scoringUnits.length > 0

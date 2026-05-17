@@ -498,25 +498,30 @@ function showCorrectionPanel(context) {
                     const newRubric = document.getElementById('cor-new-rubric')?.value;
                     console.log(`📝 [纠错] 确认提交 — 教师分数: ${feedback.teacherScore}, 新答案长度: ${(newAnswer||'').length}, 新标准长度: ${(newRubric||'').length}`);
 
-                    // 构造校正后的 subScores
+                    // 对教师分数应用取整规则
+                    const scoringConfig = PresetManager.getCurrentConfig().scoring || { roundStep: 1, roundMethod: 'round' };
+                    const roundedTeacherScore = ScoreCalculator.round(feedback.teacherScore, scoringConfig);
+
+                    // 构造校正后的 subScores（也应用取整）
                     let correctedSubScores = context.subScores;
                     if (feedback.subScoreCorrections && context.subScores) {
-                        correctedSubScores = context.subScores.map((sq, i) => ({
-                            ...sq,
-                            score: feedback.subScoreCorrections[i]?.teacherScore ?? sq.score
-                        }));
+                        correctedSubScores = context.subScores.map((sq, i) => {
+                            const teacherSubScore = feedback.subScoreCorrections[i]?.teacherScore;
+                            const roundedSubScore = teacherSubScore != null ? ScoreCalculator.round(teacherSubScore, scoringConfig) : sq.score;
+                            return { ...sq, score: roundedSubScore };
+                        });
                     }
 
                     const correctionInfo = {
                         isCorrected: true,
                         correctionReason: feedback.subScoreCorrections
-                            ? `教师纠正：AI${context.score}分→正确${feedback.teacherScore}分。各小题：${feedback.subScoreCorrections.map(c => `${c.label} AI${c.aiScore}→${c.teacherScore}`).join('；')}。${feedback.teacherReason}`
-                            : `教师纠正：AI${context.score}分→正确${feedback.teacherScore}分。${feedback.teacherReason}`,
+                            ? `教师纠正：AI${context.score}分→正确${roundedTeacherScore}分。各小题：${feedback.subScoreCorrections.map(c => `${c.label} AI${c.aiScore}→${c.teacherScore}`).join('；')}。${feedback.teacherReason}`
+                            : `教师纠正：AI${context.score}分→正确${roundedTeacherScore}分。${feedback.teacherReason}`,
                         newAnswer, newRubric,
                         correctedSubScores
                     };
                     cleanup();
-                    if (context.onAccept) context.onAccept(feedback.teacherScore, correctionInfo);
+                    if (context.onAccept) context.onAccept(roundedTeacherScore, correctionInfo);
                 };
             }
         } catch (err) {

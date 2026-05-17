@@ -39,6 +39,15 @@ async function startAutoGrading() {
             return;
         }
 
+        // 检查满分配置是否完整
+        const validation = PresetManager.validateScoringUnits();
+        if (!validation.valid) {
+            const labels = validation.missingMaxScore.map(u => u.label).join('、');
+            safeAlert(`⚠️ 以下评分单元的满分未配置：${labels}\n\n请在设置中填写满分后再开始批改。`);
+            window.aiGradingState.isRunning = false;
+            return;
+        }
+
         // 获取工作流信息（用于双评判断）
         const presetConfig = PresetManager.getCurrentConfig();
         const workflowId = presetConfig.workflowId;
@@ -126,12 +135,21 @@ async function startAutoGrading() {
             if (answerLen <= 15) diligenceLevel = 0;
 
             // 使用 ScoreCalculator 统一计算流水线
+            // 将配置中的 roundStep 合并到 AI 返回的小题分数中
+            const configUnits = scoringConfig.units || [];
+            const aiUnitScores = result.subScores
+                ? result.subScores.map((sq, i) => ({
+                    ...sq,
+                    roundStep: configUnits[i]?.roundStep || scoringConfig.roundStep
+                }))
+                : null;
+
             const calculated = ScoreCalculator.calculate({
                 aiScore: result.rawScore || result.score,
                 diligenceLevel,
                 maxScore,
                 scoringConfig,
-                aiUnitScores: result.subScores || null
+                aiUnitScores
             });
 
             const { finalScore, finalUnitScores, bonus: roundedBonus, breakdown } = calculated;

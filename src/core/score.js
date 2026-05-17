@@ -98,14 +98,17 @@ const ScoreCalculator = {
             console.log(`🌟 [分数计算] 勤勉等级${diligenceLevel}/5, 衰减${diligenceResult.decayFactor.toFixed(2)}, 加分+${roundedBonus}, 最终${finalScore}`);
         }
 
-        // 4. 各评分单元分数处理
+        // 4. 各评分单元分数处理（每个单元可有独立步长）
         let finalUnitScores = null;
         if (aiUnitScores && aiUnitScores.length > 0) {
-            // 对每个单元取整
-            const rounded = aiUnitScores.map(u => ({
-                ...u,
-                score: u.score !== null && u.score !== undefined ? this.round(u.score, scoringConfig) : null
-            }));
+            // 对每个单元取整（优先使用单元步长，回退全局步长）
+            const rounded = aiUnitScores.map(u => {
+                const unitConfig = u.roundStep ? { ...scoringConfig, roundStep: u.roundStep } : scoringConfig;
+                return {
+                    ...u,
+                    score: u.score !== null && u.score !== undefined ? this.round(u.score, unitConfig) : null
+                };
+            });
             // 勤勉加分按比例分配
             finalUnitScores = roundedBonus > 0
                 ? this.distributeBonus(rounded, roundedBonus, s => this.round(s, scoringConfig))

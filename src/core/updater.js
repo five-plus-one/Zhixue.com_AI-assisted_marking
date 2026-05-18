@@ -141,14 +141,20 @@ function collectChangelogHTML(remoteVersion, remoteChangelog) {
 /**
  * 显示渠道切换引导弹窗（dev 渠道强提示）。
  * 基于 showBatchTargetDialog 的三选项模式。
+ * @param {boolean} stableNewer - stable 版本是否比当前版本新
+ * @param {string|null} stableVersion - stable 的最新版本号
  * @returns {Promise<'stable'|'preview'|'stay'>}
  */
-function showChannelSwitchDialog() {
+function showChannelSwitchDialog(stableNewer, stableVersion) {
     return new Promise(resolve => {
         ensureModalStyles();
         const overlay = document.createElement('div');
         overlay.className = 'ai-modal-overlay';
         overlay.style.zIndex = '1000020';
+        const stableBtnLabel = stableNewer ? `切换到稳定版 (v${stableVersion})` : '稳定版已是最新';
+        const stableBtnStyle = stableNewer
+            ? 'flex:1;background:#1a1a1a;'
+            : 'flex:1;background:#ccc;color:#666;cursor:not-allowed;';
         overlay.innerHTML = `
             <div class="ai-modal-card" style="max-width:420px;">
                 <div class="ai-modal-header" style="display:flex;align-items:center;gap:8px;">
@@ -161,7 +167,7 @@ function showChannelSwitchDialog() {
                 </div>
                 <div class="ai-modal-footer" style="flex-direction:column;align-items:stretch;">
                     <div style="display:flex;gap:10px;">
-                        <button class="ai-modal-btn-confirm" data-action="stable" style="flex:1;background:#1a1a1a;">切换到稳定版</button>
+                        <button class="ai-modal-btn-confirm" data-action="stable" style="${stableBtnStyle}">${stableBtnLabel}</button>
                         <button class="ai-modal-btn-cancel" data-action="preview" style="flex:1;">切换到预览版</button>
                     </div>
                     <button class="ai-modal-btn-secondary" data-action="stay" style="margin-top:4px;">继续使用开发版（不推荐）</button>
@@ -171,10 +177,13 @@ function showChannelSwitchDialog() {
         document.body.appendChild(overlay);
         let closed = false;
         const close = result => { if (closed) return; closed = true; overlay.remove(); resolve(result); };
-        overlay.querySelector('[data-action="stable"]').onclick = e => { e.stopPropagation(); close('stable'); };
+        overlay.querySelector('[data-action="stable"]').onclick = e => {
+            e.stopPropagation();
+            if (stableNewer) close('stable');
+        };
         overlay.querySelector('[data-action="preview"]').onclick = e => { e.stopPropagation(); close('preview'); };
         overlay.querySelector('[data-action="stay"]').onclick = e => { e.stopPropagation(); close('stay'); };
-        overlay.querySelector('[data-action="stable"]').focus();
+        overlay.querySelector(stableNewer ? '[data-action="stable"]' : '[data-action="preview"]').focus();
     });
 }
 
@@ -417,14 +426,19 @@ function handleUpdateResult(remoteVersion, remoteChangelog, force, restoreBtn) {
         console.log('[更新检查] 当前已是最新版本');
         if (force) {
             showToast('当前已是最新版本');
-            // 手动检查时，非 stable 渠道追加渠道引导
+            // 手动检查时，非 stable 渠道追加渠道引导（需检查 stable 版本）
             const ch = getChannelName();
-            if (ch === 'dev') {
-                showChannelSwitchDialog().then(action => {
-                    if (action === 'stable' || action === 'preview') switchChannel(action);
+            if (ch === 'dev' || ch === 'preview') {
+                checkStableVersion().then(stableVersion => {
+                    const stableNewer = stableVersion && compareVersions(stableVersion, SCRIPT_CONFIG.VERSION) > 0;
+                    if (ch === 'dev') {
+                        showChannelSwitchDialog(stableNewer, stableVersion).then(action => {
+                            if (action === 'stable' || action === 'preview') switchChannel(action);
+                        });
+                    } else if (ch === 'preview' && stableNewer) {
+                        showToast(`稳定版有更新版本 (v${stableVersion})，建议切换`, 'info');
+                    }
                 });
-            } else if (ch === 'preview') {
-                showToast('建议切换到稳定版以获得更可靠的体验', 'info');
             }
         }
     }

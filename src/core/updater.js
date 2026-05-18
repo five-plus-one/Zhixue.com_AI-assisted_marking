@@ -189,6 +189,34 @@ function switchChannel(channel) {
 }
 
 /**
+ * 异步检查 stable 渠道的最新版本号。
+ * @returns {Promise<string|null>} stable 渠道的最新版本号，失败返回 null
+ */
+function checkStableVersion() {
+    return new Promise(resolve => {
+        const stableUrls = (SCRIPT_CONFIG.CHANNELS || {}).stable || {};
+        const manifestUrl = stableUrls.manifestUrl || SCRIPT_CONFIG.MANIFEST_URL;
+        GM_xmlhttpRequest({
+            method: 'GET',
+            url: manifestUrl + '?_t=' + Date.now(),
+            timeout: 5000,
+            onload: function(res) {
+                if (res.status >= 200 && res.status < 300) {
+                    try {
+                        const manifest = JSON.parse(res.responseText);
+                        resolve(manifest.version || null);
+                        return;
+                    } catch {}
+                }
+                resolve(null);
+            },
+            onerror: () => resolve(null),
+            ontimeout: () => resolve(null)
+        });
+    });
+}
+
+/**
  * 显示更新提示对话框（非 alert，样式与项目风格一致）。
  */
 function showUpdateDialog(remoteVersion, remoteChangelog) {
@@ -257,18 +285,7 @@ function showUpdateDialog(remoteVersion, remoteChangelog) {
             <button class="upd-btn upd-btn-secondary" id="upd-btn-later">稍后</button>
         </div>
         <button class="upd-btn-skip" id="upd-btn-skip">跳过此版本</button>
-        ${getChannelName() === 'preview' ? `
-        <div class="upd-channel-section">
-            <div class="upd-channel-hint">建议使用稳定版 <button class="upd-btn-link" id="upd-switch-stable">切换渠道 →</button></div>
-        </div>` : ''}
-        ${getChannelName() === 'dev' ? `
-        <div class="upd-channel-warning">
-            <div class="upd-channel-warning-text">⚠️ 开发版可能存在极强的不稳定性，建议切换到稳定版或预览版</div>
-            <div class="upd-channel-warning-btns">
-                <button class="upd-btn-warn" id="upd-switch-stable">切换到稳定版</button>
-                <button class="upd-btn-warn-secondary" id="upd-switch-preview">切换到预览版</button>
-            </div>
-        </div>` : ''}
+        <div id="upd-channel-area"></div>
     `;
     document.body.appendChild(dialog);
 
@@ -320,14 +337,56 @@ function showUpdateDialog(remoteVersion, remoteChangelog) {
         console.log(`[更新检查] 已跳过版本 ${remoteVersion}`);
     });
 
-    // 渠道切换按钮（非 stable 渠道时存在）
-    const switchStableBtn = dialog.querySelector('#upd-switch-stable');
-    if (switchStableBtn) {
-        switchStableBtn.addEventListener('click', () => { dialog.remove(); switchChannel('stable'); });
+    // 异步检查 stable 渠道版本，条件化渲染渠道切换区域
+    const channelArea = dialog.querySelector('#upd-channel-area');
+    const currentChannel = getChannelName();
+    if (currentChannel !== 'stable' && channelArea) {
+        checkStableVersion().then(stableVersion => {
+            if (!dialog.isConnected) return; // 对话框已关闭
+            const stableNewer = stableVersion && compareVersions(stableVersion, SCRIPT_CONFIG.VERSION) > 0;
+            renderChannelSwitchArea(channelArea, currentChannel, stableNewer, stableVersion, dialog);
+        });
     }
-    const switchPreviewBtn = dialog.querySelector('#upd-switch-preview');
-    if (switchPreviewBtn) {
-        switchPreviewBtn.addEventListener('click', () => { dialog.remove(); switchChannel('preview'); });
+}
+
+/**
+ * 渲染渠道切换区域。
+ * @param {HTMLElement} container - 容器元素
+ * @param {string} currentChannel - 当前渠道名
+ * @param {boolean} stableNewer - stable 版本是否比当前版本新
+ * @param {string|null} stableVersion - stable 的最新版本号
+ * @param {HTMLElement} dialog - 更新对话框元素（用于关闭）
+ */
+function renderChannelSwitchArea(container, currentChannel, stableNewer, stableVersion, dialog) {
+    if (currentChannel === 'preview') {
+        if (stableNewer) {
+            container.innerHTML = `
+                <div class="upd-channel-section">
+                    <div class="upd-channel-hint">稳定版有更新版本 (v${stableVersion})，建议切换 <button class="upd-btn-link" id="upd-switch-stable">切换到稳定版 →</button></div>
+                </div>`;
+            container.querySelector('#upd-switch-stable').addEventListener('click', () => { dialog.remove(); switchChannel('stable'); });
+        } else {
+            container.innerHTML = `
+                <div class="upd-channel-section">
+                    <div class="upd-channel-hint" style="color:#999;">当前预览版已是最新</div>
+                </div>`;
+        }
+    } else if (currentChannel === 'dev') {
+        const stableBtnHtml = stableNewer
+            ? `<button class="upd-btn-warn" id="upd-switch-stable">切换到稳定版 (v${stableVersion})</button>`
+            : `<button class="upd-btn-warn-secondary" id="upd-switch-stable" style="opacity:0.5;cursor:not-allowed;" title="稳定版没有更新的版本">稳定版已是最新</button>`;
+        container.innerHTML = `
+            <div class="upd-channel-warning">
+                <div class="upd-channel-warning-text">⚠️ 开发版可能存在极强的不稳定性，建议切换到稳定版或预览版</div>
+                <div class="upd-channel-warning-btns">
+                    ${stableBtnHtml}
+                    <button class="upd-btn-warn-secondary" id="upd-switch-preview">切换到预览版</button>
+                </div>
+            </div>`;
+        if (stableNewer) {
+            container.querySelector('#upd-switch-stable').addEventListener('click', () => { dialog.remove(); switchChannel('stable'); });
+        }
+        container.querySelector('#upd-switch-preview').addEventListener('click', () => { dialog.remove(); switchChannel('preview'); });
     }
 }
 

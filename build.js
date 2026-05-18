@@ -75,11 +75,13 @@ const BUILD_CONFIGS = [
             'adapters/yunyuejuan/adapter.js',
             'adapters/xinjiaoyu/selectors.js',
             'adapters/xinjiaoyu/adapter.js',
+            'adapters/xinkao/selectors.js',
+            'adapters/xinkao/adapter.js',
         ],
         header: {
             name: 'AI-Marker-Suite',
             namespace: 'https://aimarking.five-plus-one.com/',
-            description: 'AI自动批改助手，支持智学网、七天网络、好分数、五岳阅卷、华翰云、光大阅卷、云阅卷、新教育等平台。自动识别答案、智能评分、自动提交！',
+            description: 'AI自动批改助手，支持智学网、七天网络、好分数、五岳阅卷、华翰云、光大阅卷、云阅卷、新教育、鑫考等平台。自动识别答案、智能评分、自动提交！',
             author: '5plus1',
             match: [
                 'https://www.zhixue.com/*',
@@ -267,7 +269,15 @@ async function build() {
         for (const mod of CORE_MODULES) {
             const filePath = path.join(CORE_DIR, mod);
             try {
-                modulesContent += readModule(filePath, `core/${mod}`);
+                let content = readModule(filePath, `core/${mod}`);
+                // 构建时注入渠道到 config.js 的 SCRIPT_CONFIG 对象中
+                if (mod === 'config.js') {
+                    content = content.replace(
+                        /}\s*;\s*$/,
+                        `    CHANNEL: '${CHANNEL}',\n};`
+                    );
+                }
+                modulesContent += content;
                 console.log(`  ✅ core/${mod}`);
             } catch (e) {
                 console.error(`  ❌ ${e.message}`);

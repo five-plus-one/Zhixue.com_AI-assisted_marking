@@ -30,6 +30,23 @@ function getChannelLabel() {
 }
 
 /**
+ * 获取当前脚本的构建渠道（build-time，由 build.js 注入）。
+ * 用于显示渠道标签 badge，与用户选择的更新渠道无关。
+ */
+function getBuildChannel() {
+    return (SCRIPT_CONFIG.CHANNEL || 'stable').split('-')[0];
+}
+
+/**
+ * 获取当前脚本构建渠道的中文标签。
+ */
+function getBuildChannelLabel() {
+    const channel = getBuildChannel();
+    const channels = SCRIPT_CONFIG.CHANNELS || {};
+    return (channels[channel] || channels.stable || {}).label || '稳定版';
+}
+
+/**
  * 比较两个版本号字符串，返回：
  *   1  表示 a > b
  *   -1 表示 a < b

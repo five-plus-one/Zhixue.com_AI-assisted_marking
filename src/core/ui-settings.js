@@ -897,7 +897,7 @@ function createSettingsPanel() {
                     <div class="about-header">
                         <div class="about-logo">AI</div>
                         <h2 class="about-title">AI 批改助手</h2>
-                        <p class="about-version">版本 ${SCRIPT_CONFIG.VERSION} <span class="channel-badge channel-badge-${getChannelName()}">${getChannelLabel()}</span></p>
+                        <p class="about-version">版本 ${SCRIPT_CONFIG.VERSION} <span class="channel-badge channel-badge-${getBuildChannel()}">${getBuildChannelLabel()}</span></p>
                         <div class="about-channel-select">
                             <label for="settings-channel-select">更新渠道</label>
                             <select id="settings-channel-select">
@@ -1045,13 +1045,8 @@ function createSettingsPanel() {
             const label = channelInfo.label || newChannel;
             if (await showConfirmModal(`确定要切换到${label}吗？\n\n切换后将从${label}渠道获取更新，可能安装不同稳定性的版本。`)) {
                 GM_setValue('ai-grading-channel', newChannel);
-                showToast(`已切换到${label}`);
-                // 更新渠道标签显示
-                const badge = panel.querySelector('.channel-badge');
-                if (badge) {
-                    badge.className = `channel-badge channel-badge-${newChannel}`;
-                    badge.textContent = label;
-                }
+                clearUnsavedChanges();
+                showToast(`已切换到${label}，自动保存成功`);
                 // 立即检查更新
                 setTimeout(() => checkForUpdate(true), 500);
             } else {
@@ -1154,7 +1149,7 @@ function createSettingsPanel() {
         });
     });
 
-    const inputs = panel.querySelectorAll('input:not([name="grading-mode"]), textarea, select:not(#preset-select)');
+    const inputs = panel.querySelectorAll('input:not([name="grading-mode"]), textarea, select:not(#preset-select):not(#settings-channel-select)');
     inputs.forEach(input => {
         input.addEventListener('input', () => { markUnsavedChanges(); updateSettingsNavBadges(); updateSettingsHeaderStatus(); });
         input.addEventListener('change', () => { markUnsavedChanges(); updateSettingsNavBadges(); updateSettingsHeaderStatus(); });

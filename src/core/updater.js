@@ -116,6 +116,56 @@ function collectChangelogHTML(remoteVersion, remoteChangelog) {
 }
 
 /**
+ * 显示渠道切换引导弹窗（dev 渠道强提示）。
+ * 基于 showBatchTargetDialog 的三选项模式。
+ * @returns {Promise<'stable'|'preview'|'stay'>}
+ */
+function showChannelSwitchDialog() {
+    return new Promise(resolve => {
+        ensureModalStyles();
+        const overlay = document.createElement('div');
+        overlay.className = 'ai-modal-overlay';
+        overlay.style.zIndex = '1000020';
+        overlay.innerHTML = `
+            <div class="ai-modal-card" style="max-width:420px;">
+                <div class="ai-modal-header" style="display:flex;align-items:center;gap:8px;">
+                    <span style="font-size:20px;">⚠️</span>
+                    <span>开发版渠道提醒</span>
+                </div>
+                <div class="ai-modal-body">
+                    <p style="margin:0 0 12px;">开发版包含未经充分测试的功能，可能存在<strong style="color:#e74c3c;">极强的不稳定性</strong>，强烈建议切换到稳定版或预览版。</p>
+                    <p style="margin:0;font-size:12px;color:#999;">稳定版经过充分测试，适合日常使用；预览版适合提前体验新功能。</p>
+                </div>
+                <div class="ai-modal-footer" style="flex-direction:column;align-items:stretch;">
+                    <div style="display:flex;gap:10px;">
+                        <button class="ai-modal-btn-confirm" data-action="stable" style="flex:1;background:#1a1a1a;">切换到稳定版</button>
+                        <button class="ai-modal-btn-cancel" data-action="preview" style="flex:1;">切换到预览版</button>
+                    </div>
+                    <button class="ai-modal-btn-secondary" data-action="stay" style="margin-top:4px;">继续使用开发版（不推荐）</button>
+                </div>
+            </div>
+        `;
+        document.body.appendChild(overlay);
+        let closed = false;
+        const close = result => { if (closed) return; closed = true; overlay.remove(); resolve(result); };
+        overlay.querySelector('[data-action="stable"]').onclick = e => { e.stopPropagation(); close('stable'); };
+        overlay.querySelector('[data-action="preview"]').onclick = e => { e.stopPropagation(); close('preview'); };
+        overlay.querySelector('[data-action="stay"]').onclick = e => { e.stopPropagation(); close('stay'); };
+        overlay.querySelector('[data-action="stable"]').focus();
+    });
+}
+
+/**
+ * 执行渠道切换：设置渠道值 → 刷新页面。
+ */
+function switchChannel(channel) {
+    GM_setValue('ai-grading-channel', channel);
+    const label = (SCRIPT_CONFIG.CHANNELS[channel] || {}).label || channel;
+    showToast(`已切换到${label}，正在刷新…`);
+    setTimeout(() => location.reload(), 600);
+}
+
+/**
  * 显示更新提示对话框（非 alert，样式与项目风格一致）。
  */
 function showUpdateDialog(remoteVersion, remoteChangelog) {
@@ -159,6 +209,17 @@ function showUpdateDialog(remoteVersion, remoteChangelog) {
             #ai-update-dialog .upd-btn-secondary:hover { background: rgba(0,0,0,0.03); }
             #ai-update-dialog .upd-btn-skip { background: none; color: #999; font-size: 12px; border: none; cursor: pointer; width: 100%; text-align: center; padding: 4px; transition: color 0.2s; }
             #ai-update-dialog .upd-btn-skip:hover { color: #1a1a1a; }
+            #ai-update-dialog .upd-channel-section { margin-top: 12px; padding-top: 12px; border-top: 1px solid rgba(0,0,0,0.06); }
+            #ai-update-dialog .upd-channel-hint { font-size: 12px; color: #666; text-align: center; }
+            #ai-update-dialog .upd-channel-hint .upd-btn-link { background: none; border: none; color: #0066cc; cursor: pointer; font-size: 12px; text-decoration: underline; padding: 0; }
+            #ai-update-dialog .upd-channel-hint .upd-btn-link:hover { color: #004499; }
+            #ai-update-dialog .upd-channel-warning { background: rgba(255,59,48,0.06); border: 1px solid rgba(255,59,48,0.15); border-radius: 8px; padding: 12px; margin-top: 12px; }
+            #ai-update-dialog .upd-channel-warning-text { font-size: 12px; color: #c0392b; margin-bottom: 10px; line-height: 1.5; }
+            #ai-update-dialog .upd-channel-warning-btns { display: flex; gap: 8px; }
+            #ai-update-dialog .upd-btn-warn { flex: 1; padding: 8px 0; border: none; border-radius: 6px; font-size: 12px; font-weight: 600; cursor: pointer; transition: all 0.2s; background: #c0392b; color: white; }
+            #ai-update-dialog .upd-btn-warn:hover { background: #a93226; }
+            #ai-update-dialog .upd-btn-warn-secondary { flex: 1; padding: 8px 0; border: 1px solid rgba(0,0,0,0.12); border-radius: 6px; font-size: 12px; font-weight: 500; cursor: pointer; transition: all 0.2s; background: transparent; color: #1a1a1a; }
+            #ai-update-dialog .upd-btn-warn-secondary:hover { background: rgba(0,0,0,0.03); }
         </style>
         <div class="upd-title">发现${channelLabel}新版本</div>
         <div class="upd-body">

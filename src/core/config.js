@@ -3,13 +3,32 @@
 
 const SCRIPT_CONFIG = {
     /** 当前脚本版本号，修改此处即可同步更新所有引用 */
-    VERSION: '1.21.5.114',
+    VERSION: '1.21.5.115',
 
-    /** 轻量级更新检查 UL（优先使用，~1KB） */
+    /** 轻量级更新检查 UL（优先使用，~1KB）—— stable 渠道默认值 */
     MANIFEST_URL: 'https://auto-update.aimarking.five-plus-one.com/ota/manifest.json',
 
-    /** 远端原始脚本地址（降级使用 + 立即更新） */
+    /** 远端原始脚本地址（降级使用 + 立即更新）—— stable 渠道默认值 */
     UPDATE_CHECK_URL: 'https://auto-update.aimarking.five-plus-one.com/ota/ai_marker.user.js',
+
+    /** 渠道定义 */
+    CHANNELS: {
+        stable: {
+            label: '稳定版',
+            manifestUrl: 'https://auto-update.aimarking.five-plus-one.com/ota/manifest.json',
+            scriptUrl: 'https://auto-update.aimarking.five-plus-one.com/ota/ai_marker.user.js',
+        },
+        preview: {
+            label: '预览版',
+            manifestUrl: 'https://auto-update.aimarking.five-plus-one.com/ota/preview/manifest.json',
+            scriptUrl: 'https://auto-update.aimarking.five-plus-one.com/ota/preview/ai_marker.user.js',
+        },
+        dev: {
+            label: '开发版',
+            manifestUrl: 'https://auto-update.aimarking.five-plus-one.com/ota/dev/manifest.json',
+            scriptUrl: 'https://auto-update.aimarking.five-plus-one.com/ota/dev/ai_marker.user.js',
+        },
+    },
 
     /** 更新检查间隔（毫秒），默认 24 小时 */
     UPDATE_CHECK_INTERVAL_MS: 24 * 60 * 60 * 1000,

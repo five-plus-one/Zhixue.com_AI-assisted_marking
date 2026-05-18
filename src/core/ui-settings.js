@@ -243,6 +243,14 @@ function createSettingsPanel() {
             }
             .about-title { font-size: 18px; font-weight: 600; color: #1a1a1a; margin: 0 0 4px; }
             .about-version { font-size: 13px; color: #86868b; margin: 0; }
+            .channel-badge { display: inline-block; padding: 1px 6px; border-radius: 4px; font-size: 11px; font-weight: 500; vertical-align: middle; }
+            .channel-badge-stable { background: rgba(52,199,89,0.12); color: rgba(52,199,89,0.9); }
+            .channel-badge-preview { background: rgba(255,159,10,0.12); color: rgba(255,159,10,0.9); }
+            .channel-badge-dev { background: rgba(88,86,214,0.12); color: rgba(88,86,214,0.9); }
+            .about-channel-select { margin-top: 12px; text-align: center; }
+            .about-channel-select label { font-size: 12px; color: #86868b; margin-right: 8px; }
+            .about-channel-select select { padding: 4px 8px; border: 1px solid rgba(0,0,0,0.1); border-radius: 6px; font-size: 13px; background: #fff; cursor: pointer; }
+            .about-channel-hint { font-size: 11px; color: #999; margin-top: 4px; }
             .about-section { margin-bottom: 20px; }
             .about-section-title {
                 font-size: 12px; font-weight: 600; color: #86868b; text-transform: uppercase;
@@ -889,7 +897,16 @@ function createSettingsPanel() {
                     <div class="about-header">
                         <div class="about-logo">AI</div>
                         <h2 class="about-title">AI 批改助手</h2>
-                        <p class="about-version">版本 ${SCRIPT_CONFIG.VERSION}</p>
+                        <p class="about-version">版本 ${SCRIPT_CONFIG.VERSION} <span class="channel-badge channel-badge-${getChannelName()}">${getChannelLabel()}</span></p>
+                        <div class="about-channel-select">
+                            <label for="settings-channel-select">更新渠道</label>
+                            <select id="settings-channel-select">
+                                <option value="stable">稳定版</option>
+                                <option value="preview">预览版</option>
+                                <option value="dev">开发版</option>
+                            </select>
+                            <div class="about-channel-hint">切换渠道将从对应渠道获取更新</div>
+                        </div>
                     </div>
 
                     <div class="about-section">
@@ -1017,6 +1034,33 @@ function createSettingsPanel() {
     const pageHistoryBtn = panel.querySelector('#btn-history-page');
     if (pageHistoryBtn) pageHistoryBtn.onclick = () => showHistoryPanel();
     panel.querySelector('#btn-check-update').onclick = function() { checkForUpdate(true, this); };
+
+    // 渠道选择器
+    const channelSelect = panel.querySelector('#settings-channel-select');
+    if (channelSelect) {
+        channelSelect.value = getChannelName();
+        channelSelect.onchange = async () => {
+            const newChannel = channelSelect.value;
+            const channelInfo = SCRIPT_CONFIG.CHANNELS[newChannel] || {};
+            const label = channelInfo.label || newChannel;
+            if (await showConfirmModal(`确定要切换到${label}吗？\n\n切换后将从${label}渠道获取更新，可能安装不同稳定性的版本。`)) {
+                GM_setValue('ai-grading-channel', newChannel);
+                showToast(`已切换到${label}`);
+                // 更新渠道标签显示
+                const badge = panel.querySelector('.channel-badge');
+                if (badge) {
+                    badge.className = `channel-badge channel-badge-${newChannel}`;
+                    badge.textContent = label;
+                }
+                // 立即检查更新
+                setTimeout(() => checkForUpdate(true), 500);
+            } else {
+                // 用户取消，恢复下拉框值
+                channelSelect.value = getChannelName();
+            }
+        };
+    }
+
     panel.querySelector('#btn-new-provider').onclick = handleNewProvider;
     panel.querySelector('#btn-del-provider').onclick = handleDeleteProvider;
     panel.querySelector('#ai-provider').onchange = handleProviderChange;

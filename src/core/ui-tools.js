@@ -371,7 +371,7 @@ function showAboutPanel() {
                 <div style="text-align:center;margin-bottom:24px;">
                     <div style="width:64px;height:64px;margin:0 auto 12px;background:linear-gradient(135deg,#1a1a1a 0%,#333 100%);border-radius:16px;display:flex;align-items:center;justify-content:center;font-size:28px;color:white;">AI</div>
                     <h2 style="margin:0 0 4px;font-size:18px;font-weight:600;color:#1a1a1a;">AI 批改助手</h2>
-                    <p style="margin:0;font-size:13px;color:#86868b;">版本 ${SCRIPT_CONFIG.VERSION}</p>
+                    <p style="margin:0;font-size:13px;color:#86868b;">版本 ${SCRIPT_CONFIG.VERSION} <span style="display:inline-block;padding:1px 6px;border-radius:4px;font-size:11px;font-weight:500;vertical-align:middle;background:rgba(${getChannelName() === 'stable' ? '52,199,89' : getChannelName() === 'preview' ? '255,159,10' : '88,86,214'},0.12);color:rgba(${getChannelName() === 'stable' ? '52,199,89' : getChannelName() === 'preview' ? '255,159,10' : '88,86,214'},0.9);">${getChannelLabel()}</span></p>
                 </div>
 
                 <div style="margin-bottom:20px;">

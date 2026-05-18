@@ -1,18 +1,51 @@
 // ========== 自动检查更新模块 ==========
 
 /**
+ * 获取当前渠道的更新 URL。
+ * 读取用户选择的渠道（GM_setValue），返回对应的 manifestUrl 和 scriptUrl。
+ */
+function getChannelUrls() {
+    const channel = GM_getValue('ai-grading-channel', 'stable');
+    const channels = SCRIPT_CONFIG.CHANNELS || {};
+    return channels[channel] || channels.stable || {
+        manifestUrl: SCRIPT_CONFIG.MANIFEST_URL,
+        scriptUrl: SCRIPT_CONFIG.UPDATE_CHECK_URL,
+    };
+}
+
+/**
+ * 获取当前渠道名称标识。
+ */
+function getChannelName() {
+    return GM_getValue('ai-grading-channel', 'stable');
+}
+
+/**
+ * 获取当前渠道的中文标签。
+ */
+function getChannelLabel() {
+    const channel = getChannelName();
+    const channels = SCRIPT_CONFIG.CHANNELS || {};
+    return (channels[channel] || channels.stable || {}).label || '稳定版';
+}
+
+/**
  * 比较两个版本号字符串，返回：
  *   1  表示 a > b
  *   -1 表示 a < b
  *   0  表示相等
+ *
+ * 支持带后缀的版本号（如 1.21.5.115-preview.3），
+ * 比较时忽略 -preview / -dev 等后缀，仅比较数字部分。
  */
 function compareVersions(a, b) {
-    const pa = a.split('.').map(Number);
-    const pb = b.split('.').map(Number);
-    const len = Math.max(pa.length, pb.length);
+    // 按 '-' 分割取数字部分，忽略渠道后缀
+    const numsA = a.split('-')[0].split('.').map(Number);
+    const numsB = b.split('-')[0].split('.').map(Number);
+    const len = Math.max(numsA.length, numsB.length);
     for (let i = 0; i < len; i++) {
-        const na = pa[i] || 0;
-        const nb = pb[i] || 0;
+        const na = numsA[i] || 0;
+        const nb = numsB[i] || 0;
         if (na > nb) return 1;
         if (na < nb) return -1;
     }
@@ -21,9 +54,10 @@ function compareVersions(a, b) {
 
 /**
  * 从脚本文件文本中提取 @version 字段值。
+ * 支持带后缀的版本号（如 1.21.5.115-preview.3）。
  */
 function extractRemoteVersion(scriptText) {
-    const m = scriptText.match(/\/\/\s*@version\s+([\d.]+)/);
+    const m = scriptText.match(/\/\/\s*@version\s+([\w.\-]+)/);
     return m ? m[1].trim() : null;
 }
 
@@ -72,6 +106,8 @@ function showUpdateDialog(remoteVersion, remoteChangelog) {
     if (oldDialog) return; // 已经在显示了，不重复
 
     const changelogHTML = collectChangelogHTML(remoteVersion, remoteChangelog);
+    const channelLabel = getChannelLabel();
+    const channelUrls = getChannelUrls();
 
     const dialog = document.createElement('div');
     dialog.id = 'ai-update-dialog';
@@ -93,6 +129,10 @@ function showUpdateDialog(remoteVersion, remoteChangelog) {
             #ai-update-dialog .upd-title { font-size: 15px; font-weight: 600; color: #1a1a1a; margin-bottom: 12px; letter-spacing: 0.3px; }
             #ai-update-dialog .upd-body  { font-size: 13px; color: #666; margin-bottom: 16px; line-height: 1.6; }
             .version-tag { display: inline-block; background: rgba(0,0,0,0.04); padding: 2px 6px; border-radius: 4px; font-family: "SF Mono", monospace; font-size: 12px; }
+            .channel-tag { display: inline-block; padding: 2px 6px; border-radius: 4px; font-size: 11px; font-weight: 500; }
+            .channel-tag-stable { background: rgba(52,199,89,0.12); color: rgba(52,199,89,0.9); }
+            .channel-tag-preview { background: rgba(255,159,10,0.12); color: rgba(255,159,10,0.9); }
+            .channel-tag-dev { background: rgba(88,86,214,0.12); color: rgba(88,86,214,0.9); }
             #ai-update-dialog .upd-changelog { margin-bottom: 16px; max-height: 200px; overflow-y: auto; }
             #ai-update-dialog .upd-btns  { display: flex; gap: 8px; margin-bottom: 12px; }
             #ai-update-dialog .upd-btn   { flex: 1; padding: 10px 0; border: none; border-radius: 8px; font-size: 13px; font-weight: 600; cursor: pointer; transition: all 0.2s; }
@@ -103,9 +143,10 @@ function showUpdateDialog(remoteVersion, remoteChangelog) {
             #ai-update-dialog .upd-btn-skip { background: none; color: #999; font-size: 12px; border: none; cursor: pointer; width: 100%; text-align: center; padding: 4px; transition: color 0.2s; }
             #ai-update-dialog .upd-btn-skip:hover { color: #1a1a1a; }
         </style>
-        <div class="upd-title">发现新版本</div>
+        <div class="upd-title">发现${channelLabel}新版本</div>
         <div class="upd-body">
             当前版本: <span class="version-tag">v${SCRIPT_CONFIG.VERSION}</span>
+            <span class="channel-tag channel-tag-${getChannelName()}">${channelLabel}</span>
             &nbsp;→&nbsp;
             最新版本: <span class="version-tag">v${remoteVersion}</span>
         </div>
@@ -119,8 +160,8 @@ function showUpdateDialog(remoteVersion, remoteChangelog) {
     document.body.appendChild(dialog);
 
     dialog.querySelector('#upd-btn-now').addEventListener('click', () => {
-        window.open(SCRIPT_CONFIG.UPDATE_CHECK_URL, '_blank');
-        let cancelled = false, seconds = 0;
+        window.open(channelUrls.scriptUrl, '_blank');
+        let cancelled = false, elapsed = 0;
         const bodyEl = dialog.querySelector('.upd-body');
         bodyEl.innerHTML = `<span style="color:#1a1a1a;font-weight:500;">请在新标签页中确认安装更新</span><br><span style="font-size:12px;color:#999;margin-top:4px;display:inline-block;">安装完成后页面将自动刷新</span><div style="margin-top:10px;display:flex;align-items:center;gap:8px;"><span class="upd-spinner" style="width:14px;height:14px;border-width:2px;"></span><span id="upd-poll-status" style="font-size:12px;color:#666;">等待安装中</span></div>`;
         dialog.querySelector('.upd-changelog') && (dialog.querySelector('.upd-changelog').style.display = 'none');
@@ -135,23 +176,23 @@ function showUpdateDialog(remoteVersion, remoteChangelog) {
             location.reload();
         });
 
-        // 自动刷新（10秒后）
-        const reloadTimer = setInterval(() => {
-            if (cancelled) return;
-            seconds += 1;
-            if (seconds >= 10) {
-                clearInterval(reloadTimer);
+        // 定时器：显示已等待时间，60 秒后自动刷新（兜底）
+        const maxWait = 60;
+        const waitTimer = setInterval(() => {
+            if (cancelled) { clearInterval(waitTimer); return; }
+            elapsed += 1;
+            if (statusEl) statusEl.textContent = `请在新标签页完成安装 (${elapsed}/${maxWait}s)`;
+            if (elapsed >= maxWait) {
+                clearInterval(waitTimer);
                 if (statusEl) statusEl.textContent = '正在刷新页面…';
                 sessionStorage.setItem('ai-update-reloaded', 'true');
                 setTimeout(() => location.reload(), 500);
-            } else if (statusEl) {
-                statusEl.textContent = `${10 - seconds}秒后自动刷新...`;
             }
         }, 1000);
 
         dialog.querySelector('#upd-btn-cancel').addEventListener('click', () => {
             cancelled = true;
-            clearInterval(reloadTimer);
+            clearInterval(waitTimer);
             dialog.remove();
         });
     });
@@ -179,7 +220,7 @@ function handleUpdateResult(remoteVersion, remoteChangelog, force, restoreBtn) {
         return;
     }
 
-    console.log(`[更新检查] 远端版本: ${remoteVersion}, 本地版本: ${SCRIPT_CONFIG.VERSION}`);
+    console.log(`[更新检查] 远端版本: ${remoteVersion}, 本地版本: ${SCRIPT_CONFIG.VERSION}, 渠道: ${getChannelName()}`);
 
     const skippedVersion = GM_getValue('skip-update-version', '');
     if (skippedVersion === remoteVersion && !force) {
@@ -202,9 +243,11 @@ function handleUpdateResult(remoteVersion, remoteChangelog, force, restoreBtn) {
 function fallbackCheckFullScript(force, btn, restoreBtn, now) {
     console.log('[更新检查] manifest.json 检查失败，降级检查完整脚本...');
 
+    const channelUrls = getChannelUrls();
+
     GM_xmlhttpRequest({
         method: 'GET',
-        url: SCRIPT_CONFIG.UPDATE_CHECK_URL + '?_t=' + now,
+        url: channelUrls.scriptUrl + '?_t=' + now,
         timeout: 15000,
         onload: function(res) {
             if (res.status < 200 || res.status >= 300) {
@@ -252,7 +295,8 @@ function checkForUpdate(force = false, btn) {
     }
 
     const now = Date.now();
-    console.log('[更新检查] 开始检查新版本...');
+    const channelUrls = getChannelUrls();
+    console.log(`[更新检查] 开始检查新版本... [渠道: ${getChannelName()}]`);
 
     if (btn) {
         btn._origText = btn.textContent;
@@ -270,7 +314,7 @@ function checkForUpdate(force = false, btn) {
     // 第一级：尝试检查轻量级 manifest.json（~1KB，超时更短）
     GM_xmlhttpRequest({
         method: 'GET',
-        url: SCRIPT_CONFIG.MANIFEST_URL + '?_t=' + now,
+        url: channelUrls.manifestUrl + '?_t=' + now,
         timeout: 5000,
         onload: function(res) {
             if (res.status >= 200 && res.status < 300) {

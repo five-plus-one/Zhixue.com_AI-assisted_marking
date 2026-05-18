@@ -173,11 +173,60 @@ function createSettingsPanel() {
             .form-group input:focus, .form-group select:focus, .form-group textarea:focus {
                 outline: none; border-color: #0052FF; background: #fff; box-shadow: 0 0 0 3px rgba(0, 82, 255, 0.08);
             }
+            .required-mark { color: #D93025 !important; margin-left: 2px; }
+            .field-error {
+                display: none; margin-top: 5px; font-size: 11px; color: #D93025 !important;
+            }
+            .field-error.visible { display: block; }
+            .is-invalid {
+                border-color: #D93025 !important; background: #fff8f7 !important;
+            }
             .form-group input.readonly-field {
                 background: rgba(0,0,0,0.04); color: #86868b; cursor: not-allowed;
                 border-color: rgba(0,0,0,0.05);
             }
             .form-group textarea { min-height: 72px; resize: vertical; line-height: 1.5; }
+
+            .scoring-table {
+                width: 100%; border-collapse: separate; border-spacing: 0;
+                border: 1px solid #e1e6ef; border-radius: 8px; overflow: hidden; background: #fff;
+            }
+            .scoring-table th,
+            .scoring-table td {
+                padding: 8px; border-bottom: 1px solid #eef2f7; font-size: 12px; text-align: left;
+            }
+            .scoring-table th {
+                background: #f7f8fa; color: #667085 !important; font-weight: 700;
+            }
+            .scoring-table tr:last-child td { border-bottom: none; }
+            .scoring-table .su-label-text {
+                display: block; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+                font-weight: 700; color: #172033 !important;
+            }
+            .scoring-table input,
+            .scoring-table select {
+                width: 100%; min-width: 0; height: 32px; padding: 6px 8px;
+                border: 1px solid #d8dee8; border-radius: 6px; background: #fff;
+                font-size: 12px; color: #172033 !important;
+            }
+            .scoring-table .su-del-btn {
+                width: 28px !important; height: 28px !important; padding: 0 !important;
+                justify-content: center !important; margin: 0 !important;
+            }
+            .scoring-table-footer {
+                display: flex; justify-content: space-between; align-items: center;
+                margin-top: 10px; padding: 8px 10px; background: #f7f8fa;
+                border: 1px solid #e1e6ef; border-radius: 8px; font-size: 12px;
+            }
+            .scoring-total-value {
+                font-size: 16px; font-weight: 800; color: #172033 !important;
+            }
+            .scoring-actions {
+                display: flex; gap: 8px; margin-top: 10px;
+            }
+            .scoring-actions .preset-btn {
+                flex: 1; justify-content: center; padding: 0 8px !important;
+            }
 
             .checkbox-group { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; }
             .checkbox-group input[type="checkbox"] { accent-color: #0052FF; width: 15px; height: 15px; }
@@ -705,22 +754,46 @@ function createSettingsPanel() {
                     <div class="section-header"><h4>批改上下文</h4><svg class="section-arrow" viewBox="0 0 16 16" fill="none"><path d="M4 6l4 4 4-4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
                     <div class="section-body">
                         <div class="form-group"><label>题目内容</label><textarea id="question-content"></textarea></div>
-                        <div class="form-group"><label>参考答案</label><textarea id="standard-answer"></textarea></div>
-                        <div class="form-group"><label>采分标准</label><textarea id="grading-rubric"></textarea></div>
+                        <div class="form-group"><label>参考答案<span class="required-mark">*</span></label><textarea id="standard-answer"></textarea><div class="field-error" data-for="standard-answer">请填写参考答案</div></div>
+                        <div class="form-group"><label>评卷标准<span class="required-mark">*</span></label><textarea id="grading-rubric"></textarea><div class="field-error" data-for="grading-rubric">请填写评卷标准</div></div>
                     </div>
                 </div>
 
                 <div class="form-section">
-                    <div class="section-header"><h4>评分单元配置</h4><svg class="section-arrow" viewBox="0 0 16 16" fill="none"><path d="M4 6l4 4 4-4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+                    <div class="section-header"><h4>分数设置</h4><svg class="section-arrow" viewBox="0 0 16 16" fill="none"><path d="M4 6l4 4 4-4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
                     <div class="section-body">
-                        <div style="font-size:12px;color:#86868b;margin-bottom:12px;">系统会自动检测页面上的分数输入框。每个输入框对应一个评分单元，AI 将独立为每个单元打分。</div>
                         <div id="scoring-units-container">
-                            <div id="scoring-units-list"></div>
-                            <button class="preset-btn" id="btn-detect-inputs" style="width:100%;margin-top:8px;padding:8px;">检测页面输入框</button>
-                            <button class="preset-btn" id="btn-add-unit" style="width:100%;margin-top:4px;padding:8px;">+ 手动添加单元</button>
+                            <input type="hidden" id="scoring-round-step" value="1">
+                            <input type="hidden" id="scoring-round-method" value="round">
+                            <input type="hidden" id="scoring-max-score" value="0">
+                            <table class="scoring-table">
+                                <colgroup>
+                                    <col style="width:40%;">
+                                    <col style="width:24%;">
+                                    <col style="width:26%;">
+                                    <col style="width:10%;">
+                                </colgroup>
+                                <thead>
+                                    <tr>
+                                        <th>小题</th>
+                                        <th>小题分<span class="required-mark">*</span></th>
+                                        <th>步长</th>
+                                        <th></th>
+                                    </tr>
+                                </thead>
+                                <tbody id="scoring-units-list"></tbody>
+                            </table>
+                            <div class="scoring-table-footer">
+                                <span>总分</span>
+                                <span><span class="scoring-total-value" id="scoring-total-score">0</span> 分</span>
+                            </div>
+                            <div class="scoring-actions">
+                                <button class="preset-btn" id="btn-detect-inputs">检测页面输入框</button>
+                                <button class="preset-btn" id="btn-add-unit">手动添加单元</button>
+                            </div>
                         </div>
                         <div id="scoring-units-warning" style="display:none;margin-top:8px;padding:8px 12px;background:rgba(217,48,37,0.06);border:1px solid rgba(217,48,37,0.15);border-radius:8px;font-size:12px;color:#D93025;">
-                            请为所有评分单元填写满分后再保存
+                            请为所有评分单元填写小题分后再保存
                         </div>
                     </div>
                 </div>
@@ -777,41 +850,6 @@ function createSettingsPanel() {
                 <div class="api-key-warning hidden" id="api-key-warning">
                     <span class="warn-icon">!</span>
                     <span>尚未填写通信密钥，AI 批改功能将无法使用。请在上方填入 API Key。</span>
-                </div>
-
-                <!-- 取整配置 -->
-                <div class="form-section">
-                    <div class="section-header"><h4>取整规则</h4><svg class="section-arrow" viewBox="0 0 16 16" fill="none"><path d="M4 6l4 4 4-4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
-                    <div class="section-body">
-                        <div class="form-group">
-                            <label>取整步长</label>
-                            <select id="scoring-round-step">
-                                <option value="1">整数 (1分)</option>
-                                <option value="0.5">0.5分</option>
-                                <option value="0.1">0.1分 (不取整)</option>
-                            </select>
-                        </div>
-                        <div class="form-group">
-                            <label>取整方式</label>
-                            <select id="scoring-round-method">
-                                <option value="round">四舍五入</option>
-                                <option value="floor">向下取整</option>
-                                <option value="ceil">向上取整</option>
-                            </select>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- 满分设置（单题模式） -->
-                <div class="form-section" id="max-score-section">
-                    <div class="section-header"><h4>满分设置</h4><svg class="section-arrow" viewBox="0 0 16 16" fill="none"><path d="M4 6l4 4 4-4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
-                    <div class="section-body">
-                        <div class="form-group">
-                            <label>题目满分</label>
-                            <input type="number" id="scoring-max-score" min="1" placeholder="100" value="100">
-                            <div style="font-size:11px;color:#86868b;margin-top:4px;">当页面只有一个分数输入框时使用。配置了多个评分单元时，满分由各单元自动计算。</div>
-                        </div>
-                    </div>
                 </div>
 
                 <!-- 勤勉加分 -->
@@ -1151,8 +1189,8 @@ function createSettingsPanel() {
 
     const inputs = panel.querySelectorAll('input:not([name="grading-mode"]), textarea, select:not(#preset-select):not(#settings-channel-select)');
     inputs.forEach(input => {
-        input.addEventListener('input', () => { markUnsavedChanges(); updateSettingsNavBadges(); updateSettingsHeaderStatus(); });
-        input.addEventListener('change', () => { markUnsavedChanges(); updateSettingsNavBadges(); updateSettingsHeaderStatus(); });
+        input.addEventListener('input', () => { refreshScoringTotal(); validateRequiredFields({ showErrors: false }); markUnsavedChanges(); updateSettingsNavBadges(); updateSettingsHeaderStatus(); });
+        input.addEventListener('change', () => { refreshScoringTotal(); validateRequiredFields({ showErrors: false }); markUnsavedChanges(); updateSettingsNavBadges(); updateSettingsHeaderStatus(); });
     });
 
     // API 密钥实时监听：输入变化时更新警告状态
@@ -1174,7 +1212,7 @@ function createSettingsPanel() {
         questionInput.addEventListener('input', () => updateGroupHints());
     }
 
-    // 评分单元配置交互
+    // 分数设置交互
     panel.querySelector('#btn-detect-inputs').onclick = () => {
         const adapter = window.__AI_MARKER_ADAPTER__;
         if (adapter && typeof adapter.getScoreInputs === 'function') {
@@ -1182,8 +1220,10 @@ function createSettingsPanel() {
             if (inputs.length > 0) {
                 const list = panel.querySelector('#scoring-units-list');
                 list.innerHTML = '';
-                inputs.forEach(inp => addScoringUnitItem({ label: inp.label || '', maxScore: inp.maxScore || '' }));
-                showToast(`已检测到 ${inputs.length} 个输入框，请为每个单元填写满分`);
+                inputs.forEach((inp, i) => addScoringUnitItem({ label: inp.label || `第${i + 1}题`, maxScore: inp.maxScore || '', source: 'detected' }));
+                refreshScoringTotal();
+                validateRequiredFields({ showErrors: false });
+                showToast(`已检测到 ${inputs.length} 个输入框，请填写小题分`);
                 markUnsavedChanges();
                 updateSettingsNavBadges();
             } else {
@@ -1193,7 +1233,13 @@ function createSettingsPanel() {
             showToast('当前平台不支持自动检测');
         }
     };
-    panel.querySelector('#btn-add-unit').onclick = () => { addScoringUnitItem(); markUnsavedChanges(); updateSettingsNavBadges(); };
+    panel.querySelector('#btn-add-unit').onclick = () => {
+        addScoringUnitItem({ source: 'manual' });
+        refreshScoringTotal();
+        validateRequiredFields({ showErrors: false });
+        markUnsavedChanges();
+        updateSettingsNavBadges();
+    };
 
     loadSettings();
     renderChangelog();
@@ -1224,7 +1270,7 @@ function setupSettingsMenuLayout(panel) {
 
     const navItems = [
         { id: 'plan', label: '方案', title: '方案', desc: '选择当前配置方案，并决定是否绑定到当前试题。' },
-        { id: 'grading', label: '批改', title: '批改', desc: '设置运行模式、题目上下文、评分单元、取整规则和勤勉加分。' },
+        { id: 'grading', label: '批改', title: '批改', desc: '设置运行模式、题目上下文、分数表格和勤勉加分。' },
         { id: 'ai', label: 'AI', title: 'AI', desc: '管理批改工作流、服务供应商、密钥和模型。' },
         { id: 'automation', label: '自动化', title: '自动化', desc: '设置批阅份数限制和自动暂停边界。' },
         { id: 'data', label: '数据', title: '数据', desc: '管理历史、图片保存、配置备份和恢复默认设置。' },
@@ -1272,9 +1318,7 @@ function setupSettingsMenuLayout(panel) {
     moveSection('plan', '场景方案');
     moveSection('grading', '运行模式');
     moveSection('grading', '批改上下文');
-    moveSection('grading', '评分单元配置');
-    moveSection('grading', '取整规则');
-    moveSection('grading', '满分设置');
+    moveSection('grading', '分数设置');
     moveSection('grading', '勤勉加分');
     moveSection('ai', '批改工作流');
     moveSection('ai', '供应商与模型');
@@ -1478,7 +1522,7 @@ function fillFormFromActivePreset() {
     if (stepSelect) stepSelect.value = scoring.roundStep;
     if (methodSelect) methodSelect.value = scoring.roundMethod;
 
-    // 满分设置（单题模式）
+    // 总分缓存（由分数表格自动计算）
     const maxScoreInput = document.getElementById('scoring-max-score');
     if (maxScoreInput) maxScoreInput.value = scoring.maxScore > 0 ? scoring.maxScore : '';
 
@@ -1515,29 +1559,36 @@ function fillFormFromActivePreset() {
 
     document.getElementById('bind-url-checkbox').checked = (PresetManager.data.bindings[currentUrlId] === PresetManager.data.active);
 
-    // 评分单元配置
+    // 分数设置
     const unitsList = document.getElementById('scoring-units-list');
     unitsList.innerHTML = '';
     const units = config.scoring?.units || [];
     if (units.length > 0) {
         units.forEach(u => addScoringUnitItem(u));
     } else {
+        let detected = false;
         // 尝试从 adapter 自动检测
         const adapter = window.__AI_MARKER_ADAPTER__;
         if (adapter && typeof adapter.getScoreInputs === 'function') {
             const inputs = adapter.getScoreInputs();
             if (inputs.length > 0) {
-                inputs.forEach(inp => addScoringUnitItem({ label: inp.label || '', maxScore: inp.maxScore || '' }));
-                // 自动展开"评分单元配置"手风琴，引导用户填写满分
+                detected = true;
+                inputs.forEach((inp, i) => addScoringUnitItem({ label: inp.label || `第${i + 1}题`, maxScore: inp.maxScore || '', source: 'detected' }));
+                // 自动展开"分数设置"手风琴，引导用户填写小题分
                 const unitsSection = document.getElementById('scoring-units-list')?.closest('.form-section');
                 if (unitsSection) unitsSection.classList.remove('collapsed');
                 const hasEmpty = inputs.some(inp => !inp.maxScore || inp.maxScore <= 0);
                 if (hasEmpty) {
-                    setTimeout(() => showToast(`已检测到 ${inputs.length} 个输入框，请为每个单元填写满分后保存`, 'info'), 300);
+                    setTimeout(() => showToast(`已检测到 ${inputs.length} 个输入框，请填写小题分后保存`, 'info'), 300);
                 }
             }
         }
+        if (!detected) {
+            addScoringUnitItem({ label: '总分', maxScore: scoring.maxScore > 0 ? scoring.maxScore : '', source: 'fallback' });
+        }
     }
+    refreshScoringTotal();
+    validateRequiredFields({ showErrors: false });
 
     // 初始化保存图片选项
     const saveImagesCheckbox = document.getElementById('save-images-checkbox');
@@ -1588,28 +1639,55 @@ function fillFormFromActivePreset() {
     clearUnsavedChanges();
 }
 
+function escapeSettingsHtml(value) {
+    return String(value ?? '').replace(/[&<>"']/g, ch => ({
+        '&': '&amp;',
+        '<': '&lt;',
+        '>': '&gt;',
+        '"': '&quot;',
+        "'": '&#39;'
+    }[ch]));
+}
+
 function addScoringUnitItem(data) {
     const list = document.getElementById('scoring-units-list');
-    const item = document.createElement('div');
+    if (!list) return;
+    const item = document.createElement('tr');
     item.className = 'scoring-unit-item';
-    item.style.cssText = 'padding:12px;margin-bottom:8px;background:rgba(0,0,0,0.02);border:1px solid rgba(0,0,0,0.06);border-radius:8px;';
-    const stepVal = data?.roundStep || 1;
+    const index = list.querySelectorAll('.scoring-unit-item').length;
+    const fallbackStep = parseFloat(document.getElementById('scoring-round-step')?.value) || 1;
+    const stepVal = data?.roundStep || fallbackStep;
+    const label = data?.label || `评分单元 ${index + 1}`;
     item.innerHTML = `
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
-            <input type="text" class="su-label" placeholder="标签 (如: 第1题)" value="${data?.label || ''}" style="flex:1;padding:6px 8px;border:1px solid rgba(0,0,0,0.08);border-radius:6px;font-size:12px;">
-            <button class="preset-btn danger su-del-btn" style="margin-left:8px;padding:4px 8px;font-size:11px;">删除</button>
-        </div>
-        <div style="display:flex;gap:8px;">
-            <div style="flex:1;"><label style="font-size:11px;color:#86868b;display:block;margin-bottom:4px;">满分 <span style="color:#D93025;">*</span></label><input type="number" class="su-max-score" min="1" placeholder="满分(必填)" value="${data?.maxScore || ''}" style="width:100%;padding:6px 8px;border:1px solid rgba(0,0,0,0.08);border-radius:6px;font-size:12px;box-sizing:border-box;"></div>
-            <div style="flex:0.6;"><label style="font-size:11px;color:#86868b;display:block;margin-bottom:4px;">步长</label><select class="su-round-step" style="width:100%;padding:6px 8px;border:1px solid rgba(0,0,0,0.08);border-radius:6px;font-size:12px;box-sizing:border-box;"><option value="1" ${stepVal===1?'selected':''}>整数</option><option value="0.5" ${stepVal===0.5?'selected':''}>0.5分</option><option value="0.1" ${stepVal===0.1?'selected':''}>0.1分</option></select></div>
-        </div>
+        <td><span class="su-label-text" title="${escapeSettingsHtml(label)}">${escapeSettingsHtml(label)}</span><input type="hidden" class="su-label" value="${escapeSettingsHtml(label)}"></td>
+        <td><input type="number" class="su-max-score" min="0.1" step="0.1" placeholder="必填" value="${data?.maxScore || ''}"><div class="field-error">必填</div></td>
+        <td><select class="su-round-step"><option value="1" ${stepVal===1?'selected':''}>整数</option><option value="0.5" ${stepVal===0.5?'selected':''}>0.5分</option><option value="0.1" ${stepVal===0.1?'selected':''}>0.1分</option></select></td>
+        <td><button class="preset-btn danger su-del-btn" title="删除">×</button></td>
     `;
-    item.querySelector('.su-del-btn').onclick = () => { item.remove(); markUnsavedChanges(); updateSettingsNavBadges(); };
+    item.querySelector('.su-del-btn').onclick = () => {
+        item.remove();
+        ensureAtLeastOneScoringUnit();
+        refreshScoringTotal();
+        validateRequiredFields({ showErrors: false });
+        markUnsavedChanges();
+        updateSettingsNavBadges();
+    };
     item.querySelectorAll('input, select').forEach(el => {
-        el.addEventListener('input', () => { markUnsavedChanges(); updateSettingsNavBadges(); });
-        el.addEventListener('change', () => { markUnsavedChanges(); updateSettingsNavBadges(); });
+        el.addEventListener('input', () => {
+            refreshScoringTotal();
+            validateRequiredFields({ showErrors: false });
+            markUnsavedChanges();
+            updateSettingsNavBadges();
+        });
+        el.addEventListener('change', () => {
+            refreshScoringTotal();
+            validateRequiredFields({ showErrors: false });
+            markUnsavedChanges();
+            updateSettingsNavBadges();
+        });
     });
     list.appendChild(item);
+    refreshScoringTotal();
 }
 
 function getScoringUnitsFromForm() {
@@ -1629,12 +1707,73 @@ function getScoringUnitsFromForm() {
     return units;
 }
 
-function validateScoringUnits() {
+function ensureAtLeastOneScoringUnit() {
+    const list = document.getElementById('scoring-units-list');
+    if (list && list.querySelectorAll('.scoring-unit-item').length === 0) {
+        addScoringUnitItem({ label: '总分', source: 'fallback' });
+    }
+}
+
+function refreshScoringTotal() {
+    const totalEl = document.getElementById('scoring-total-score');
+    const maxScoreInput = document.getElementById('scoring-max-score');
+    const total = getScoringUnitsFromForm().reduce((sum, u) => sum + (u.maxScore || 0), 0);
+    const display = Number.isInteger(total) ? String(total) : String(Math.round(total * 100) / 100);
+    if (totalEl) totalEl.textContent = display;
+    if (maxScoreInput) maxScoreInput.value = total > 0 ? display : '0';
+}
+
+function validateScoringUnits(options = {}) {
+    const showErrors = options.showErrors !== false;
     const units = getScoringUnitsFromForm();
     const missing = units.filter(u => !u.maxScore || u.maxScore <= 0);
     const warning = document.getElementById('scoring-units-warning');
-    if (warning) warning.style.display = missing.length > 0 ? 'block' : 'none';
+    if (warning) warning.style.display = showErrors && missing.length > 0 ? 'block' : 'none';
+    document.querySelectorAll('#scoring-units-list .scoring-unit-item').forEach(item => {
+        const input = item.querySelector('.su-max-score');
+        const error = item.querySelector('.field-error');
+        const value = parseFloat(input?.value);
+        const invalid = !value || value <= 0;
+        if (input) input.classList.toggle('is-invalid', showErrors && invalid);
+        if (error) error.classList.toggle('visible', showErrors && invalid);
+    });
     return missing.length === 0;
+}
+
+function validateRequiredFields(options = {}) {
+    const showErrors = options.showErrors !== false;
+    const answerEl = document.getElementById('standard-answer');
+    const rubricEl = document.getElementById('grading-rubric');
+    const answerMissing = !answerEl?.value.trim();
+    const rubricMissing = !rubricEl?.value.trim();
+    const scoringValid = validateScoringUnits({ showErrors });
+
+    [
+        { el: answerEl, missing: answerMissing, id: 'standard-answer' },
+        { el: rubricEl, missing: rubricMissing, id: 'grading-rubric' }
+    ].forEach(({ el, missing, id }) => {
+        const error = document.querySelector(`.field-error[data-for="${id}"]`);
+        if (el) el.classList.toggle('is-invalid', showErrors && missing);
+        if (error) error.classList.toggle('visible', showErrors && missing);
+    });
+
+    refreshScoringTotal();
+    updateSettingsNavBadges();
+    return {
+        valid: !answerMissing && !rubricMissing && scoringValid,
+        missing: [
+            ...(answerMissing ? ['参考答案'] : []),
+            ...(rubricMissing ? ['评卷标准'] : []),
+            ...getScoringUnitsFromForm().filter(u => !u.maxScore || u.maxScore <= 0).map(u => `${u.label}小题分`)
+        ]
+    };
+}
+
+function switchSettingsPage(pageId) {
+    const panel = document.getElementById('ai-grading-settings');
+    const nav = panel?.querySelector('.settings-nav');
+    const btn = nav?.querySelector(`.settings-nav-item[data-page="${pageId}"]`);
+    if (btn) btn.click();
 }
 
 function updateUIVisibility() {
@@ -1675,8 +1814,7 @@ function updateUIVisibility() {
 function updateGroupHints() {
     const apiKeyInput = document.getElementById('api-key');
     const hasKey = apiKeyInput && apiKeyInput.value.trim().length > 0;
-    const questionEl = document.getElementById('question-content');
-    const hasContext = questionEl && questionEl.value.trim().length > 0;
+    const required = validateRequiredFields({ showErrors: false });
 
     const groupAI = document.getElementById('group-ai');
     const groupGrading = document.getElementById('group-grading');
@@ -1699,11 +1837,11 @@ function updateGroupHints() {
     // 批改组：未配置上下文时显示提示
     if (groupGrading) {
         const existingWarn = groupGrading.querySelector('.config-warn');
-        if (!hasContext) {
+        if (!required.valid) {
             if (!existingWarn) {
                 const warn = document.createElement('span');
                 warn.className = 'config-warn';
-                warn.textContent = '建议填写';
+                warn.textContent = '必填未完成';
                 groupGrading.appendChild(warn);
             }
         } else if (existingWarn) {
@@ -1736,7 +1874,6 @@ function updateSettingsNavBadges() {
     const endpointInput = document.getElementById('api-endpoint');
     const providerSelect = document.getElementById('ai-provider');
     const workflowSelect = document.getElementById('workflow-select');
-    const questionEl = document.getElementById('question-content');
     const answerEl = document.getElementById('standard-answer');
     const rubricEl = document.getElementById('grading-rubric');
     const scoringUnits = getScoringUnitsFromForm();
@@ -1747,7 +1884,7 @@ function updateSettingsNavBadges() {
 
     const missing = {
         plan: !document.getElementById('preset-select')?.value,
-        grading: !questionEl?.value.trim() || !answerEl?.value.trim() || !rubricEl?.value.trim() ||
+        grading: !answerEl?.value.trim() || !rubricEl?.value.trim() ||
             scoringUnits.some(u => !u.maxScore || u.maxScore <= 0),
         ai: !apiKeyInput?.value.trim() || !endpointInput?.value.trim() || !workflowSelect?.value || !hasModels,
         automation: !!batchEnabled && batchTarget <= 0,
@@ -2225,14 +2362,12 @@ function saveAISettings() {
     const providerName = document.getElementById('ai-provider').value;
     const scoringUnits = getScoringUnitsFromForm();
 
-    // 评分单元满分校验
-    if (scoringUnits.length > 0) {
-        const missingMaxScore = scoringUnits.filter(u => !u.maxScore || u.maxScore <= 0);
-        if (missingMaxScore.length > 0) {
-            const labels = missingMaxScore.map(u => u.label).join('、');
-            safeAlert(`⚠️ 以下评分单元的满分未填写或为0：${labels}\n\n满分为0会导致 AI 给出0分，请填写每个单元的满分后再保存。`);
-            return;
-        }
+    const requiredValidation = validateRequiredFields({ showErrors: true });
+    if (!requiredValidation.valid) {
+        switchSettingsPage('grading');
+        const labels = requiredValidation.missing.join('、');
+        safeAlert(`⚠️ 请先完成必填项：${labels}`);
+        return;
     }
 
     // 保存供应商配置（仅保存当前编辑的供应商，不设置"活跃"供应商）
@@ -2250,7 +2385,9 @@ function saveAISettings() {
     }
 
     // 保存取整配置
-    const roundStep = parseFloat(document.getElementById('scoring-round-step')?.value) || 1;
+    const roundStep = scoringUnits.length > 0
+        ? Math.min(...scoringUnits.map(u => u.roundStep || 1))
+        : (parseFloat(document.getElementById('scoring-round-step')?.value) || 1);
     const roundMethod = document.getElementById('scoring-round-method')?.value || 'round';
 
     // 保存勤勉加分配置

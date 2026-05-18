@@ -40,18 +40,25 @@ async function startAutoGrading() {
             return;
         }
 
+        const presetConfig = PresetManager.getCurrentConfig();
+        if (!presetConfig.answer?.trim() || !presetConfig.rubric?.trim()) {
+            openSettingsPanel();
+            showToast('请先填写参考答案和评卷标准');
+            window.aiGradingState.isRunning = false;
+            return;
+        }
+
         // 检查满分配置是否完整
         const validation = PresetManager.validateScoringUnits();
         if (!validation.valid) {
             const labels = validation.missingMaxScore.map(u => u.label).join('、');
             openSettingsPanel();
-            showToast(`请先配置满分：${labels}`);
+            showToast(`请先填写小题分：${labels}`);
             window.aiGradingState.isRunning = false;
             return;
         }
 
         // 获取工作流信息（用于双评判断）
-        const presetConfig = PresetManager.getCurrentConfig();
         const workflowId = presetConfig.workflowId;
         const workflow = workflowId ? WorkflowManager.getWorkflow(workflowId) : null;
         const isDualEval = workflow && workflow.dualEval && workflow.dualEval.enabled;

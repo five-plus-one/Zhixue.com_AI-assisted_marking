@@ -190,16 +190,33 @@ function extractChangelog() {
     }
 }
 
+// ========== 从 src/core/config.js 提取 CHANGELOG_DATES ==========
+function extractChangelogDates() {
+    const configPath = path.join(CORE_DIR, 'config.js');
+    const content = fs.readFileSync(configPath, 'utf8');
+    const match = content.match(/CHANGELOG_DATES\s*:\s*(\{[\s\S]*?\})\s*[,}]/);
+    if (!match) return {};
+    try {
+        const fn = new Function('return ' + match[1]);
+        return fn() || {};
+    } catch (e) {
+        console.warn('  ⚠️ 解析 CHANGELOG_DATES 失败:', e.message);
+        return {};
+    }
+}
+
 // ========== 生成 manifest.json ==========
 function generateManifest(version) {
     const changelog = extractChangelog();
+    const changelogDates = extractChangelogDates();
     const channelUrl = CHANNEL_URLS[CHANNEL] || CHANNEL_URLS.stable;
     const manifest = {
         version: version,
         channel: CHANNEL,
         releaseDate: new Date().toISOString().slice(0, 10),
         downloadUrl: channelUrl.scriptUrl,
-        changelog: changelog
+        changelog: changelog,
+        changelogDates: changelogDates,
     };
     const manifestPath = path.join(DIST_DIR, 'manifest.json');
     fs.writeFileSync(manifestPath, JSON.stringify(manifest, null, 2), 'utf8');

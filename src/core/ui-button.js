@@ -170,7 +170,6 @@ function clearUnsavedChanges() {
 
     const btn = document.querySelector('.ai-grade-btn');
     if (btn && !window.aiGradingState.isRunning) {
-        btn.textContent = 'AI 批改';
         btn.classList.remove('needs-save');
     }
 
@@ -180,7 +179,33 @@ function clearUnsavedChanges() {
         saveBtn.innerHTML = '保存并启用';
     }
 
+    updateMainButtonState();
     if (typeof updateSettingsHeaderStatus === 'function') updateSettingsHeaderStatus();
+}
+
+// ========== 配置完整性检查 ==========
+function checkConfigReady() {
+    const config = PresetManager.getActiveCallConfig();
+    if (!config.apiKey) return { ready: false, message: '请先配置 AI 密钥' };
+    const validation = PresetManager.validateScoringUnits();
+    if (!validation.valid) {
+        const labels = validation.missingMaxScore.map(u => u.label).join('、');
+        return { ready: false, message: `请先配置满分：${labels}` };
+    }
+    return { ready: true };
+}
+
+function updateMainButtonState() {
+    const btn = document.querySelector('.ai-grade-btn');
+    if (!btn || window.aiGradingState.isRunning || window.aiGradingState.hasUnsavedChanges) return;
+    const check = checkConfigReady();
+    if (!check.ready) {
+        btn.textContent = '请先完成配置';
+        btn.classList.add('needs-config');
+    } else {
+        btn.textContent = 'AI 批改';
+        btn.classList.remove('needs-config');
+    }
 }
 
 // ========== 批阅份数进度显示（支持拖动） ==========
@@ -434,6 +459,14 @@ function toggleAutoGrading() {
         if (dialog) dialog.remove();
         hideStreamPanel();
     } else {
+        // 配置完整性检查
+        const configCheck = checkConfigReady();
+        if (!configCheck.ready) {
+            openSettingsPanel();
+            showToast(configCheck.message);
+            return;
+        }
+
         const batch = window.aiGradingState.batchProgress;
 
         // 批阅目标已达，弹窗询问用户意图

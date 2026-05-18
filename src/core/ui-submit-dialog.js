@@ -52,9 +52,7 @@ function showAutoSubmitDialog(score, comment, subScores, extraInfo) {
     const cancelBtnHtml = `<button class="asd-cancel-btn" id="cancel-submit-btn">取消</button>`;
 
     // 环形分数显示 — 根据分数计算百分比和颜色
-    const maxScore = subScores && subScores.length > 0
-        ? subScores.reduce((sum, sq) => sum + (sq.maxScore || 100), 0)
-        : 100;
+    const maxScore = PresetManager.getMaxScore() || 100;  // UI 显示用，0 时回退 100 避免除零
     const pct = Math.min(score / maxScore, 1);
     const circumference = 2 * Math.PI * 44;
     const dashoffset = circumference * (1 - pct);

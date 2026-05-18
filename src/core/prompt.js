@@ -17,12 +17,16 @@ function buildDiligencePromptSection(config) {
 
 // ---------- 结构化评分 Prompt（新） ----------
 function buildStructuredPrompt(config) {
+    const maxScore = config.maxScore || 0;
+    const maxScoreText = maxScore > 0 ? `满分${maxScore}分` : '满分未指定，请根据常规满分评判';
+
     let prompt = `你是一位严格的阅卷老师。请查看图片中的学生答案并评分。
 
 ===== 输入信息 =====`;
     if (config.question) prompt += `\n【题目】\n${config.question}`;
     if (config.answer) prompt += `\n【标准答案】\n${config.answer}`;
     if (config.rubric) prompt += `\n【评分标准】\n${config.rubric}`;
+    prompt += `\n【满分】\n${maxScoreText}`;
 
     prompt += `
 
@@ -63,7 +67,7 @@ function buildPrompt(config) {
 // ---------- 结构化解析器（新） ----------
 function parseStructuredResponse(text, maxScore) {
     const clean = text.replace(/\*\*/g, '').replace(/\*/g, '');
-    const scoreLimit = maxScore || 999;
+    const scoreLimit = (maxScore && maxScore > 0) ? maxScore : 999;
 
     // Level 1: 按【】标记分段
     const sections = {};
@@ -132,7 +136,7 @@ function extractScore(text, maxScore) {
     const match = text.match(/(\d+\.?\d*)/);
     if (match) {
         const num = parseFloat(match[1]);
-        const upperLimit = maxScore || 999;
+        const upperLimit = (maxScore && maxScore > 0) ? maxScore : 999;
         if (num >= 0 && num <= upperLimit) return num;
     }
     return null;
@@ -320,7 +324,7 @@ function parseSubQuestionResponse(text, config) {
     // 计算总满分
     const maxScore = config.subQuestions
         ? config.subQuestions.reduce((sum, sq) => sum + (sq.maxScore || 0), 0)
-        : (config.maxScore || 100);
+        : (config.maxScore || 0);
     // 先尝试结构化解析
     const structured = parseStructuredResponse(text, maxScore);
 

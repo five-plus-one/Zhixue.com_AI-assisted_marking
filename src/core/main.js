@@ -34,7 +34,8 @@ async function startAutoGrading() {
         // 使用新的配置获取方式（优先工作流，回退直接配置）
         const config = PresetManager.getActiveCallConfig();
         if (!config.apiKey) {
-            safeAlert('❌ 请先配置API密钥！请在设置中配置供应商和模型。');
+            openSettingsPanel();
+            showToast('请先配置 AI 密钥');
             window.aiGradingState.isRunning = false;
             return;
         }
@@ -43,7 +44,8 @@ async function startAutoGrading() {
         const validation = PresetManager.validateScoringUnits();
         if (!validation.valid) {
             const labels = validation.missingMaxScore.map(u => u.label).join('、');
-            safeAlert(`⚠️ 以下评分单元的满分未配置：${labels}\n\n请在设置中填写满分后再开始批改。`);
+            openSettingsPanel();
+            showToast(`请先配置满分：${labels}`);
             window.aiGradingState.isRunning = false;
             return;
         }
@@ -384,6 +386,7 @@ async function init() {
     console.log('✅ [诊断] 检测到批改页面，开始初始化UI');
     createMainButton();
     createSettingsPanel();
+    if (typeof updateMainButtonState === 'function') updateMainButtonState();
 
     // 初始化批阅份数功能
     initBatchProgress();

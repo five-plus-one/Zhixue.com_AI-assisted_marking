@@ -1185,8 +1185,7 @@ function setupSettingsMenuLayout(panel) {
 
     const navItems = [
         { id: 'plan', label: '方案', title: '方案', desc: '选择当前配置方案，并决定是否绑定到当前试题。' },
-        { id: 'grading', label: '批改', title: '批改', desc: '设置运行模式、题目上下文和分小题评分。' },
-        { id: 'scoring', label: '评分', title: '评分', desc: '设置分数取整和勤勉加分规则。' },
+        { id: 'grading', label: '批改', title: '批改', desc: '设置运行模式、题目上下文、评分单元、取整规则和勤勉加分。' },
         { id: 'ai', label: 'AI', title: 'AI', desc: '管理批改工作流、服务供应商、密钥和模型。' },
         { id: 'automation', label: '自动化', title: '自动化', desc: '设置批阅份数限制和自动暂停边界。' },
         { id: 'data', label: '数据', title: '数据', desc: '管理历史、图片保存、配置备份和恢复默认设置。' },
@@ -1234,9 +1233,10 @@ function setupSettingsMenuLayout(panel) {
     moveSection('plan', '场景方案');
     moveSection('grading', '运行模式');
     moveSection('grading', '批改上下文');
-    moveSection('grading', '分小题评分');
-    moveSection('scoring', '取整规则');
-    moveSection('scoring', '勤勉加分');
+    moveSection('grading', '评分单元配置');
+    moveSection('grading', '取整规则');
+    moveSection('grading', '满分设置');
+    moveSection('grading', '勤勉加分');
     moveSection('ai', '批改工作流');
     moveSection('ai', '供应商与模型');
     const apiWarning = configTab.querySelector('#api-key-warning');
@@ -1441,7 +1441,7 @@ function fillFormFromActivePreset() {
 
     // 满分设置（单题模式）
     const maxScoreInput = document.getElementById('scoring-max-score');
-    if (maxScoreInput) maxScoreInput.value = scoring.maxScore || 100;
+    if (maxScoreInput) maxScoreInput.value = scoring.maxScore > 0 ? scoring.maxScore : '';
 
     // 勤勉加分配置
     const diligence = scoring.diligence || { enabled: false, maxBonus: 3, decayPower: 2, criteria: '' };
@@ -1710,7 +1710,6 @@ function updateSettingsNavBadges() {
         plan: !document.getElementById('preset-select')?.value,
         grading: !questionEl?.value.trim() || !answerEl?.value.trim() || !rubricEl?.value.trim() ||
             scoringUnits.some(u => !u.maxScore || u.maxScore <= 0),
-        scoring: false,
         ai: !apiKeyInput?.value.trim() || !endpointInput?.value.trim() || !workflowSelect?.value || !hasModels,
         automation: !!batchEnabled && batchTarget <= 0,
         data: false,
@@ -1766,17 +1765,21 @@ async function handleDeletePreset() {
 
 function renderProviderDropdown() {
     const select = document.getElementById('ai-provider');
-    if (!select) return;
+    if (!select) { console.warn('⚠️ [UI] #ai-provider 未找到'); return; }
+    const providers = ProviderManager.data?.providers || {};
+    const count = Object.keys(providers).length;
+    console.log(`📋 [UI] 渲染供应商下拉: ${count} 个供应商`);
+    if (count === 0) console.warn('⚠️ [UI] ProviderManager.data.providers 为空');
     const currentValue = select.value;
     select.innerHTML = '';
-    for (const name in ProviderManager.data.providers) {
+    for (const name in providers) {
         const option = document.createElement('option');
         option.value = name;
         option.textContent = name;
         select.appendChild(option);
     }
     // 保持当前选中的供应商，如果没有则选中第一个
-    if (currentValue && ProviderManager.data.providers[currentValue]) {
+    if (currentValue && providers[currentValue]) {
         select.value = currentValue;
     }
 }
@@ -1901,9 +1904,11 @@ async function handleAddModel() {
 // ========== 工作流管理 ==========
 function renderWorkflowDropdown() {
     const select = document.getElementById('workflow-select');
-    if (!select) return;
-    select.innerHTML = '';
+    if (!select) { console.warn('⚠️ [UI] #workflow-select 未找到'); return; }
     const workflows = WorkflowManager.getAll();
+    console.log(`📋 [UI] 渲染工作流下拉: ${workflows.length} 个工作流`);
+    if (workflows.length === 0) console.warn('⚠️ [UI] WorkflowManager.getAll() 为空');
+    select.innerHTML = '';
     for (const wf of workflows) {
         const option = document.createElement('option');
         option.value = wf.id;
@@ -2229,7 +2234,7 @@ function saveAISettings() {
             roundStep, roundMethod,
             maxScore: scoringUnits.length > 0
                 ? scoringUnits.reduce((sum, u) => sum + (u.maxScore || 0), 0)
-                : (parseFloat(document.getElementById('scoring-max-score')?.value) || 100),
+                : (parseFloat(document.getElementById('scoring-max-score')?.value) || 0),
             units: scoringUnits.length > 0 ? scoringUnits : [],
             diligence: {
                 enabled: diligenceEnabled,
@@ -2246,12 +2251,18 @@ function saveAISettings() {
 
     const activeName = PresetManager.data.active;
 
-    // 保存前读取旧的批阅份数配置，用于判断是否变化
-    const oldConfig = PresetManager.data.list[activeName];
+    // 保存前读取旧配置，用于合并和判断变化
+    const oldConfig = PresetManager.data.list[activeName] || {};
     const oldBatchEnabled = oldConfig?.batchConfig?.enabled || false;
     const oldBatchTargetCount = oldConfig?.batchConfig?.targetCount || 0;
 
-    PresetManager.data.list[activeName] = config;
+    // 合并而非覆盖：保留旧配置中不在 UI 中的字段（如 apiKey、subQuestions 等）
+    PresetManager.data.list[activeName] = {
+        ...oldConfig,
+        ...config,
+        scoring: { ...oldConfig?.scoring, ...config.scoring },
+        batchConfig: { ...oldConfig?.batchConfig, ...config.batchConfig }
+    };
 
     const currentUrlId = PresetManager.getTaskIdentifier();
     const bindChecked = document.getElementById('bind-url-checkbox').checked;
@@ -2357,7 +2368,7 @@ function showOnboardingDialog(forceShow, mode) {
                         <button class="ai-modal-btn-cancel" id="ob-skip-ctx">跳过</button>
                         <button class="ai-modal-btn-confirm" id="ob-next">保存并继续</button>
                     ` : `
-                        <button class="ai-modal-btn-confirm" id="ob-start" style="flex:1;">一键开始批改</button>
+                        <button class="ai-modal-btn-confirm" id="ob-start" style="flex:1;">查看配置</button>
                     `}
                 </div>
             </div>
@@ -2477,7 +2488,7 @@ function showOnboardingDialog(forceShow, mode) {
                     <span style="color:#1d1d1f;font-weight:500;">${wfName}</span> · <span style="color:#1d1d1f;font-weight:500;">${modeName}</span>
                 </div>
                 <div style="margin-top:16px;padding:12px;background:rgba(0,82,255,0.06);border-radius:10px;font-size:12px;color:#0052FF;">
-                    点击下方按钮即可开始自动批改
+                    点击下方按钮查看配置详情
                 </div>
             </div>
         `;
@@ -2547,8 +2558,7 @@ function showOnboardingDialog(forceShow, mode) {
                 _onboardingDialogOpen = false;
                 overlay.remove();
                 GM_setValue('ai-grading-show-onboarding', false);
-                const btn = document.querySelector('.ai-grade-btn');
-                if (btn && !window.aiGradingState.isRunning) btn.click();
+                setTimeout(() => openSettingsPanel(), 300);
             };
         }
     }

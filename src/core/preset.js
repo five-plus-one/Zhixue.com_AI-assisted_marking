@@ -2,23 +2,28 @@
 const PresetManager = {
     data: null,
     init() {
-        let saved = GM_getValue('ai-grading-presets');
-        if (saved) {
-            this.data = JSON.parse(saved);
-            this._migrateGradingMode();
-            this._migrateProvider();
-            this._migrateWorkflow();
-        } else {
-            let oldConfigStr = GM_getValue('ai-grading-config');
-            let defaultCfg = oldConfigStr ? JSON.parse(oldConfigStr) : {
-                provider: '5plus1', endpoint: SCRIPT_CONFIG.DEFAULT_ENDPOINT, model: SCRIPT_CONFIG.DEFAULT_MODEL
-            };
-            this.data = {
-                list: { "默认配置": defaultCfg },
-                active: "默认配置",
-                bindings: {}
-            };
-            this.save();
+        try {
+            let saved = GM_getValue('ai-grading-presets');
+            if (saved) {
+                this.data = JSON.parse(saved);
+                this._migrateGradingMode();
+                this._migrateProvider();
+                this._migrateWorkflow();
+            } else {
+                let oldConfigStr = GM_getValue('ai-grading-config');
+                let defaultCfg = oldConfigStr ? JSON.parse(oldConfigStr) : {
+                    provider: '5plus1', endpoint: SCRIPT_CONFIG.DEFAULT_ENDPOINT, model: SCRIPT_CONFIG.DEFAULT_MODEL
+                };
+                this.data = {
+                    list: { "默认配置": defaultCfg },
+                    active: "默认配置",
+                    bindings: {}
+                };
+                this.save();
+            }
+        } catch (e) {
+            console.error('❌ PresetManager init failed, using defaults:', e);
+            this.data = { list: { "默认配置": {} }, active: "默认配置", bindings: {} };
         }
     },
     _migrateGradingMode() {
@@ -51,27 +56,41 @@ const PresetManager = {
     _migrateWorkflow() {
         let changed = false;
         for (const name in this.data.list) {
-            const cfg = this.data.list[name];
-            if (!cfg.workflowId) {
-                cfg.workflowId = 'fast';
-                changed = true;
-            }
-            if (!cfg.scoring) {
-                cfg.scoring = { roundStep: 1, roundMethod: 'round' };
-                changed = true;
-            }
-            if (cfg.scoring && !cfg.scoring.diligence) {
-                cfg.scoring.diligence = { enabled: false, maxBonus: 3, decayPower: 2, criteria: '' };
-                changed = true;
-            }
-            // 迁移：添加 units[] 和 maxScore
-            if (cfg.scoring && cfg.scoring.units === undefined) {
-                cfg.scoring.units = [];  // 空数组 = 未配置，运行时从 adapter 检测
-                changed = true;
-            }
-            if (cfg.scoring && cfg.scoring.maxScore === undefined) {
-                cfg.scoring.maxScore = 100;  // 默认满分 100
-                changed = true;
+            try {
+                const cfg = this.data.list[name];
+                if (!cfg.workflowId) {
+                    cfg.workflowId = 'fast';
+                    changed = true;
+                }
+                if (!cfg.scoring) {
+                    cfg.scoring = { roundStep: 1, roundMethod: 'round' };
+                    changed = true;
+                }
+                if (cfg.scoring && !cfg.scoring.diligence) {
+                    cfg.scoring.diligence = { enabled: false, maxBonus: 3, decayPower: 2, criteria: '' };
+                    changed = true;
+                }
+                // 迁移：将旧的顶层 subQuestions 转换为 scoring.units
+                if (cfg.subQuestions && cfg.subQuestions.length > 0 && (!cfg.scoring.units || cfg.scoring.units.length === 0)) {
+                    cfg.scoring.units = cfg.subQuestions.map((sq, i) => ({
+                        label: sq.label || `第${i + 1}题`,
+                        maxScore: sq.maxScore || 0,
+                        index: i,
+                        roundStep: 1
+                    }));
+                    changed = true;
+                }
+                // 迁移：添加 units[] 和 maxScore（默认 0 表示未设置）
+                if (cfg.scoring && cfg.scoring.units === undefined) {
+                    cfg.scoring.units = [];
+                    changed = true;
+                }
+                if (cfg.scoring && cfg.scoring.maxScore === undefined) {
+                    cfg.scoring.maxScore = 0;  // 0 = 未设置，运行时需要用户配置
+                    changed = true;
+                }
+            } catch (e) {
+                console.warn(`⚠️ Migration failed for preset "${name}":`, e);
             }
         }
         if (changed) this.save();
@@ -116,7 +135,7 @@ const PresetManager = {
             return units.reduce((sum, u) => sum + (u.maxScore || 0), 0);
         }
         const config = this.getCurrentConfig();
-        return config.scoring?.maxScore || 100;
+        return config.scoring?.maxScore || 0;  // 0 = 未设置（validateScoringUnits 会拦截）
     },
     /**
      * 检查评分单元是否都已配置满分

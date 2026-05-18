@@ -2,20 +2,25 @@
 const ProviderManager = {
     data: null,
     init() {
-        let saved = GM_getValue('ai-grading-providers-v2');
-        if (saved) {
-            this.data = JSON.parse(saved);
-            // 迁移：更新内置供应商的模型配置
-            this._migrateProviders();
-        } else {
-            // 尝试迁移旧格式
-            const oldSaved = GM_getValue('ai-grading-providers');
-            if (oldSaved) {
-                this.data = this._migrateFromV1(JSON.parse(oldSaved));
+        try {
+            let saved = GM_getValue('ai-grading-providers-v2');
+            if (saved) {
+                this.data = JSON.parse(saved);
+                // 迁移：更新内置供应商的模型配置
+                this._migrateProviders();
             } else {
-                this.data = this._getDefault();
+                // 尝试迁移旧格式
+                const oldSaved = GM_getValue('ai-grading-providers');
+                if (oldSaved) {
+                    this.data = this._migrateFromV1(JSON.parse(oldSaved));
+                } else {
+                    this.data = this._getDefault();
+                }
+                this.save();
             }
-            this.save();
+        } catch (e) {
+            console.error('❌ ProviderManager init failed, using defaults:', e);
+            this.data = this._getDefault();
         }
     },
     _migrateProviders() {
@@ -223,14 +228,19 @@ ProviderManager.init();
 const WorkflowManager = {
     data: null,
     init() {
-        let saved = GM_getValue('ai-grading-workflows');
-        if (saved) {
-            this.data = JSON.parse(saved);
-            // 迁移：更新内置工作流的模型配置
-            this._migrateWorkflows();
-        } else {
+        try {
+            let saved = GM_getValue('ai-grading-workflows');
+            if (saved) {
+                this.data = JSON.parse(saved);
+                // 迁移：更新内置工作流的模型配置
+                this._migrateWorkflows();
+            } else {
+                this.data = this._getDefault();
+                this.save();
+            }
+        } catch (e) {
+            console.error('❌ WorkflowManager init failed, using defaults:', e);
             this.data = this._getDefault();
-            this.save();
         }
     },
     _migrateWorkflows() {

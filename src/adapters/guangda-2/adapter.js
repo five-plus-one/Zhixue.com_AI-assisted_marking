@@ -267,37 +267,13 @@ const Guangda2Adapter = {
     },
 
     // ========== 提交 ==========
+    // V2 版本的工作流：点击分数选项 → 系统自动调用 commitKsGrade 提交
+    // 不需要单独点击"提交分数"按钮
     submitGrade() {
-        console.log('📤 [诊断] 光大V2 — 开始提交分数...');
-
-        // 查找提交按钮：点击父元素 span.text 而不是 input 本身
-        // input[type="submit"] 会触发表单默认提交，导致请求 firstUpdateUserInfo
-        const submitInput = document.querySelector(GUANGDA2_SELECTORS.SUBMIT_INPUT);
-        if (submitInput) {
-            // 点击父元素 span.text.f-pa.f-csp
-            const clickTarget = submitInput.closest('span.text') || submitInput.parentElement;
-            if (clickTarget) {
-                console.log('✅ [诊断] 光大V2 找到提交按钮，点击父元素 span.text...');
-                clickTarget.click();
-                this._handleConfirmDialog();
-                return true;
-            }
-        }
-
-        // 备选：直接查找 span.text.f-pa.f-csp 中包含 input[type="submit"] 的元素
-        const submitSpans = document.querySelectorAll('span.text.f-pa.f-csp');
-        for (const span of submitSpans) {
-            const input = span.querySelector('input[type="submit"]');
-            if (input && input.value && input.value.includes('提交')) {
-                console.log('✅ [诊断] 光大V2 找到提交 span，点击中...');
-                span.click();
-                this._handleConfirmDialog();
-                return true;
-            }
-        }
-
-        console.warn('⚠️ [诊断] 光大V2 未找到提交按钮');
-        return false;
+        console.log('📤 [诊断] 光大V2 — V2版本点击分数后自动提交，无需额外操作');
+        // 只处理可能出现的确认弹窗
+        this._handleConfirmDialog();
+        return true;
     },
 
     _handleConfirmDialog() {

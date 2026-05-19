@@ -5,12 +5,23 @@
  * 版本号唯一来源：src/core/config.js 中的 SCRIPT_CONFIG.VERSION
  * 修改版本时只需编辑 src/core/config.js，此处会自动提取。
  *
- * 用法: node build.js
+ * 用法: node build.js [--channel=stable|preview|dev] [--build=N]
  */
 
 const fs = require('fs');
 const path = require('path');
+const { execSync } = require('child_process');
 const { minify } = require('terser');
+
+// ========== 解析命令行参数 ==========
+const args = process.argv.slice(2);
+function getArg(name) {
+    const prefix = `--${name}=`;
+    const arg = args.find(a => a.startsWith(prefix));
+    return arg ? arg.slice(prefix.length) : null;
+}
+const CHANNEL = getArg('channel') || 'stable';   // stable | preview | dev
+const BUILD_NUM = getArg('build');                // 可选，不传则 dev 自动用 commit count
 
 // ========== 配置 ==========
 const SRC_DIR = path.join(__dirname, 'src');
@@ -22,6 +33,7 @@ const CORE_MODULES = [
     'config.js',
     'state.js',
     'preset.js',
+    'score.js',           // ScoreCalculator (需在 prompt.js 之前)
     'ui-toast.js',
     'ui-modal.js',
     'ui-stream.js',
@@ -63,11 +75,13 @@ const BUILD_CONFIGS = [
             'adapters/yunyuejuan/adapter.js',
             'adapters/xinjiaoyu/selectors.js',
             'adapters/xinjiaoyu/adapter.js',
+            'adapters/xinkao/selectors.js',
+            'adapters/xinkao/adapter.js',
         ],
         header: {
             name: 'AI-Marker-Suite',
             namespace: 'https://aimarking.five-plus-one.com/',
-            description: 'AI自动批改助手，支持智学网、七天网络、好分数、五岳阅卷、华翰云、光大阅卷、云阅卷、新教育等平台。自动识别答案、智能评分、自动提交！',
+            description: 'AI自动批改助手，支持智学网、七天网络、好分数、五岳阅卷、华翰云、光大阅卷、云阅卷、新教育、鑫考等平台。自动识别答案、智能评分、自动提交！',
             author: '5plus1',
             match: [
                 'https://www.zhixue.com/*',
@@ -119,6 +133,47 @@ function extractVersion() {
     return match[1];
 }
 
+/**
+ * 根据渠道和构建号计算最终版本号。
+ * - stable:  使用 config.js 中的原始版本（如 1.21.5.115）
+ * - preview: 原始版本-preview.N（如 1.21.5.115-preview.3）
+ * - dev:     原始版本-dev.N（如 1.21.5.115-dev.47），N 默认为 git commit count
+ */
+function computeVersion(baseVersion) {
+    if (CHANNEL === 'stable') return baseVersion;
+
+    let buildNum = BUILD_NUM;
+    if (!buildNum) {
+        if (CHANNEL === 'dev') {
+            // 自动使用当前分支的 commit 数量
+            try {
+                buildNum = execSync('git rev-list --count HEAD', { encoding: 'utf8' }).trim();
+            } catch {
+                buildNum = '0';
+            }
+        } else {
+            buildNum = '1';
+        }
+    }
+    return `${baseVersion}-${CHANNEL}.${buildNum}`;
+}
+
+// ========== 渠道 URL 配置 ==========
+const CHANNEL_URLS = {
+    stable: {
+        manifestUrl: 'https://auto-update.aimarking.five-plus-one.com/ota/manifest.json',
+        scriptUrl: 'https://auto-update.aimarking.five-plus-one.com/ota/ai_marker.user.js',
+    },
+    preview: {
+        manifestUrl: 'https://auto-update.aimarking.five-plus-one.com/ota/preview/manifest.json',
+        scriptUrl: 'https://auto-update.aimarking.five-plus-one.com/ota/preview/ai_marker.user.js',
+    },
+    dev: {
+        manifestUrl: 'https://auto-update.aimarking.five-plus-one.com/ota/dev/manifest.json',
+        scriptUrl: 'https://auto-update.aimarking.five-plus-one.com/ota/dev/ai_marker.user.js',
+    },
+};
+
 // ========== 从 src/core/config.js 提取 CHANGELOG ==========
 function extractChangelog() {
     const configPath = path.join(CORE_DIR, 'config.js');
@@ -135,19 +190,38 @@ function extractChangelog() {
     }
 }
 
+// ========== 从 src/core/config.js 提取 CHANGELOG_DATES ==========
+function extractChangelogDates() {
+    const configPath = path.join(CORE_DIR, 'config.js');
+    const content = fs.readFileSync(configPath, 'utf8');
+    const match = content.match(/CHANGELOG_DATES\s*:\s*(\{[\s\S]*?\})\s*[,}]/);
+    if (!match) return {};
+    try {
+        const fn = new Function('return ' + match[1]);
+        return fn() || {};
+    } catch (e) {
+        console.warn('  ⚠️ 解析 CHANGELOG_DATES 失败:', e.message);
+        return {};
+    }
+}
+
 // ========== 生成 manifest.json ==========
 function generateManifest(version) {
     const changelog = extractChangelog();
+    const changelogDates = extractChangelogDates();
+    const channelUrl = CHANNEL_URLS[CHANNEL] || CHANNEL_URLS.stable;
     const manifest = {
         version: version,
+        channel: CHANNEL,
         releaseDate: new Date().toISOString().slice(0, 10),
-        downloadUrl: 'https://auto-update.aimarking.five-plus-one.com/ota/ai_marker.user.js',
-        changelog: changelog
+        downloadUrl: channelUrl.scriptUrl,
+        changelog: changelog,
+        changelogDates: changelogDates,
     };
     const manifestPath = path.join(DIST_DIR, 'manifest.json');
     fs.writeFileSync(manifestPath, JSON.stringify(manifest, null, 2), 'utf8');
     const sizeKB = (fs.statSync(manifestPath).size / 1024).toFixed(1);
-    console.log(`  ✅ 生成: dist/manifest.json (${sizeKB} KB)`);
+    console.log(`  ✅ 生成: dist/manifest.json (${sizeKB} KB) [渠道: ${CHANNEL}]`);
 }
 
 // ========== 构建逻辑 ==========
@@ -180,9 +254,10 @@ function generateHeader(config, version) {
 }
 
 async function build() {
-    const VERSION = extractVersion();
+    const BASE_VERSION = extractVersion();
+    const VERSION = computeVersion(BASE_VERSION);
 
-    console.log(`\n🔨 开始构建 AI-Marker-Suite v${VERSION}...\n`);
+    console.log(`\n🔨 开始构建 AI-Marker-Suite v${VERSION} [渠道: ${CHANNEL}]...\n`);
 
     // 确保 dist 目录存在
     if (!fs.existsSync(DIST_DIR)) {
@@ -211,7 +286,22 @@ async function build() {
         for (const mod of CORE_MODULES) {
             const filePath = path.join(CORE_DIR, mod);
             try {
-                modulesContent += readModule(filePath, `core/${mod}`);
+                let content = readModule(filePath, `core/${mod}`);
+                // 构建时注入渠道和完整版本号到 config.js 的 SCRIPT_CONFIG 对象中
+                if (mod === 'config.js') {
+                    // 将 VERSION 替换为带后缀的完整版本号（如 1.21.6.100-dev.231）
+                    if (VERSION !== BASE_VERSION) {
+                        content = content.replace(
+                            /VERSION\s*:\s*['"][^'"]+['"]/,
+                            `VERSION: '${VERSION}'`
+                        );
+                    }
+                    content = content.replace(
+                        /}\s*;\s*$/,
+                        `    CHANNEL: '${CHANNEL}',\n};`
+                    );
+                }
+                modulesContent += content;
                 console.log(`  ✅ core/${mod}`);
             } catch (e) {
                 console.error(`  ❌ ${e.message}`);

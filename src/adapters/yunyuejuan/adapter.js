@@ -199,6 +199,23 @@ const YunyuejuanAdapter = {
         return inputs;
     },
 
+    fillScores(scores) {
+        const inputs = this.getScoreInputs();
+        if (inputs.length === 0) return false;
+        const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set;
+        let successCount = 0;
+        for (let i = 0; i < Math.min(scores.length, inputs.length); i++) {
+            if (scores[i] === null || scores[i] === undefined) continue;
+            setter.call(inputs[i].element, scores[i]);
+            inputs[i].element.dispatchEvent(new Event('input', { bubbles: true }));
+            inputs[i].element.dispatchEvent(new Event('change', { bubbles: true }));
+            inputs[i].element.dispatchEvent(new Event('blur', { bubbles: true }));
+            successCount++;
+            console.log(`✅ [诊断] ${inputs[i].label} 分数 ${scores[i]} 已填入`);
+        }
+        return successCount > 0;
+    },
+
     detectSubQuestions() {
         const subs = [];
         document.querySelectorAll(YUNYUEJUAN_SELECTORS.SUB_QUESTION_ROW).forEach((tr, i) => {

@@ -2,7 +2,7 @@
 
 > **晚上挂机睡觉，早上起来全改完。**
 
-[![版本](https://img.shields.io/badge/version-1.21.4-blue.svg)](https://github.com/five-plus-one/AI-Marker-Suite)
+[![版本](https://img.shields.io/badge/version-1.21.6-blue.svg)](https://github.com/five-plus-one/AI-Marker-Suite)
 [![许可证](https://img.shields.io/badge/license-GPL--3.0-green.svg)](LICENSE)
 
 ---
@@ -39,7 +39,12 @@
 
 > 确保已安装 Tampermonkey，点击下方链接，浏览器会自动弹出安装提示：
 
-**[点击一键安装](https://auto-update.aimarking.five-plus-one.com/ota/ai_marker.user.js)**
+| 版本 | 说明 | 安装链接 |
+|------|------|---------|
+| **稳定版** | 经过充分测试，推荐日常使用 | **[点击安装稳定版](https://auto-update.aimarking.five-plus-one.com/ota/ai_marker.user.js)** |
+| **预览版** | 包含最新功能，可能不够稳定 | **[点击安装预览版](https://auto-update.aimarking.five-plus-one.com/ota/preview/ai_marker.user.js)** |
+
+> 预览版包含正在测试中的新功能，适合想尝鲜的用户。如遇到问题可随时在脚本设置中切换回稳定版。
 
 ### 3. 配置 API 密钥
 
@@ -133,6 +138,37 @@
 ---
 
 ## 更新日志
+
+> 完整更新日志见 [更新日志页面](https://aimarking.five-plus-one.com/changelog)
+
+### v1.21.6 (2026-05-18)
+**新平台**
+- 新增鑫考阅卷平台适配
+
+**新功能**
+- UI 全面重构，提升交互体验和视觉一致性
+- 分数系统重构：优化计算逻辑，提升准确性
+- 完善勉励分功能：支持自定义勉励分规则
+
+**修复**
+- 修复某些情况下总分显示为 0 分的问题
+- 修复勉励分加分后可能超过总分上限的问题
+
+### v1.21.5 (2026-05-16)
+**新功能**
+- 光大阅卷图片获取重构：使用密号(mh)索引图片池，通过页面密号精确匹配当前试卷图片，彻底解决图片错位问题
+- 提交对话框新增「取消」按钮，可关闭面板不提交分数
+- 提交对话框新增最小化/恢复功能，最小化后显示分数浮动条，方便核对答题卡
+- 提交对话框支持拖动，可自由移动位置查看被遮挡的答题卡
+
+**优化**
+- 光大阅卷等待新试卷改用密号变化检测，比得分重置更可靠
+- XHR 拦截器添加平台域名守卫，仅在对应平台上执行，避免影响其他平台
+
+**修复**
+- 修复光大阅卷脚本无法加载的问题（@match 模式从 *:// 改为显式 https://）
+- 修复 SPA 导航后 UI 不初始化的问题（init 调用移至 early return 之前）
+- 修复光大阅卷从第二份试卷开始图片不正确的问题
 
 ### v1.21.4 (2026-05-15)
 **新平台**

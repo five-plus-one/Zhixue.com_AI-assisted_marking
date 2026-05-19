@@ -17,12 +17,16 @@ function buildDiligencePromptSection(config) {
 
 // ---------- 结构化评分 Prompt（新） ----------
 function buildStructuredPrompt(config) {
+    const maxScore = config.maxScore || 0;
+    const maxScoreText = maxScore > 0 ? `满分${maxScore}分` : '满分未指定，请根据常规满分评判';
+
     let prompt = `你是一位严格的阅卷老师。请查看图片中的学生答案并评分。
 
 ===== 输入信息 =====`;
     if (config.question) prompt += `\n【题目】\n${config.question}`;
     if (config.answer) prompt += `\n【标准答案】\n${config.answer}`;
     if (config.rubric) prompt += `\n【评分标准】\n${config.rubric}`;
+    prompt += `\n【满分】\n${maxScoreText}`;
 
     prompt += `
 
@@ -38,19 +42,15 @@ function buildStructuredPrompt(config) {
 【分数计算】
 （写出计算公式，如：1+2+0+2=5）
 
-【总分】
-（一个数字，可以是小数）
-
-【最终得分】
-（一个整数）${buildDiligencePromptSection(config)}
+【得分】
+（一个数字，可以是小数，表示准确性得分）${buildDiligencePromptSection(config)}
 
 ===== 重要约束 =====
 1. 必须使用【】作为段落标记，不要省略任何段落
-2. 【总分】和【最终得分】必须各只有一行，只包含数字
-3. 【总分】可以是小数（如4.5），【最终得分】必须是整数
-4. 不要在输出中使用 ** 加粗标记或其他 markdown 格式
-5. 如果无法识别学生答案，在【答案复述】写"未能识别"
-6. 严格按照评分标准打分，不要随意给分`;
+2. 【得分】必须只有一行，只包含数字，可以是小数
+3. 不要在输出中使用 ** 加粗标记或其他 markdown 格式
+4. 如果无法识别学生答案，在【答案复述】写"未能识别"
+5. 严格按照评分标准打分，不要随意给分`;
     return prompt;
 }
 
@@ -65,8 +65,9 @@ function buildPrompt(config) {
 }
 
 // ---------- 结构化解析器（新） ----------
-function parseStructuredResponse(text) {
+function parseStructuredResponse(text, maxScore) {
     const clean = text.replace(/\*\*/g, '').replace(/\*/g, '');
+    const scoreLimit = (maxScore && maxScore > 0) ? maxScore : 999;
 
     // Level 1: 按【】标记分段
     const sections = {};
@@ -79,26 +80,23 @@ function parseStructuredResponse(text) {
     }
 
     // 检查是否成功解析到结构化内容
-    const hasStructuredContent = sections['最终得分'] || sections['总分'] || sections['答案复述'];
+    const hasStructuredContent = sections['得分'] || sections['最终得分'] || sections['总分'] || sections['答案复述'];
 
     if (!hasStructuredContent) {
         // 结构化解析失败，回退到旧格式
         console.log('📝 [解析] 结构化解析失败，尝试旧格式解析...');
-        return parseLegacyResponse(clean);
+        return parseLegacyResponse(clean, maxScore);
     }
 
-    // Level 2: 提取分数
-    let rawScore = extractScore(sections['总分']);
-    let finalScore = extractScore(sections['最终得分']);
-
-    // Level 3: 校验和修正
-    if (finalScore === null && rawScore !== null) {
-        finalScore = Math.round(rawScore);
-    }
+    // Level 2: 提取分数（优先级：【得分】> 【最终得分】> 【总分】）
+    let rawScore = extractScore(sections['得分'], maxScore);
+    if (rawScore === null) rawScore = extractScore(sections['最终得分'], maxScore);
+    if (rawScore === null) rawScore = extractScore(sections['总分'], maxScore);
+    let finalScore = rawScore;
 
     // Level 4: 分数范围校验
-    if (finalScore !== null && (finalScore < 0 || finalScore > 100)) {
-        console.warn(`⚠️ [解析] 分数超出范围(0-100): ${finalScore}`);
+    if (finalScore !== null && (finalScore < 0 || finalScore > scoreLimit)) {
+        console.warn(`⚠️ [解析] 分数超出范围(0-${scoreLimit}): ${finalScore}`);
         finalScore = null;
     }
 
@@ -133,19 +131,21 @@ function parseStructuredResponse(text) {
     };
 }
 
-function extractScore(text) {
+function extractScore(text, maxScore) {
     if (!text) return null;
     const match = text.match(/(\d+\.?\d*)/);
     if (match) {
         const num = parseFloat(match[1]);
-        if (num >= 0 && num <= 100) return num;
+        const upperLimit = (maxScore && maxScore > 0) ? maxScore : 999;
+        if (num >= 0 && num <= upperLimit) return num;
     }
     return null;
 }
 
 // ---------- 旧格式解析器（兼容） ----------
-function parseLegacyResponse(text) {
+function parseLegacyResponse(text, maxScore) {
     const clean = text.replace(/\*\*/g, '');
+    const scoreLimit = maxScore || 999;
 
     // 提取学生答案
     const studentAnswerMatch = clean.match(/学生答案[：:]\s*(.+?)(?=\n.*?分数|$)/s);
@@ -184,7 +184,7 @@ function parseLegacyResponse(text) {
             const numMatch = line.match(/^(\d+\.?\d*)$/);
             if (numMatch) {
                 const num = parseFloat(numMatch[1]);
-                if (num >= 0 && num <= 100) { score = num; break; }
+                if (num >= 0 && num <= scoreLimit) { score = num; break; }
             }
         }
     }
@@ -308,24 +308,25 @@ function buildSubQuestionPrompt(config) {
         prompt += `\n${sq.label}评语：（简短评语）`;
     }
 
-    prompt += `\n\n【总分】
-（一个数字）
-
-【最终得分】
-（一个整数）${buildDiligencePromptSection(config)}
+    prompt += `\n\n【得分】
+（各小题分数之和，一个数字）${buildDiligencePromptSection(config)}
 
 ===== 重要约束 =====
 1. 必须使用【】作为段落标记
-2. 各小题分数和总分必须各只有一行，只包含数字
+2. 各小题分数和【得分】必须各只有一行，只包含数字
 3. 不要使用 ** 加粗标记
-4. 各小题分数之和应等于总分`;
+4. 各小题分数之和应等于【得分】`;
     return prompt;
 }
 
 // ========== 分小题结果解析 ==========
 function parseSubQuestionResponse(text, config) {
+    // 计算总满分
+    const maxScore = config.subQuestions
+        ? config.subQuestions.reduce((sum, sq) => sum + (sq.maxScore || 0), 0)
+        : (config.maxScore || 0);
     // 先尝试结构化解析
-    const structured = parseStructuredResponse(text);
+    const structured = parseStructuredResponse(text, maxScore);
 
     // 如果结构化解析成功提取到分数
     if (structured.score !== null) {
@@ -424,22 +425,33 @@ function parseLegacySubQuestionResponse(text, config) {
 
 // ========== 打分专用函数 ==========
 function callAIGrading(base64DataArray, config, onStreamUpdate) {
-    const hasSub = config.subQuestions && config.subQuestions.length > 0;
-    // 优先使用结构化 Prompt
-    const prompt = hasSub ? buildSubQuestionPrompt(config) : buildStructuredPrompt(config);
+    // 从 scoring.units 派生 subQuestions（唯一数据源）
+    const units = config.scoring?.units || [];
+    const subQuestions = units.length > 1
+        ? units.map((u, i) => ({ id: String.fromCharCode(97 + i), label: u.label, maxScore: u.maxScore }))
+        : [];
+    const hasSub = subQuestions.length > 0;
+
+    // 将派生的 subQuestions 注入 config 供 prompt 函数使用
+    const callConfig = { ...config, subQuestions: hasSub ? subQuestions : undefined };
+
+    const prompt = hasSub ? buildSubQuestionPrompt(callConfig) : buildStructuredPrompt(callConfig);
+
+    // 计算总满分
+    const maxScore = PresetManager.getMaxScore();
 
     if (hasSub) {
-        console.log(`📋 [诊断] 分小题配置 — 共 ${config.subQuestions.length} 题: ${config.subQuestions.map(sq => `${sq.label}(满分${sq.maxScore ?? '未设置'})`).join(', ')}`);
+        console.log(`📋 [诊断] 评分单元配置 — 共 ${subQuestions.length} 个: ${subQuestions.map(sq => `${sq.label}(满分${sq.maxScore ?? '未设置'})`).join(', ')}`);
     }
 
-    return callAIWithRetry(prompt, base64DataArray, config, onStreamUpdate)
+    return callAIWithRetry(prompt, base64DataArray, callConfig, onStreamUpdate)
         .then(fullText => {
             console.log('📝 [诊断] AI原始返回内容：\n' + fullText);
 
             const parsed = hasSub
-                ? parseSubQuestionResponse(fullText, config)
-                : parseStructuredResponse(fullText);
-            console.log(`🧠 [诊断] AI响应解析结果 — 分数: ${parsed.score}, 识别答案长度: ${(parsed.studentAnswer || '').length}字, 原始文本长度: ${fullText.length}字`);
+                ? parseSubQuestionResponse(fullText, callConfig)
+                : parseStructuredResponse(fullText, maxScore);
+            console.log(`🧠 [诊断] AI响应解析结果 — 分数: ${parsed.score}, 满分: ${maxScore}, 识别答案长度: ${(parsed.studentAnswer || '').length}字, 原始文本长度: ${fullText.length}字`);
             if (parsed.score === null) {
                 console.warn('⚠️ [诊断] 分数解析为 null');
             }
@@ -447,63 +459,19 @@ function callAIGrading(base64DataArray, config, onStreamUpdate) {
         });
 }
 
-// ========== 应用取整规则 ==========
+// ========== 分数计算函数（委托给 ScoreCalculator）==========
+
+// 取整规则 — 委托给 ScoreCalculator.round()
 function applyScoringRules(score, scoringConfig) {
-    if (score === null || score === undefined || !scoringConfig) return score;
-
-    const step = scoringConfig.roundStep || 1;
-    const method = scoringConfig.roundMethod || 'round';
-
-    if (step === 1) {
-        return Math[method](score);
-    }
-
-    // 按步长取整
-    const rounded = Math[method](score / step) * step;
-    return Math.round(rounded * 100) / 100; // 避免浮点精度问题
+    return ScoreCalculator.round(score, scoringConfig);
 }
 
-// ========== 勤勉加分计算 ==========
+// 勤勉加分计算 — 委托给 ScoreCalculator.calcDiligenceBonus()
 function applyDiligenceBonus(accuracyScore, diligenceLevel, maxScore, diligenceConfig) {
-    if (!diligenceConfig || !diligenceConfig.enabled || !diligenceLevel || diligenceLevel <= 0 || maxScore <= 0) {
-        return { bonus: 0, decayFactor: 0, finalScore: accuracyScore };
-    }
-
-    const maxBonus = diligenceConfig.maxBonus || 3;
-    const decayPower = diligenceConfig.decayPower || 2;
-    const perLevel = 1; // 每级1分
-
-    const ratio = Math.min(accuracyScore / maxScore, 1);
-    const decayFactor = Math.pow(1 - ratio, decayPower);
-    // 等级1=无勤勉(0分)，等级2起才加分；加分不能超过满分与准确性得分的差值
-    const maxAddable = Math.max(0, maxScore - accuracyScore);
-    const rawBonus = Math.min(Math.max(0, diligenceLevel - 1) * perLevel, maxBonus, maxAddable);
-    const bonus = Math.round(rawBonus * decayFactor * 100) / 100;
-    const finalScore = Math.min(accuracyScore + bonus, maxScore);
-
-    return { bonus, decayFactor, rawBonus, finalScore };
+    return ScoreCalculator.calcDiligenceBonus(accuracyScore, diligenceLevel, maxScore, diligenceConfig);
 }
 
-// ========== 勤勉加分分配到小题（供 adapter 使用）==========
+// 勤勉加分分配到小题 — 委托给 ScoreCalculator.distributeBonus()
 function distributeDiligenceBonus(subScores, bonus, roundFn) {
-    if (!bonus || bonus <= 0 || !subScores || subScores.length === 0) return subScores;
-
-    const totalMax = subScores.reduce((s, sq) => s + (sq.maxScore || 1), 0);
-    if (totalMax <= 0) return subScores;
-
-    const round = roundFn || (v => Math.round(v * 100) / 100);
-    let remaining = bonus;
-    return subScores.map((sq, i) => {
-        const maxScore = sq.maxScore || Infinity;
-        if (i === subScores.length - 1) {
-            // 最后一题吸收剩余
-            const added = Math.min(remaining, maxScore - (sq.score || 0));
-            return { ...sq, score: Math.min(round(sq.score + added), maxScore) };
-        }
-        const share = Math.round(bonus * (sq.maxScore || 1) / totalMax * 10) / 10;
-        const maxAdd = maxScore - (sq.score || 0);
-        const added = Math.min(share, maxAdd, remaining);
-        remaining -= added;
-        return { ...sq, score: Math.min(round(sq.score + added), maxScore) };
-    });
+    return ScoreCalculator.distributeBonus(subScores, bonus, roundFn);
 }

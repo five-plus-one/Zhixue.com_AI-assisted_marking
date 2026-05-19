@@ -1,8 +1,8 @@
-name: Build & Deploy
+name: Build & Deploy (Preview)
 
 on:
   push:
-    branches: [main]
+    branches: [preview]
   workflow_dispatch:
 
 permissions:
@@ -11,7 +11,7 @@ permissions:
   id-token: write
 
 concurrency:
-  group: deploy-core
+  group: deploy-preview
   cancel-in-progress: true
 
 jobs:
@@ -32,8 +32,8 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Build (stable channel)
-        run: npm run build -- --channel=stable
+      - name: Build (preview channel)
+        run: npm run build -- --channel=preview --build=${{ github.run_number }}
 
       - name: Create redirect page
         run: |
@@ -43,19 +43,21 @@ jobs:
           <head>
           <meta charset="UTF-8">
           <meta http-equiv="refresh" content="0;url=ai_marker.user.js">
-          <title>AI 批改助手 - 安装脚本</title>
+          <title>AI 批改助手 (预览版) - 安装脚本</title>
           <style>
             body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; display: flex; justify-content: center; align-items: center; min-height: 100vh; margin: 0; background: #f5f5f5; }
             .card { background: #fff; border-radius: 12px; padding: 40px; box-shadow: 0 2px 12px rgba(0,0,0,0.08); text-align: center; max-width: 480px; }
             h1 { margin: 0 0 12px; font-size: 24px; }
             p { color: #666; margin: 8px 0; line-height: 1.6; }
-            a { display: inline-block; margin-top: 16px; padding: 12px 32px; background: #3451b2; color: #fff; text-decoration: none; border-radius: 8px; font-size: 16px; }
-            a:hover { background: #2a3f96; }
+            a { display: inline-block; margin-top: 16px; padding: 12px 32px; background: #ff9f0a; color: #fff; text-decoration: none; border-radius: 8px; font-size: 16px; }
+            a:hover { background: #e68a00; }
+            .badge { display: inline-block; padding: 2px 8px; background: rgba(255,159,10,0.12); color: rgba(255,159,10,0.9); border-radius: 4px; font-size: 12px; font-weight: 500; margin-bottom: 8px; }
             .tip { font-size: 13px; color: #999; margin-top: 16px; }
           </style>
           </head>
           <body>
           <div class="card">
+            <span class="badge">预览版</span>
             <h1>AI 批改助手</h1>
             <p>正在跳转到安装脚本...</p>
             <p>如果没有自动跳转，请点击下方按钮：</p>
@@ -66,36 +68,16 @@ jobs:
           </html>
           HTMLEOF
 
-      - name: Setup Pages
-        uses: actions/configure-pages@v5
-
-      - name: Upload artifact
-        uses: actions/upload-pages-artifact@v4
-        with:
-          path: dist
-
       - name: Upload script for server deploy
         uses: actions/upload-artifact@v4
         with:
-          name: script-dist
+          name: script-dist-preview
           path: |
             dist/ai_marker.user.js
             dist/manifest.json
           retention-days: 1
 
-  # 部署到 GitHub Pages（保留）
-  deploy-pages:
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
-    needs: build
-    runs-on: ubuntu-latest
-    steps:
-      - name: Deploy to GitHub Pages
-        id: deployment
-        uses: actions/deploy-pages@v5
-
-  # 部署到云服务器
+  # 部署到云服务器 (preview 渠道)
   deploy-server:
     needs: build
     runs-on: ubuntu-latest
@@ -103,7 +85,7 @@ jobs:
       - name: Download script
         uses: actions/download-artifact@v4
         with:
-          name: script-dist
+          name: script-dist-preview
           path: dist
 
       - name: Upload to temp directory
@@ -114,7 +96,7 @@ jobs:
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           port: ${{ secrets.SSH_PORT || 22 }}
           source: "dist/ai_marker.user.js,dist/manifest.json"
-          target: /tmp/deploy-script/
+          target: /tmp/deploy-script-preview/
 
       - name: Move to target and set permissions
         uses: appleboy/ssh-action@v1.0.3
@@ -124,25 +106,28 @@ jobs:
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           port: ${{ secrets.SSH_PORT || 22 }}
           script: |
-            # 部署目录
-            DEPLOY_DIR=/opt/1panel/apps/openresty/openresty/www/sites/auto-update.aimarking.five-plus-one.com/index/ota
-            OWNER=$(stat -c '%U:%G' "$DEPLOY_DIR")
+            # 部署目录（preview 渠道）
+            DEPLOY_DIR=/opt/1panel/apps/openresty/openresty/www/sites/auto-update.aimarking.five-plus-one.com/index/ota/preview
+            OWNER=$(stat -c '%U:%G' "$(dirname "$DEPLOY_DIR")")
+
+            # 确保目录存在
+            sudo mkdir -p $DEPLOY_DIR
 
             # 部署 ai_marker.user.js
             sudo rm -f $DEPLOY_DIR/ai_marker.user.js
-            sudo cp /tmp/deploy-script/dist/ai_marker.user.js $DEPLOY_DIR/
+            sudo cp /tmp/deploy-script-preview/dist/ai_marker.user.js $DEPLOY_DIR/
             sudo chown $OWNER $DEPLOY_DIR/ai_marker.user.js
             sudo chmod 644 $DEPLOY_DIR/ai_marker.user.js
 
-            # 部署 manifest.json（轻量级更新检查文件）
+            # 部署 manifest.json
             sudo rm -f $DEPLOY_DIR/manifest.json
-            sudo cp /tmp/deploy-script/dist/manifest.json $DEPLOY_DIR/
+            sudo cp /tmp/deploy-script-preview/dist/manifest.json $DEPLOY_DIR/
             sudo chown $OWNER $DEPLOY_DIR/manifest.json
             sudo chmod 644 $DEPLOY_DIR/manifest.json
 
             # 清理临时文件
-            rm -rf /tmp/deploy-script
+            rm -rf /tmp/deploy-script-preview
 
             # 验证部署
-            echo "✅ 部署完成，文件列表："
+            echo "✅ Preview 渠道部署完成，文件列表："
             ls -la $DEPLOY_DIR/

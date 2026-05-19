@@ -186,7 +186,8 @@ const ZhixueAdapter = {
             subInputs.forEach((el, i) => {
                 const labelEl = el.closest('li')?.querySelector('.label');
                 const label = labelEl?.textContent?.trim() || `第${i + 1}题`;
-                inputs.push({ element: el, label, index: i });
+                const maxScore = parseInt(el.getAttribute('score')) || parseInt(el.placeholder?.match(/\d+/)?.[0]) || 0;
+                inputs.push({ element: el, label, index: i, maxScore });
             });
             return inputs;
         }
@@ -194,9 +195,28 @@ const ZhixueAdapter = {
         const scoreInput = document.querySelector(ZHIXUE_SELECTORS.SCORE_INPUT_PLACEHOLDER) ||
                            document.querySelector(ZHIXUE_SELECTORS.SCORE_INPUT);
         if (scoreInput) {
-            inputs.push({ element: scoreInput, label: '总分', index: 0 });
+            const maxScore = parseInt(scoreInput.getAttribute('score')) || parseInt(scoreInput.placeholder?.match(/\d+/)?.[0]) || 0;
+            inputs.push({ element: scoreInput, label: '总分', index: 0, maxScore });
         }
         return inputs;
+    },
+
+    fillScores(scores) {
+        const inputs = this.getScoreInputs();
+        if (inputs.length === 0) return false;
+        const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set;
+        let successCount = 0;
+        for (let i = 0; i < Math.min(scores.length, inputs.length); i++) {
+            if (scores[i] === null || scores[i] === undefined) continue;
+            const input = inputs[i];
+            setter.call(input.element, scores[i]);
+            input.element.dispatchEvent(new Event('input', { bubbles: true }));
+            input.element.dispatchEvent(new Event('change', { bubbles: true }));
+            input.element.dispatchEvent(new Event('blur', { bubbles: true }));
+            successCount++;
+            console.log(`✅ [诊断] ${input.label} 分数 ${scores[i]} 已填入`);
+        }
+        return successCount > 0;
     },
 
     detectSubQuestions() {

@@ -1,21 +1,21 @@
 // ========== 填充分数及弹窗 ==========
 function fillScore(score, comment, subScores) {
     const adapter = window.__AI_MARKER_ADAPTER__;
-    // 对分小题分数应用取整规则（纠错/回评路径）
-    const scoringConfig = PresetManager.getCurrentConfig().scoring || { roundStep: 1, roundMethod: 'round' };
-    const roundedSubScores = subScores?.map(sq => ({
-        ...sq,
-        score: sq.score !== null ? applyScoringRules(sq.score, scoringConfig) : null
-    }));
     let filled = false;
-    if (adapter && adapter.fillScore) {
-        filled = adapter.fillScore({ total: score, subScores: roundedSubScores });
+    if (adapter) {
+        if (adapter.fillScores && subScores && subScores.length > 0) {
+            filled = adapter.fillScores(subScores.map(sq => sq.score));
+        } else if (adapter.fillScores) {
+            filled = adapter.fillScores([score]);
+        } else if (adapter.fillScore) {
+            filled = adapter.fillScore({ total: score, subScores });
+        }
     }
     if (!filled) {
         console.warn('未找到分数输入框，将直接弹出确认窗口');
         safeAlert(`AI打分结果：\n分数：${score}\n请手动输入分数！`);
     }
-    showAutoSubmitDialog(score, comment, roundedSubScores);
+    showAutoSubmitDialog(score, comment, subScores);
 }
 
 function showAutoSubmitDialog(score, comment, subScores, extraInfo) {
@@ -52,9 +52,7 @@ function showAutoSubmitDialog(score, comment, subScores, extraInfo) {
     const cancelBtnHtml = `<button class="asd-cancel-btn" id="cancel-submit-btn">取消</button>`;
 
     // 环形分数显示 — 根据分数计算百分比和颜色
-    const maxScore = subScores && subScores.length > 0
-        ? subScores.reduce((sum, sq) => sum + (sq.maxScore || 100), 0)
-        : 100;
+    const maxScore = PresetManager.getMaxScore() || 100;  // UI 显示用，0 时回退 100 避免除零
     const pct = Math.min(score / maxScore, 1);
     const circumference = 2 * Math.PI * 44;
     const dashoffset = circumference * (1 - pct);

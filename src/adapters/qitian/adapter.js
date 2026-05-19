@@ -151,6 +151,22 @@ const QitianAdapter = {
         return inputs;
     },
 
+    fillScores(scores) {
+        const inputs = this.getScoreInputs();
+        if (inputs.length === 0) return false;
+        let successCount = 0;
+        for (let i = 0; i < Math.min(scores.length, inputs.length); i++) {
+            if (scores[i] === null || scores[i] === undefined) continue;
+            inputs[i].element.value = scores[i];
+            inputs[i].element.dispatchEvent(new Event('input', { bubbles: true }));
+            inputs[i].element.dispatchEvent(new Event('change', { bubbles: true }));
+            inputs[i].element.dispatchEvent(new Event('blur', { bubbles: true }));
+            successCount++;
+            console.log(`✅ [诊断] ${inputs[i].label} 分数 ${scores[i]} 已填入`);
+        }
+        return successCount > 0;
+    },
+
     detectSubQuestions() {
         const subs = [];
         document.querySelectorAll('.timuArea .timuScore').forEach((el, i) => {

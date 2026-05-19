@@ -2,20 +2,25 @@
 const ProviderManager = {
     data: null,
     init() {
-        let saved = GM_getValue('ai-grading-providers-v2');
-        if (saved) {
-            this.data = JSON.parse(saved);
-            // 迁移：更新内置供应商的模型配置
-            this._migrateProviders();
-        } else {
-            // 尝试迁移旧格式
-            const oldSaved = GM_getValue('ai-grading-providers');
-            if (oldSaved) {
-                this.data = this._migrateFromV1(JSON.parse(oldSaved));
+        try {
+            let saved = GM_getValue('ai-grading-providers-v2');
+            if (saved) {
+                this.data = JSON.parse(saved);
+                // 迁移：更新内置供应商的模型配置
+                this._migrateProviders();
             } else {
-                this.data = this._getDefault();
+                // 尝试迁移旧格式
+                const oldSaved = GM_getValue('ai-grading-providers');
+                if (oldSaved) {
+                    this.data = this._migrateFromV1(JSON.parse(oldSaved));
+                } else {
+                    this.data = this._getDefault();
+                }
+                this.save();
             }
-            this.save();
+        } catch (e) {
+            console.error('❌ ProviderManager init failed, using defaults:', e);
+            this.data = this._getDefault();
         }
     },
     _migrateProviders() {
@@ -223,14 +228,19 @@ ProviderManager.init();
 const WorkflowManager = {
     data: null,
     init() {
-        let saved = GM_getValue('ai-grading-workflows');
-        if (saved) {
-            this.data = JSON.parse(saved);
-            // 迁移：更新内置工作流的模型配置
-            this._migrateWorkflows();
-        } else {
+        try {
+            let saved = GM_getValue('ai-grading-workflows');
+            if (saved) {
+                this.data = JSON.parse(saved);
+                // 迁移：更新内置工作流的模型配置
+                this._migrateWorkflows();
+            } else {
+                this.data = this._getDefault();
+                this.save();
+            }
+        } catch (e) {
+            console.error('❌ WorkflowManager init failed, using defaults:', e);
             this.data = this._getDefault();
-            this.save();
         }
     },
     _migrateWorkflows() {
@@ -592,9 +602,11 @@ async function callDualEvaluation(base64DataArray, config, onStreamUpdate) {
     let detailA = resultA.status === 'fulfilled' ? resultA.value : null;
     let detailB = resultB.status === 'fulfilled' ? resultB.value : null;
 
-    // 两个都失败 → 重试一次
+    const MAX_DUAL_RETRIES = 5;
+
+    // 两个都失败 → 重试两个
     if (scoreA === null && scoreB === null) {
-        console.warn('⚠️ [双评] 首次双评均失败，等待2秒后重试...');
+        console.warn('⚠️ [双评] 首次双评均失败，等待2秒后重试两个模型...');
         if (resultA.reason) console.warn('  主模型错误:', resultA.reason.message || resultA.reason);
         if (resultB.reason) console.warn('  副模型错误:', resultB.reason.message || resultB.reason);
         if (onStreamUpdate) onStreamUpdate('⚠️ 双评均失败，正在重试...');
@@ -621,13 +633,39 @@ async function callDualEvaluation(base64DataArray, config, onStreamUpdate) {
         }
     }
 
-    // 一个失败，使用另一个
+    // 一个失败 → 只重试失败的那个，最多重试 MAX_DUAL_RETRIES 次
+    let dualRetryCount = 0;
+    while ((scoreA === null || scoreB === null) && dualRetryCount < MAX_DUAL_RETRIES) {
+        dualRetryCount++;
+        const waitSec = dualRetryCount <= 2 ? 2 : 5;
+        if (scoreA === null) {
+            console.warn(`⚠️ [双评] 主模型失败，重试主模型(${dualRetryCount}/${MAX_DUAL_RETRIES})...`);
+            if (onStreamUpdate) onStreamUpdate(`⚠️ 主模型失败，正在重试(${dualRetryCount}/${MAX_DUAL_RETRIES})...`);
+            await new Promise(r => setTimeout(r, waitSec * 1000));
+            resultA = (await Promise.allSettled([
+                callAIGrading(base64DataArray, { ...config, ...primaryConfig }, null)
+            ]))[0];
+            scoreA = resultA.status === 'fulfilled' ? resultA.value.score : null;
+            detailA = resultA.status === 'fulfilled' ? resultA.value : null;
+        } else {
+            console.warn(`⚠️ [双评] 副模型失败，重试副模型(${dualRetryCount}/${MAX_DUAL_RETRIES})...`);
+            if (onStreamUpdate) onStreamUpdate(`⚠️ 副模型失败，正在重试(${dualRetryCount}/${MAX_DUAL_RETRIES})...`);
+            await new Promise(r => setTimeout(r, waitSec * 1000));
+            resultB = (await Promise.allSettled([
+                callAIGrading(base64DataArray, { ...config, ...secondaryConfig }, null)
+            ]))[0];
+            scoreB = resultB.status === 'fulfilled' ? resultB.value.score : null;
+            detailB = resultB.status === 'fulfilled' ? resultB.value : null;
+        }
+    }
+
+    // 重试耗尽后仍有一个失败 → 降级为单评（最后兜底）
     if (scoreA === null) {
-        console.warn('⚠️ [双评] 主模型失败，使用副模型结果');
+        console.warn(`⚠️ [双评] 主模型重试${MAX_DUAL_RETRIES}次后仍失败，降级使用副模型结果`);
         return { ...detailB, dualEval: { scoreA: null, scoreB, diff: null, result: 'fallback-b', detailA: null, detailB: detailB?._sections || null } };
     }
     if (scoreB === null) {
-        console.warn('⚠️ [双评] 副模型失败，使用主模型结果');
+        console.warn(`⚠️ [双评] 副模型重试${MAX_DUAL_RETRIES}次后仍失败，降级使用主模型结果`);
         return { ...detailA, dualEval: { scoreA, scoreB: null, diff: null, result: 'fallback-a', detailA: detailA?._sections || null, detailB: null } };
     }
 
@@ -664,6 +702,7 @@ async function callDualEvaluation(base64DataArray, config, onStreamUpdate) {
         return {
             ...detailA,
             score: finalScore,
+            rawScore: finalScore,
             subScores: finalSubScores,
             diligenceLevel: avgDiligenceLevel,
             diligenceReason: avgDiligenceReason,
@@ -694,6 +733,7 @@ async function callDualEvaluation(base64DataArray, config, onStreamUpdate) {
         return {
             ...detailA,
             score: finalScore,
+            rawScore: finalScore,
             diligenceLevel: avgLevel,
             diligenceReason: detailA?.diligenceReason || '',
             dualEval: { scoreA, scoreB, diff, result: 'average-fallback', detailA: detailA?._sections || null, detailB: detailB?._sections || null }
